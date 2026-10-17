@@ -7,9 +7,15 @@ const PREFIX = "alfa-approved-scenes-v1:";
 const IGNORE = new Set(["في","من","عن","على","الى","ان","انها","هو","هي","هذا","هذه","اللي","كان","انه","وش","شنو","علشان","خلال","اخر","قلت","خلونا","عندنا","المحاضر","دراسه","ذكر","ذكرت","تشير","اليوم","الطلبه","الطلاب","مثلا","يمكن","يعني"]);
 function wordSet(text) {
   const normalized = normalizeArabic(text).toLowerCase()
-    .replace(/التحفيز|الدافعيه|دافعيه/g, "دافعيه")
     .replace(/[^\p{L}\p{N}]+/gu, " ");
-  return [...new Set(normalized.split(" ").filter((w) => w.length > 2 && !IGNORE.has(w)))];
+  const canonical = normalized.split(" ").map((word) => {
+    let w = word;
+    if (w.startsWith("لل") && w.length > 4) w = w.slice(2);
+    else if (w.startsWith("ال") && w.length > 4) w = w.slice(2);
+    if (w === "تحفيز" || w === "دافعيه") w = "دافعيه";
+    return w;
+  });
+  return [...new Set(canonical.filter((w) => (w.length > 2 || /^\d+$/.test(w)) && !IGNORE.has(w)))];
 }
 function storageOrNull(custom) {
   if (custom) return custom;
