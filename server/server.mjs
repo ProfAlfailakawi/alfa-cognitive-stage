@@ -13,6 +13,7 @@ import { createServer as createSecureServer } from "node:https";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
+import { createLibrary, deleteBundle, LibraryError } from "./library.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 try { loadEnvFile(join(root, ".env")); } catch (err) { if (err.code !== "ENOENT") throw err; }
@@ -22,7 +23,13 @@ const port = Number(process.env.PORT || 4173);
 const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
 const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });
 const scenes = createSceneStore({ file: process.env.SCENES_FILE || join(root, "data", "scenes.json") });
+const library = createLibrary({ file: process.env.LIBRARY_FILE || join(root, "data", "library.json"), bundlesRoot });
 const MAX_BODY = 4096;
+const retentionDays = () => Math.max(1, Math.min(3650, Number(process.env.ALFA_RETENTION_DAYS) || 180));
+const tokenHours = () => Math.max(0, Math.min(720, Number(process.env.ALFA_VOTER_TOKEN_HOURS ?? 24)));
+const maintainVotes = () => { try { store.maintain({ retentionDays: retentionDays(), tokenHours: tokenHours() }); } catch (e) { console.error("votes maintenance:", e); } };
+maintainVotes();
+setInterval(maintainVotes, 60 * 60 * 1000).unref();
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -141,6 +148,55 @@ async function handleApi(req, res, path) {
       throw err;
     }
   }
+  if (resource === "data") {
+    requireAdmin(req);
+    if (code === "summary" && req.method === "GET") {
+      return sendJson(res, 200, { votes: store.summary(), scenes: scenes.listAll().length,
+        retentionDays: retentionDays(), voterTokenHours: tokenHours() });
+    }
+    if (code === "votes" && req.method === "DELETE") return sendJson(res, 200, store.deleteAll());
+    throw new VoteError("غير موجود", 404);
+  }
+  if (resource === "library") {
+    requireAdmin(req);
+    try {
+      if (req.method === "GET" && !code) return sendJson(res, 200, library.snapshot());
+      if (code === "courses" && req.method === "POST") {
+        const body = await readBody(req);
+        return sendJson(res, 201, { course: library.addCourse(body.name, body.term) });
+      }
+      if (code === "courses" && req.method === "DELETE" && action) return sendJson(res, 200, library.removeCourse(action));
+      if (code === "sections" && req.method === "POST") {
+        const body = await readBody(req);
+        return sendJson(res, 201, { section: library.addSection(body.courseId, body.name) });
+      }
+      if (code === "sections" && req.method === "DELETE" && action) return sendJson(res, 200, library.removeSection(action));
+      if (code === "lectures" && action && req.method === "PUT") {
+        const body = await readBody(req);
+        return sendJson(res, 200, { lecture: library.label(action, body) });
+      }
+      if (code === "lectures" && action && pollId === "open" && req.method === "POST") {
+        library.opened(action);
+        return sendJson(res, 200, { ok: true });
+      }
+    } catch (err) {
+      if (err instanceof LibraryError) return sendJson(res, err.status, { error: err.message });
+      throw err;
+    }
+    throw new VoteError("غير موجود", 404);
+  }
+  if (resource === "lectures" && code && code !== "prerequisites" && code !== "import" && req.method === "DELETE") {
+    requireAdmin(req);
+    try {
+      const result = deleteBundle(bundlesRoot, code);
+      library.forget(code);
+      scenes.clear(code);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      if (err instanceof LibraryError) return sendJson(res, err.status, { error: err.message });
+      throw err;
+    }
+  }
   if (resource === "lectures" && code === "prerequisites" && req.method === "GET") {
     requireAdmin(req);
     return sendJson(res, 200, await prerequisitesStatus());
@@ -188,6 +244,10 @@ async function handleApi(req, res, path) {
   const upper = code.toUpperCase();
   if (!store.hasSession(upper)) throw new VoteError("الجلسة غير موجودة", 404);
 
+  if (!action && req.method === "DELETE") {
+    requireAdmin(req);
+    return sendJson(res, 200, store.deleteSession(upper));
+  }
   if (action === "questions") {
     if (req.method === "POST" && !pollId) {
       const body = await readBody(req);

@@ -29,6 +29,7 @@ export function createVoteStore({ file = null } = {}) {
     mkdirSync(dirname(file), { recursive: true });
     const data = Object.fromEntries([...sessions].map(([code, s]) => [code, {
       polls: s.polls, nextId: s.nextId, questions: s.questions, nextQuestionId: s.nextQuestionId,
+      createdAt: s.createdAt,
     }]));
     const tmp = `${file}.tmp`;
     writeFileSync(tmp, JSON.stringify(data));
@@ -41,6 +42,7 @@ export function createVoteStore({ file = null } = {}) {
       const questions = Array.isArray(s.questions) ? s.questions.filter(q => q &&
         Number.isInteger(q.id) && typeof q.text === "string").slice(-MAX_PENDING_QUESTIONS) : [];
       sessions.set(code, { polls: s.polls, nextId: s.nextId, lastVoteAt: new Map(),
+        createdAt: Number.isFinite(s.createdAt) ? s.createdAt : Date.now(), // legacy sessions start their retention clock now
         questions, nextQuestionId: Math.max(1, Number(s.nextQuestionId) || 1,
           ...questions.map(q => q.id + 1)), lastQuestionAt: new Map() });
     }
@@ -63,7 +65,7 @@ export function createVoteStore({ file = null } = {}) {
     do {
       code = Array.from({ length: 6 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join("");
     } while (sessions.has(code));
-    sessions.set(code, { polls: [], nextId: 1, lastVoteAt: new Map(),
+    sessions.set(code, { polls: [], nextId: 1, lastVoteAt: new Map(), createdAt: Date.now(),
       questions: [], nextQuestionId: 1, lastQuestionAt: new Map() });
     persist();
     return code;
@@ -101,6 +103,7 @@ export function createVoteStore({ file = null } = {}) {
       for (const other of session(code).polls) if (other.status === "open") other.status = "closed";
     }
     p.status = status;
+    if (status === "closed") p.closedAt = Date.now();
     persist();
     return p;
   }
@@ -132,10 +135,12 @@ export function createVoteStore({ file = null } = {}) {
   }
 
   function counts(p) {
+    if (Array.isArray(p.archive)) return p.archive.slice(); // device tokens already dropped
     const c = p.options.map(() => 0);
     for (const v of Object.values(p.votes)) c[v] += 1;
     return c;
   }
+  const total = (p) => counts(p).reduce((a, b) => a + b, 0);
 
   // What a student may see: the open question and only their own answer.
   function studentState(code, token) {
@@ -155,7 +160,7 @@ export function createVoteStore({ file = null } = {}) {
       code,
       polls: s.polls.map((p) => ({
         id: p.id, question: p.question, options: p.options, status: p.status,
-        reveal: p.reveal, allowChange: p.allowChange, total: Object.keys(p.votes).length, counts: counts(p),
+        reveal: p.reveal, allowChange: p.allowChange, total: total(p), counts: counts(p),
       })),
     };
   }
@@ -206,6 +211,39 @@ export function createVoteStore({ file = null } = {}) {
     return sessions.has(code);
   }
 
+  // Privacy maintenance. Device tokens exist only to stop double voting while a poll is open:
+  // once a poll has been closed for a while they are dropped and only the counts remain.
+  function maintain({ now = Date.now(), tokenHours = 24, retentionDays = 180 } = {}) {
+    let anonymized = 0, purged = 0;
+    const tokenAge = Math.max(0, tokenHours) * 3600 * 1000, keepFor = Math.max(1, retentionDays) * 86400 * 1000;
+    for (const [code, s] of [...sessions]) {
+      if (now - s.createdAt > keepFor) { sessions.delete(code); purged++; continue; }
+      for (const p of s.polls) {
+        const closedFor = p.status === "closed" && Number.isFinite(p.closedAt) ? now - p.closedAt : -1;
+        if (!p.archive && p.status === "closed" && (closedFor >= tokenAge || !Number.isFinite(p.closedAt) && now - s.createdAt >= tokenAge)) {
+          p.archive = counts(p); p.votes = {}; anonymized++;
+        }
+      }
+    }
+    if (anonymized || purged) persist();
+    return { anonymized, purged };
+  }
+  function deleteSession(code) {
+    session(code); sessions.delete(code); persist(); return { ok: true };
+  }
+  function deleteAll() {
+    const removed = sessions.size; sessions.clear(); persist(); return { removed };
+  }
+  function summary() {
+    let polls = 0, questions = 0, tokens = 0;
+    for (const s of sessions.values()) {
+      polls += s.polls.length; questions += s.questions.length;
+      for (const p of s.polls) tokens += Object.keys(p.votes).length;
+    }
+    return { sessions: sessions.size, polls, pendingQuestions: questions, storedDeviceTokens: tokens };
+  }
+
   return { createSession, createPoll, repeatPoll, setStatus, setReveal, vote,
-    studentState, presenterState, submitQuestion, listQuestions, dismissQuestion, hasSession };
+    studentState, presenterState, submitQuestion, listQuestions, dismissQuestion, hasSession,
+    maintain, deleteSession, deleteAll, summary };
 }
