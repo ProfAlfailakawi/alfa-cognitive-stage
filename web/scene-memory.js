@@ -6,6 +6,7 @@ import { validateSpec } from "./infographic.js";
 const PREFIX = "alfa-approved-scenes-v1:";
 const GLOBAL_KEY = "alfa-approved-scenes-cross-v1";
 const GLOBAL_LIMIT = 150;
+const BUNDLE_ID = /^[a-zA-Z0-9_-]{4,64}$/;
 const IGNORE = new Set(["في","من","عن","على","الى","ان","انها","هو","هي","هذا","هذه","اللي","كان","انه","وش","شنو","علشان","خلال","اخر","قلت","خلونا","عندنا","المحاضر","دراسه","ذكر","ذكرت","تشير","اليوم","الطلبه","الطلاب","مثلا","يمكن","يعني"]);
 function wordSet(text) {
   const normalized = normalizeArabic(text).toLowerCase()
