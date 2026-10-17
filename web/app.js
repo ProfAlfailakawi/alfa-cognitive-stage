@@ -287,7 +287,10 @@ function hideInfographic(notify) {
   const msg = document.getElementById("info-msg");
   if (msg) msg.textContent = "";
   if (notify) send({ type: "infographic-hide" });
-  if (role === "presenter") directorRuntime.activeOverlay = false;
+  if (role === "presenter") {
+    directorRuntime.activeOverlay = false;
+    pollScreen.visible = false; // Emergency/slide navigation must not keep projecting QR.
+  }
   document.querySelectorAll(".info-layer").forEach((el) => el.remove());
 }
 
@@ -334,7 +337,7 @@ function showDirectorProposal(proposal, reason) {
 }
 function revealDirectorScene(proposal) {
   if (!proposal?.spec || proposal.slide !== state.index ||
-      Date.now() - proposal.at > 30000 || (videoEl && !videoEl.paused)) return false;
+      Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
   try {
     renderLayer(proposal.spec);
     send({ type: "infographic", spec: proposal.spec });
@@ -403,7 +406,12 @@ function receiveDirectorSpeech(text) {
   directorRuntime.recent = directorRuntime.recent.filter((r) => Date.now() - r.at < 25000).slice(-3);
   const recent = directorRuntime.recent.map((r) => r.text).join(" ");
   const moment = interpretSpeech(raw) || interpretSpeech(recent);
+  const mode = document.getElementById("director-mode")?.value || "balanced";
   if (!moment) {
+    if (directorRuntime.story) {
+      observeStorySpeech(raw, mode);
+      return;
+    }
     const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
     if (saved && document.getElementById("director-mode")?.value !== "shadow") {
       showDirectorProposal({ spec: saved.spec, utterance: raw },
@@ -435,7 +443,7 @@ function receiveDirectorSpeech(text) {
   }
   if (moment.spec) {
     const proposal = { spec: moment.spec, utterance: raw, slide: state.index, at: Date.now() };
-    if (mode === "balanced" && moment.confidence >= 0.95 && !(videoEl && !videoEl.paused)) {
+    if (mode === "balanced" && moment.confidence >= 0.95 && !videoEls.some((el) => !el.paused)) {
       revealDirectorScene(proposal);
     } else showDirectorProposal(proposal, "إحصائية التقطت من حديث المحاضر — تأكد من الرقم.");
     return;
