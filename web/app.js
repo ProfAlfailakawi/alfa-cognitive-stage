@@ -16,6 +16,7 @@ const role = location.hash === "#audience" ? "audience" : "presenter";
 const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9 };
 let videoEl = null;
 let videoEls = [];
+const pollScreen = { visible: false, url: "", active: null };
 let clockStart = Date.now();
 let slideGeneration = 0;
 const directorRuntime = {
@@ -135,6 +136,14 @@ function renderPresenter() {
       <aside class="side">
         <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
         <div id="lecture-import-mount"></div>
+        <details id="voting-drawer" class="voting-drawer">
+          <summary>التصويت الطلابي داخل الاستوديو</summary>
+          <div class="director-actions">
+            <button id="project-poll" type="button">إظهار QR والسؤال للطلبة</button>
+            <button id="hide-poll" type="button">إخفاء التصويت عن الشاشة</button>
+          </div>
+          <iframe id="vote-iframe" src="/vote-admin.html?embed=1" title="لوحة إدارة التصويت" loading="lazy"></iframe>
+        </details>
                 <form class="info-form" id="info-form" hidden onsubmit="return false">
           <select id="info-type" aria-label="نوع الإنفوجرافيك">
             <option value="stat">بطاقة إحصائية</option>
@@ -190,7 +199,25 @@ function renderPresenter() {
   document.getElementById("next").onclick = () => go(state.index + 1);
   document.getElementById("home").onclick = () => goMain();
   document.getElementById("playvid").onclick = () => toggleVideo();
-  document.getElementById("open-vote").onclick = () => window.open("/vote-admin.html", "alfa-vote-admin");
+  document.getElementById("open-vote").onclick = () => {
+    const drawer = document.getElementById("voting-drawer");
+    drawer.open = true;
+    drawer.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  document.getElementById("project-poll").onclick = () => {
+    if (!pollScreen.url) {
+      document.getElementById("project-poll").textContent = "سجّل دخولك وأنشئ جلسة أولاً";
+      return;
+    }
+    pollScreen.visible = true;
+    renderPollScreen(pollScreen);
+    send({ type: "poll-projection", data: pollScreen });
+  };
+  document.getElementById("hide-poll").onclick = () => {
+    pollScreen.visible = false;
+    clearPollScreen();
+    send({ type: "poll-projection", data: { visible: false } });
+  };
   document.getElementById("toggle-info").onclick = () => {
     const form = document.getElementById("info-form");
     form.hidden = !form.hidden;
@@ -443,6 +470,69 @@ function setupDirector() {
     document.getElementById("director-test-text").value);
 }
 
+function clearPollScreen() {
+  document.querySelectorAll(".vote-projection").forEach((element) => element.remove());
+}
+function renderPollScreen(data) {
+  clearPollScreen();
+  if (!data?.visible || !data.url) return;
+  const root = document.getElementById("stage");
+  if (!root) return;
+  const overlay = document.createElement("section");
+  overlay.className = "info-layer vote-projection";
+  const heading = document.createElement("h2");
+  heading.textContent = data.active?.question || "شارك في التصويت";
+  overlay.append(heading);
+  const qrBlock = document.createElement("div");
+  qrBlock.className = "vote-qr";
+  if (typeof qrcode === "function") {
+    const qr = qrcode(0, "M");
+    qr.addData(data.url);
+    qr.make();
+    qrBlock.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 1 });
+  }
+  const url = document.createElement("p");
+  url.className = "vote-url";
+  url.textContent = data.url;
+  qrBlock.append(url);
+  overlay.append(qrBlock);
+  if (data.active?.reveal && Array.isArray(data.active?.counts)) {
+    const counts = data.active.counts;
+    const total = counts.reduce((a, b) => a + b, 0);
+    const bars = document.createElement("div");
+    bars.className = "vote-live-results";
+    data.active.options.forEach((option, index) => {
+      const percentage = total ? Math.round(100 * (counts[index] || 0) / total) : 0;
+      const label = document.createElement("p");
+      label.textContent = String(option) + " — " + percentage + "%";
+      const bar = document.createElement("div");
+      bar.className = "vote-result-bar";
+      const fill = document.createElement("span");
+      fill.style.width = percentage + "%";
+      bar.append(fill);
+      bars.append(label, bar);
+    });
+    overlay.append(bars);
+  }
+  root.append(overlay);
+}
+function receiveVoteAdminMessage(event) {
+  if (role !== "presenter" || event.origin !== location.origin) return;
+  const iframe = document.getElementById("vote-iframe");
+  if (!iframe || event.source !== iframe.contentWindow) return;
+  const data = event.data;
+  if (!data || data.alfaVoting !== "status") return;
+  let url;
+  try { url = new URL(data.url); } catch { return; }
+  if (url.pathname !== "/vote.html" || !/^[A-Z2-9]{6}$/.test(url.searchParams.get("s") || "")) return;
+  pollScreen.url = url.href;
+  pollScreen.active = data.active || null;
+  if (pollScreen.visible) {
+    renderPollScreen(pollScreen);
+    send({ type: "poll-projection", data: pollScreen });
+  }
+}
+
 function renderLayer(spec) {
   const stage = document.getElementById("stage");
   if (!stage) return;
@@ -463,6 +553,7 @@ function applyRemote(message) {
     renderLayer(message.spec);
   }
   if (message.type === "infographic-hide") hideInfographic(false);
+  if (message.type === "poll-projection") renderPollScreen(message.data);
   if (message.type === "video") {
     const target = videoEls[Number(message.clip) || 0];
     if (!target) return;
@@ -545,6 +636,7 @@ async function boot() {
     send({ type: "hello" });
   } else {
     renderPresenter();
+    window.addEventListener("message", receiveVoteAdminMessage);
     setupKeys();
     setupClock();
     channel.postMessage({ type: "slide", index: state.index, main: state.main });

@@ -22,7 +22,18 @@ function esc(value) {
   return node.innerHTML;
 }
 
+let joinUrl = "";
+function publishPresenterState(state) {
+  if (window.parent === window || !joinUrl) return;
+  const active = state.polls.find((p) => p.status === "open") || null;
+  window.parent.postMessage({
+    alfaVoting: "status", url: joinUrl,
+    active: active ? { question: active.question, options: active.options,
+      counts: active.counts, reveal: active.reveal } : null
+  }, location.origin);
+}
 function drawQr(url) {
+  joinUrl = url;
   const qr = qrcode(0, "M");
   qr.addData(url);
   qr.make();
@@ -65,7 +76,9 @@ function renderPolls(state) {
 async function refresh() {
   if (!code) return;
   try {
-    renderPolls(await call("GET", `/sessions/${code}/presenter`));
+    const state = await call("GET", `/sessions/${code}/presenter`);
+    renderPolls(state);
+    publishPresenterState(state);
   } catch (err) {
     $("poll-msg").textContent = err.message;
   }
