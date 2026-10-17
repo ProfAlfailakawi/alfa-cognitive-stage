@@ -19,6 +19,9 @@ import { mountLibraryPanel } from "./library-ui.js";
 import { clockState, PLANNED_CHOICES } from "./lecture-clock.js";
 import { runRehearsal } from "./rehearsal.js";
 import { mountInsight } from "./insight-ui.js";
+import { mountFieldTools } from "./field-ui.js";
+import { createFieldRecorder } from "./field-recorder.js";
+import { createResume } from "./resume-state.js";
 import { createNumberWitness } from "./number-witness.js";
 import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
 
@@ -34,6 +37,7 @@ const state = { index: 1, step: 0, main: 1, count: 0, notes: [], slides: [], bun
 let videoEl = null;
 let videoEls = [];
 let insight = null;
+let recorder = null, resumeStore = null;
 const numberWitness = createNumberWitness();
 const pollScreen = { visible: false, url: "", active: null };
 let clockStart = Date.now();
@@ -313,6 +317,7 @@ function renderPresenter() {
         <div id="lecture-import-mount"></div>
         <div id="library-mount"></div>
         <div id="insight-mount"></div>
+        <div id="field-mount"></div>
         <details class="readiness-drawer" id="readiness-drawer">
           <summary>جاهزية العرض وتوافق PowerPoint</summary>
           <div id="readiness-content" aria-live="polite"></div>
@@ -402,6 +407,7 @@ function renderPresenter() {
     if (directorRuntime.questionDraft) postPollDraft(directorRuntime.questionDraft);
   });
   document.getElementById("project-poll").onclick = () => {
+    recorder?.note("poll");
     if (!pollScreen.url) {
       document.getElementById("project-poll").textContent = "سجّل دخولك وأنشئ جلسة أولاً";
       return;
@@ -442,6 +448,15 @@ function renderPresenter() {
     getSlide: () => state.index, sessionLog, getSlides: () => state.slides,
     getPollCode: () => { try { return new URL(pollScreen.url).searchParams.get("s"); } catch { return null; } },
   });
+  recorder = createFieldRecorder({ bundle: state.bundle });
+  resumeStore = createResume({ bundle: state.bundle });
+  mountFieldTools(document.getElementById("field-mount"), {
+    getToken: directorAdminToken, getBundle: () => state.bundle, getSlides: () => state.slides,
+    goToSlide: (index) => go(index),
+    recorder, resume: resumeStore, restoreStage: restoreStageState, noteFeature: (name) => recorder.note(name),
+  });
+  setInterval(() => { if (role === "presenter") resumeStore.save(captureStageState()); }, 2500);
+  if (globalThis.__alfaGuest) document.body.append(Object.assign(document.createElement("div"), { className: "guest-badge", id: "guest-badge", textContent: "وضع الضيف: لا يُحفظ شيء في هذا المتصفح" }));
   renderReadiness();
   setupPlannedClock();
 }
@@ -816,6 +831,7 @@ function revealDirectorScene(proposal, source = "approved") {
     renderLayer(proposal.spec);
     currentOverlay = proposal.spec;
     sessionLog.scene({ slide: state.index, type: proposal.spec.type, title: proposal.spec.title, lines: proposal.spec.lines, source });
+    recorder?.shown({ slide: state.index, type: proposal.spec.type, source });
     send({ type: "infographic", spec: proposal.spec });
     directorRuntime.activeOverlay = true;
     if (proposal.utterance) {
@@ -929,6 +945,7 @@ function receiveDirectorSpeech(text, meta = {}) {
     const decidedAt = Date.now();
     requestAnimationFrame(() => { // the frame in which the scene/proposal is actually painted
       if (meter.record({ kind, onsetAt: meta.firstInterimAt, finalAt, decidedAt, shownAt: Date.now(), engine: meta.engine })) renderVoiceHealth();
+      recorder?.latency({ kind, totalMs: Date.now() - (Number.isFinite(meta.firstInterimAt) ? meta.firstInterimAt : finalAt), engine: meta.engine });
     });
   };
   const last = document.getElementById("director-last");
@@ -936,8 +953,12 @@ function receiveDirectorSpeech(text, meta = {}) {
   directorRuntime.cloudSeq++;
   const context = directorContext();
   const decision = brain.observe(raw, context);
+  const heardId = recorder?.recording() ? recorder.utterance({ text: raw, slide: state.index, engine: meta.engine }) : null;
+  if (heardId) recorder.decision({ slide: state.index, action: decision.action, kind: decision.kind, why: decision.why, opportunity: decision.opportunity,
+    confidence: decision.confidence, utteranceId: heardId, spec: decision.spec });
   const slip = numberWitness.check(state.index, raw, context.slide.text + " " + context.slide.notes);
-  if (slip) insight?.witness(slip.message);
+  if (slip) { insight?.witness(slip.message); recorder?.note("witness"); }
+  if (decision.action === "return" || decision.action === "return-level") recorder?.note("return");
   if (decision.topic.shifted) {
     clearDirectorProposal();
     setDirectorStatus("لاحظت تغيّر الموضوع؛ أغلقت الاقتراحات المعلقة.");
@@ -1071,6 +1092,7 @@ function setupDirector() {
     });
     if (proposal?.spec) {
       sessionLog.declined({ slide: proposal.slide, type: proposal.spec.type });
+      recorder?.declined({ slide: proposal.slide, type: proposal.spec.type });
       recordDecision({ bundle: state.bundle, type: proposal.spec.type, approved: false,
         fingerprint: fingerprint(proposal.utterance) });
       refreshTasteLine();
