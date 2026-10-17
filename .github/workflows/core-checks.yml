@@ -16,6 +16,7 @@ jobs:
         run: |
           node --check server/server.mjs
           node --check server/importer.mjs
+          node --check server/readiness.mjs
           node --check server/scene-library.mjs
           node --check server/director-ai.mjs
           node --check web/app.js
@@ -34,6 +35,7 @@ jobs:
           npm run test:library
           npm run test:library-api
           npm run test:import
+          npm run test:readiness
           npm run test:vote-rounds
       - uses: actions/setup-python@v5
         with:

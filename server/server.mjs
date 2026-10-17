@@ -8,6 +8,7 @@ import { loadEnvFile } from "node:process";
 import { analyzeWithAI } from "./director-ai.mjs";
 import { importLecture } from "./importer.mjs";
 import { createSceneLibrary } from "./scene-library.mjs";
+import { checkReadiness } from "./readiness.mjs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
@@ -134,6 +135,13 @@ async function handleApi(req, res, path) {
     const ip = (preferred || addresses[0])?.address || null;
     const publicUrl = process.env.PUBLIC_URL || (ip ? "http://" + ip + ":" + port : null);
     return sendJson(res, 200, { publicUrl });
+  }
+  if (resource === "lectures" && code === "readiness" && action && req.method === "GET") {
+    requireAdmin(req);
+    const report = await checkReadiness({
+      bundlesRoot, bundle:action, cloudConfigured:Boolean(process.env.OPENAI_API_KEY),
+    });
+    return sendJson(res, 200, report);
   }
   if (resource === "lectures" && code === "import" && req.method === "POST") {
     requireAdmin(req);
