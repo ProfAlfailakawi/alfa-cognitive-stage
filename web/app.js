@@ -6,20 +6,24 @@ import { renderInfographic } from "./infographic.js";
 import { interpretSpeech, eligibleForCloud } from "./director-core.js";
 import { createSpeechDirector } from "./speech-director.js";
 import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
+import { mountImportPanel } from "./import-ui.js";
+import { summarizeLecture } from "./lecture-readiness.js";
 
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
 const role = location.hash === "#audience" ? "audience" : "presenter";
 
-const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9 };
+const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null };
 let videoEl = null;
 let videoEls = [];
+const pollScreen = { visible: false, url: "", active: null };
 let clockStart = Date.now();
 let slideGeneration = 0;
+const neighboringSlides = new Map();
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
-  recent: [], cloudSeq: 0, activeOverlay: false,
+  recent: [], cloudSeq: 0, activeOverlay: false, story: null, questionDraft: null,
 };
 
 function send(message) {
@@ -80,6 +84,22 @@ function placeVideo(slide) {
   videoEl = videoEls[0] || null;
 }
 
+function prefetchNeighbors(index) {
+  // Quietly warm the browser cache for next/previous slides, with small memory cap.
+  const wanted = [index - 1, index + 1, index + 2].filter((n) => n >= 1 && n <= state.count);
+  for (const target of wanted) {
+    if (neighboringSlides.has(target)) continue;
+    const slide = state.slides[target - 1];
+    if (!slide?.image) continue;
+    const preview = new Image();
+    preview.decoding = "async";
+    preview.src = "/bundles/" + state.bundle + "/" + slide.image;
+    neighboringSlides.set(target, preview);
+  }
+  for (const known of [...neighboringSlides.keys()]) {
+    if (!wanted.includes(known)) neighboringSlides.delete(known);
+  }
+}
 function showSlide(index) {
   const slide = state.slides[index - 1];
   if (!slide) return;
@@ -87,6 +107,7 @@ function showSlide(index) {
   if (role === "presenter") {
     directorRuntime.cloudSeq++;
     directorRuntime.pending = null;
+    directorRuntime.story = null;
   }
   const img = document.getElementById("slide-img");
   const generation = ++slideGeneration;
@@ -100,6 +121,7 @@ function showSlide(index) {
     }, 120);
   }
   placeVideo(slide);
+  prefetchNeighbors(index);
   if (role === "presenter") renderPresenterPanels();
 }
 
@@ -132,11 +154,28 @@ function renderPresenter() {
       </div>
       <aside class="side">
         <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
+        <div id="lecture-import-mount"></div>
+        <details class="readiness-drawer" id="readiness-drawer">
+          <summary>جاهزية العرض وتوافق PowerPoint</summary>
+          <div id="readiness-content" aria-live="polite"></div>
+        </details>
+        <details id="voting-drawer" class="voting-drawer">
+          <summary>التصويت الطلابي داخل الاستوديو</summary>
+          <div class="director-actions">
+            <button id="project-poll" type="button">إظهار QR والسؤال للطلبة</button>
+            <button id="hide-poll" type="button">إخفاء التصويت عن الشاشة</button>
+          </div>
+          <iframe id="vote-iframe" src="/vote-admin.html?embed=1" title="لوحة إدارة التصويت" loading="lazy"></iframe>
+        </details>
                 <form class="info-form" id="info-form" hidden onsubmit="return false">
           <select id="info-type" aria-label="نوع الإنفوجرافيك">
             <option value="stat">بطاقة إحصائية</option>
             <option value="compare">مقارنة (الأول | الثاني)</option>
             <option value="steps">خطوات</option>
+            <option value="concept">خريطة مفاهيم</option>
+            <option value="flow">تسلسل تعليمي</option>
+            <option value="timeline">خط زمني</option>
+            <option value="story">مشهد قصصي</option>
           </select>
           <input id="info-title" type="text" maxlength="120" placeholder="العنوان" />
           <textarea id="info-lines" rows="3" placeholder="البطاقة: الرقم في السطر الأول ثم الوصف&#10;المقارنة: سطر لكل مقارنة&#10;الخطوات: خطوة في كل سطر"></textarea>
@@ -156,9 +195,11 @@ function renderPresenter() {
             <option value="balanced">متوازن — الإحصائية الواضحة تلقائياً</option>
             <option value="shadow">وضع الظل — تحليل فقط</option>
             <option value="safe">محافظ — موافقتك على كل مشهد</option>
+            <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
-          <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (لـAPI فقط)" />
+          <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (للذاكرة والتصويت وAPI)" />
+          <button type="button" id="director-memory-sync">مزامنة المشاهد المعتمدة محلياً</button>
           <p class="meta" id="director-status" aria-live="polite">المايك متوقف. لا توجد طلبات API.</p>
           <p class="meta" id="director-last"></p>
           <div id="director-proposal" class="director-proposal" hidden>
@@ -182,7 +223,28 @@ function renderPresenter() {
   document.getElementById("next").onclick = () => go(state.index + 1);
   document.getElementById("home").onclick = () => goMain();
   document.getElementById("playvid").onclick = () => toggleVideo();
-  document.getElementById("open-vote").onclick = () => window.open("/vote-admin.html", "alfa-vote-admin");
+  document.getElementById("open-vote").onclick = () => {
+    const drawer = document.getElementById("voting-drawer");
+    drawer.open = true;
+    drawer.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  document.getElementById("vote-iframe").addEventListener("load", () => {
+    if (directorRuntime.questionDraft) postPollDraft(directorRuntime.questionDraft);
+  });
+  document.getElementById("project-poll").onclick = () => {
+    if (!pollScreen.url) {
+      document.getElementById("project-poll").textContent = "سجّل دخولك وأنشئ جلسة أولاً";
+      return;
+    }
+    pollScreen.visible = true;
+    renderPollScreen(pollScreen);
+    send({ type: "poll-projection", data: pollScreen });
+  };
+  document.getElementById("hide-poll").onclick = () => {
+    pollScreen.visible = false;
+    clearPollScreen();
+    send({ type: "poll-projection", data: { visible: false } });
+  };
   document.getElementById("toggle-info").onclick = () => {
     const form = document.getElementById("info-form");
     form.hidden = !form.hidden;
@@ -194,6 +256,30 @@ function renderPresenter() {
     window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
   showSlide(state.index);
   setupDirector();
+  mountImportPanel(document.getElementById("lecture-import-mount"));
+  renderReadiness();
+}
+
+function renderReadiness() {
+  const target = document.getElementById("readiness-content");
+  if (!target || !state.manifest) return;
+  const summary = summarizeLecture(state.manifest);
+  const info = document.createElement("p");
+  info.textContent = summary.slideCount + " شريحة، " + summary.embeddedVideoCount +
+    " فيديو مضمّن، " + summary.animatedSlides.length + " شريحة بها حركات أصلية.";
+  const verdict = document.createElement("p");
+  verdict.textContent = summary.summary;
+  target.replaceChildren(info, verdict);
+  for (const warning of summary.warnings) {
+    const p = document.createElement("p");
+    p.className = "readiness-warning";
+    p.textContent = (warning.slide ? "الشريحة " + warning.slide + ": " : "") + warning.problem;
+    target.append(p);
+  }
+  if (summary.animatedSlides.length) {
+    const head = document.getElementById("readiness-drawer");
+    if (head) head.open = true;
+  }
 }
 
 function renderPresenterPanels() {
@@ -251,7 +337,10 @@ function hideInfographic(notify) {
   const msg = document.getElementById("info-msg");
   if (msg) msg.textContent = "";
   if (notify) send({ type: "infographic-hide" });
-  if (role === "presenter") directorRuntime.activeOverlay = false;
+  if (role === "presenter") {
+    directorRuntime.activeOverlay = false;
+    pollScreen.visible = false; // Emergency/slide navigation must not keep projecting QR.
+  }
   document.querySelectorAll(".info-layer").forEach((el) => el.remove());
 }
 
@@ -296,16 +385,60 @@ function showDirectorProposal(proposal, reason) {
   if (description) description.textContent = reason;
   if (panel) panel.hidden = false;
 }
+function directorAdminToken() {
+  return document.getElementById("director-admin-token")?.value.trim() ||
+    sessionStorage.getItem("alfa-admin-token") || "";
+}
+async function saveApprovedSceneServer(proposal) {
+  if (!proposal?.utterance || !proposal?.spec) return;
+  const token = directorAdminToken();
+  if (!token) return; // Browser cache still works; no paid API request is involved.
+  try {
+    const response = await fetch("/api/memory/" + encodeURIComponent(state.bundle), {
+      method: "POST",
+      headers: { "X-Admin-Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify({ slide: state.index, utterance: proposal.utterance, spec: proposal.spec }),
+    });
+    if (!response.ok) {
+      setDirectorStatus("المشهد معروض ومحفوظ بالمتصفح، لكن لم يُحفظ في مكتبة الخادم.");
+    }
+  } catch {
+    setDirectorStatus("المشهد محفوظ بالمتصفح فقط؛ اتصال الذاكرة المحلية غير متاح.");
+  }
+}
+async function syncApprovedScenes() {
+  const token = directorAdminToken();
+  if (!token) { setDirectorStatus("مزامنة الذاكرة تحتاج رمز المحاضر."); return; }
+  const button = document.getElementById("director-memory-sync");
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch("/api/memory/" + encodeURIComponent(state.bundle),
+      { headers: { "X-Admin-Token": token } });
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error || "تعذر فتح ذاكرة المحاضرة");
+    let recovered = 0;
+    for (const item of data.scenes || []) {
+      if (rememberScene({ bundle: state.bundle, slide: item.slide, utterance: item.utterance,
+        spec: item.spec })) recovered++;
+    }
+    setDirectorStatus("تمت مزامنة " + recovered + " مشهد معتمد من الذاكرة المحلية. بلا API.");
+  } catch (error) { setDirectorStatus(error.message); }
+  finally { if (button) button.disabled = false; }
+}
+
 function revealDirectorScene(proposal) {
   if (!proposal?.spec || proposal.slide !== state.index ||
-      Date.now() - proposal.at > 30000 || (videoEl && !videoEl.paused)) return false;
+      Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
   try {
     renderLayer(proposal.spec);
     send({ type: "infographic", spec: proposal.spec });
     directorRuntime.activeOverlay = true;
-    if (proposal.utterance) rememberScene({
-      bundle: state.bundle, slide: state.index, utterance: proposal.utterance, spec: proposal.spec
-    });
+    if (proposal.utterance) {
+      rememberScene({
+        bundle: state.bundle, slide: state.index, utterance: proposal.utterance, spec: proposal.spec
+      });
+      void saveApprovedSceneServer(proposal);
+    }
     clearDirectorProposal();
     setDirectorStatus("مشهد بصري — زر E للعودة الفورية");
     return true;
@@ -315,8 +448,7 @@ function revealDirectorScene(proposal) {
   }
 }
 async function requestDirectorAI(text, seq) {
-  const token = document.getElementById("director-admin-token")?.value.trim() ||
-    sessionStorage.getItem("alfa-admin-token") || "";
+  const token = directorAdminToken();
   if (!token) { setDirectorStatus("API يحتاج رمز المحاضر من شاشة Terminal."); return; }
   try {
     const current = state.slides[state.index - 1] || {};
@@ -336,6 +468,27 @@ async function requestDirectorAI(text, seq) {
     if (seq === directorRuntime.cloudSeq) setDirectorStatus("الاتصال السحابي غير متاح؛ العرض مستمر.");
   }
 }
+function observeStorySpeech(utterance, mode) {
+  const story = directorRuntime.story;
+  if (!story || story.slide !== state.index || Date.now() - story.started > 75000) {
+    directorRuntime.story = null;
+    return;
+  }
+  const clean = String(utterance || "").trim();
+  if (!clean || clean.length < 15 || story.last === clean) return;
+  story.last = clean;
+  story.events.push(clean.slice(0, 100));
+  story.events = story.events.slice(0, 4);
+  if (story.events.length < 2) return;
+  const spec = { type: "story", title: "قصة يرويها المحاضر", lines: [...story.events] };
+  const proposal = { spec, utterance: story.events.join(" "), slide: state.index, at: Date.now() };
+  if (mode === "creative" && !videoEls.some((el) => !el.paused)) {
+    revealDirectorScene(proposal);
+  } else if (mode !== "shadow") {
+    showDirectorProposal(proposal, "قصة من حديثك كما نطقتها دون اختراع أحداث. راجع النص قبل إظهاره.");
+  }
+}
+
 function receiveDirectorSpeech(text) {
   const raw = String(text || "").trim();
   if (!raw) return;
@@ -346,7 +499,12 @@ function receiveDirectorSpeech(text) {
   directorRuntime.recent = directorRuntime.recent.filter((r) => Date.now() - r.at < 25000).slice(-3);
   const recent = directorRuntime.recent.map((r) => r.text).join(" ");
   const moment = interpretSpeech(raw) || interpretSpeech(recent);
+  const mode = document.getElementById("director-mode")?.value || "balanced";
   if (!moment) {
+    if (directorRuntime.story) {
+      observeStorySpeech(raw, mode);
+      return;
+    }
     const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
     if (saved && document.getElementById("director-mode")?.value !== "shadow") {
       showDirectorProposal({ spec: saved.spec, utterance: raw },
@@ -358,13 +516,19 @@ function receiveDirectorSpeech(text) {
   if (key === directorRuntime.lastKey && Date.now() - directorRuntime.lastAt < 15000) return;
   directorRuntime.lastKey = key;
   directorRuntime.lastAt = Date.now();
-  const mode = document.getElementById("director-mode")?.value || "balanced";
   if (moment.kind === "return") {
+    directorRuntime.story = null;
     directorRuntime.cloudSeq++;
     clearDirectorProposal();
     if (directorRuntime.activeOverlay) goMain();
     setDirectorStatus("تم فهم العودة إلى الموضوع الأصلي.");
     return;
+  }
+  if (moment.kind === "story") {
+    directorRuntime.story = {
+      slide: state.index, started: Date.now(), last: raw,
+      events: [raw.slice(0, 100)],
+    };
   }
   if (mode === "shadow") {
     setDirectorStatus("وضع الظل: اكتُشف " + moment.kind + " دون تغيير شاشة الطلبة.");
@@ -372,11 +536,12 @@ function receiveDirectorSpeech(text) {
   }
   if (moment.spec) {
     const proposal = { spec: moment.spec, utterance: raw, slide: state.index, at: Date.now() };
-    if (mode === "balanced" && moment.confidence >= 0.95 && !(videoEl && !videoEl.paused)) {
+    if (mode === "balanced" && moment.confidence >= 0.95 && !videoEls.some((el) => !el.paused)) {
       revealDirectorScene(proposal);
     } else showDirectorProposal(proposal, "إحصائية التقطت من حديث المحاضر — تأكد من الرقم.");
     return;
   }
+  if (moment.kind === "question") postPollDraft(raw);
   const names = { story: "بداية قصة أو استطراد", compare: "فرصة مقارنة تعليمية", question: "سؤال موجه للطلبة" };
   setDirectorStatus("التقطت " + (names[moment.kind] || moment.kind) + " — لم أعرض حقائق غير مؤكدة.");
   const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
@@ -390,7 +555,14 @@ function receiveDirectorSpeech(text) {
   }
 }
 function setupDirector() {
-  const speech = createSpeechDirector({ onUtterance: receiveDirectorSpeech, onStatus: setDirectorStatus });
+  const speech = createSpeechDirector({
+    onUtterance: receiveDirectorSpeech,
+    onStatus: setDirectorStatus,
+    onInterim: (transcript) => {
+      const preview = document.getElementById("director-last");
+      if (preview) preview.textContent = "أسمع الآن: " + transcript;
+    }
+  });
   directorRuntime.speech = speech;
   const start = document.getElementById("director-start");
   const stop = document.getElementById("director-stop");
@@ -401,10 +573,85 @@ function setupDirector() {
     if (pending && !revealDirectorScene(pending)) setDirectorStatus("المشهد انتهت صلاحيته أو يوجد فيديو نشط.");
   };
   document.getElementById("director-reject").onclick = () => { clearDirectorProposal(); setDirectorStatus("تم تجاهل الاقتراح."); };
+  document.getElementById("director-memory-sync").onclick = syncApprovedScenes;
+  document.getElementById("director-admin-token").addEventListener("change", () => {
+    if (directorAdminToken()) void syncApprovedScenes();
+  });
+  if (sessionStorage.getItem("alfa-admin-token")) void syncApprovedScenes();
   setDirectorStatus("مكتبة المشاهد المعتمدة لهذه المحاضرة: " +
     countSavedScenes(state.bundle) + " — الاستماع متوقف.");
   document.getElementById("director-test-run").onclick = () => receiveDirectorSpeech(
     document.getElementById("director-test-text").value);
+}
+
+function clearPollScreen() {
+  document.querySelectorAll(".vote-projection").forEach((element) => element.remove());
+}
+function renderPollScreen(data) {
+  clearPollScreen();
+  if (!data?.visible || !data.url) return;
+  const root = document.getElementById("stage");
+  if (!root) return;
+  const overlay = document.createElement("section");
+  overlay.className = "info-layer vote-projection";
+  const heading = document.createElement("h2");
+  heading.textContent = data.active?.question || "شارك في التصويت";
+  overlay.append(heading);
+  const qrBlock = document.createElement("div");
+  qrBlock.className = "vote-qr";
+  if (typeof qrcode === "function") {
+    const qr = qrcode(0, "M");
+    qr.addData(data.url);
+    qr.make();
+    qrBlock.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 1 });
+  }
+  const url = document.createElement("p");
+  url.className = "vote-url";
+  url.textContent = data.url;
+  qrBlock.append(url);
+  overlay.append(qrBlock);
+  if (data.active?.reveal && Array.isArray(data.active?.counts)) {
+    const counts = data.active.counts;
+    const total = counts.reduce((a, b) => a + b, 0);
+    const bars = document.createElement("div");
+    bars.className = "vote-live-results";
+    data.active.options.forEach((option, index) => {
+      const percentage = total ? Math.round(100 * (counts[index] || 0) / total) : 0;
+      const label = document.createElement("p");
+      label.textContent = String(option) + " — " + percentage + "%";
+      const bar = document.createElement("div");
+      bar.className = "vote-result-bar";
+      const fill = document.createElement("span");
+      fill.style.width = percentage + "%";
+      bar.append(fill);
+      bars.append(label, bar);
+    });
+    overlay.append(bars);
+  }
+  root.append(overlay);
+}
+function postPollDraft(question) {
+  directorRuntime.questionDraft = String(question || "").slice(0, 200);
+  const frame = document.getElementById("vote-iframe");
+  if (!frame?.contentWindow) return;
+  frame.contentWindow.postMessage({ alfaQuestionDraft: directorRuntime.questionDraft }, location.origin);
+}
+
+function receiveVoteAdminMessage(event) {
+  if (role !== "presenter" || event.origin !== location.origin) return;
+  const iframe = document.getElementById("vote-iframe");
+  if (!iframe || event.source !== iframe.contentWindow) return;
+  const data = event.data;
+  if (!data || data.alfaVoting !== "status") return;
+  let url;
+  try { url = new URL(data.url); } catch { return; }
+  if (url.pathname !== "/vote.html" || !/^[A-Z2-9]{6}$/.test(url.searchParams.get("s") || "")) return;
+  pollScreen.url = url.href;
+  pollScreen.active = data.active || null;
+  if (pollScreen.visible) {
+    renderPollScreen(pollScreen);
+    send({ type: "poll-projection", data: pollScreen });
+  }
 }
 
 function renderLayer(spec) {
@@ -427,6 +674,7 @@ function applyRemote(message) {
     renderLayer(message.spec);
   }
   if (message.type === "infographic-hide") hideInfographic(false);
+  if (message.type === "poll-projection") renderPollScreen(message.data);
   if (message.type === "video") {
     const target = videoEls[Number(message.clip) || 0];
     if (!target) return;
@@ -491,10 +739,16 @@ async function boot() {
   const current = await fetch("/bundles/current.json").then((r) => r.json()).catch(() => null);
   state.bundle = params.get("bundle") || (current && current.id);
   if (!state.bundle) {
-    app.innerHTML = `<p class="error">لا توجد محاضرة مجهزة. شغّل أداة البناء أولاً.</p>`;
+    if (role === "presenter") {
+      app.replaceChildren();
+      mountImportPanel(app, { empty: true });
+    } else {
+      app.textContent = "لا توجد محاضرة مفتوحة بعد.";
+    }
     return;
   }
   const manifest = await fetch(`/bundles/${state.bundle}/manifest.json`).then((r) => r.json());
+  state.manifest = manifest;
   state.slides = manifest.slides;
   state.count = manifest.slideCount;
   state.aspect = manifest.aspect;
@@ -504,6 +758,7 @@ async function boot() {
     send({ type: "hello" });
   } else {
     renderPresenter();
+    window.addEventListener("message", receiveVoteAdminMessage);
     setupKeys();
     setupClock();
     channel.postMessage({ type: "slide", index: state.index, main: state.main });

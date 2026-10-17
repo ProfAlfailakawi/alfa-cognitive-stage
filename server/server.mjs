@@ -6,6 +6,9 @@ import { networkInterfaces } from "node:os";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnvFile } from "node:process";
 import { analyzeWithAI } from "./director-ai.mjs";
+import { importLecture, prerequisitesStatus } from "./lecture-import.mjs";
+import { createSceneStore, SceneStoreError } from "./scene-store.mjs";
+import { allowedLectureClient } from "./security.mjs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
@@ -17,6 +20,7 @@ const bundlesRoot = join(root, "bundles");
 const port = Number(process.env.PORT || 4173);
 const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
 const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });
+const scenes = createSceneStore({ file: process.env.SCENES_FILE || join(root, "data", "scenes.json") });
 const MAX_BODY = 4096;
 
 const types = {
@@ -43,7 +47,13 @@ async function sendFile(req, res, file) {
   const range = req.headers.range;
   res.setHeader("Content-Type", type);
   res.setHeader("Accept-Ranges", "bytes");
-  res.setHeader("Cache-Control", "no-cache");
+  const extension = extname(file).toLowerCase();
+  const isLectureAsset = file.startsWith(bundlesRoot + sep);
+  const cachePolicy = !isLectureAsset ? "no-cache"
+    : [".mp4", ".webm"].includes(extension) ? "private, max-age=86400, immutable"
+    : [".png", ".jpg"].includes(extension) ? "private, max-age=600"
+    : "no-cache";
+  res.setHeader("Cache-Control", cachePolicy);
   if (range) {
     const match = /bytes=(\d*)-(\d*)/.exec(range);
     let start = match && match[1] ? Number(match[1]) : 0;
@@ -112,6 +122,33 @@ function voterToken(req) {
 async function handleApi(req, res, path) {
   const parts = path.split("/").filter(Boolean); // api, sessions, CODE, ...
   const [, resource, code, action, pollId, verb] = parts;
+  if (resource === "memory" && code) {
+    requireAdmin(req);
+    try {
+      if (req.method === "GET" && !action) return sendJson(res, 200, { scenes: scenes.list(code) });
+      if (req.method === "POST" && !action) return sendJson(res, 201, { scene: scenes.save(code, await readBody(req)) });
+      if (req.method === "DELETE" && action) return sendJson(res, 200, scenes.remove(code, action));
+    } catch (err) {
+      if (err instanceof SceneStoreError) return sendJson(res, err.status, { error: err.message });
+      throw err;
+    }
+  }
+  if (resource === "lectures" && code === "prerequisites" && req.method === "GET") {
+    requireAdmin(req);
+    return sendJson(res, 200, await prerequisitesStatus());
+  }
+  if (resource === "lectures" && code === "import" && req.method === "POST") {
+    requireAdmin(req);
+    try {
+      const lecture = await importLecture(req, { root, bundlesRoot });
+      return sendJson(res, 201, { ok: true, lecture });
+    } catch (err) {
+      // Upload errors are private to the lecturer; never expose command paths.
+      console.error("PPTX import:", err);
+      return sendJson(res, err.status || 500, { error:
+        err.status ? err.message : "فشل تحويل الملف؛ راجع Terminal للتحقق من LibreOffice والوسائط" });
+    }
+  }
   if (resource === "network" && req.method === "GET") {
     const addresses = Object.values(networkInterfaces()).flat().filter(Boolean)
       .filter((x) => x.family === "IPv4" && !x.internal);
@@ -162,8 +199,8 @@ async function handleApi(req, res, path) {
     return sendJson(res, 201, { poll });
   }
   if (action === "polls" && pollId && req.method === "POST") {
-    if (verb === "repeat") return sendJson(res, 201, { poll: store.repeatPoll(upper, Number(pollId)) });
     requireAdmin(req);
+    if (verb === "repeat") return sendJson(res, 201, { poll: store.repeatPoll(upper, Number(pollId)) });
     const id = Number(pollId);
     if (verb === "open") return sendJson(res, 200, { poll: store.setStatus(upper, id, "open") });
     if (verb === "close") return sendJson(res, 200, { poll: store.setStatus(upper, id, "closed") });
@@ -178,6 +215,11 @@ const server = createServer(async (req, res) => {
     const path = new URL(req.url, "http://x").pathname;
     if (path.startsWith("/api/")) return await handleApi(req, res, path);
     const isBundle = path.startsWith("/bundles/");
+    if (isBundle && !allowedLectureClient(req.socket.remoteAddress,
+        process.env.ALFA_ALLOW_REMOTE_SLIDES === "1")) {
+      res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+      return res.end("ملفات المحاضرة متاحة على جهاز المحاضر فقط");
+    }
     const file = isBundle
       ? safePath(bundlesRoot, path.slice("/bundles/".length))
       : safePath(webRoot, path === "/" ? "/index.html" : path);

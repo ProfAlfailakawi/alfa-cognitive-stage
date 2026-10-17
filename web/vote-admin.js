@@ -1,9 +1,12 @@
+import { compareRounds, exportAggregateCsv } from "./poll-analytics.js";
 // Lecturer's voting console: create a session, add questions, open/close/reveal, see results.
 const $ = (id) => document.getElementById(id);
 const KEY = "alfa-admin-token";
+const SESSION_KEY = "alfa-current-voting-session";
 let adminToken = sessionStorage.getItem(KEY) || "";
-let code = "";
+let code = sessionStorage.getItem(SESSION_KEY) || "";
 let refreshTimer = null;
+let latestPollState = null;
 
 async function call(method, path, body) {
   const res = await fetch(`/api${path}`, {
@@ -22,7 +25,18 @@ function esc(value) {
   return node.innerHTML;
 }
 
+let joinUrl = "";
+function publishPresenterState(state) {
+  if (window.parent === window || !joinUrl) return;
+  const active = state.polls.find((p) => p.status === "open") || null;
+  window.parent.postMessage({
+    alfaVoting: "status", url: joinUrl,
+    active: active ? { question: active.question, options: active.options,
+      counts: active.counts, reveal: active.reveal } : null
+  }, location.origin);
+}
 function drawQr(url) {
+  joinUrl = url;
   const qr = qrcode(0, "M");
   qr.addData(url);
   qr.make();
@@ -31,6 +45,30 @@ function drawQr(url) {
 }
 
 function renderPolls(state) {
+  latestPollState = state;
+  const changes = compareRounds(state.polls);
+  const container = $("round-comparisons");
+  if (container) {
+    container.replaceChildren();
+    for (const group of changes) {
+      const item = document.createElement("div");
+      item.className = "poll";
+      const title = document.createElement("strong");
+      title.textContent = "تغير التوزيع بين الجولتين " + group.firstId + " و" + group.lastId + ": " + group.question;
+      item.append(title);
+      for (const value of group.values) {
+        const line = document.createElement("p");
+        const change = (value.deltaPoints > 0 ? "+" : "") + value.deltaPoints + " نقطة مئوية";
+        line.textContent = value.option + ": " + value.firstPercent + "% ← " + value.lastPercent + "% (" + change + ")";
+        item.append(line);
+      }
+      const warning = document.createElement("p");
+      warning.className = "meta";
+      warning.textContent = "هذه مقارنة لتوزيع الإجابات، وليست إثباتاً لتحسّن التعلم أو مشاركة الطلاب أنفسهم.";
+      item.append(warning);
+      container.append(item);
+    }
+  }
   $("polls").innerHTML = state.polls.map((p) => {
     const total = p.total || 0;
     const rows = p.options.map((text, i) => {
@@ -65,7 +103,9 @@ function renderPolls(state) {
 async function refresh() {
   if (!code) return;
   try {
-    renderPolls(await call("GET", `/sessions/${code}/presenter`));
+    const state = await call("GET", `/sessions/${code}/presenter`);
+    renderPolls(state);
+    publishPresenterState(state);
   } catch (err) {
     $("poll-msg").textContent = err.message;
   }
@@ -79,6 +119,16 @@ async function enter() {
     $("auth").hidden = true;
     $("panel").hidden = false;
     if (!code) await newSession();
+    else {
+      try {
+        await call("GET", "/sessions/" + code + "/presenter");
+        await showSession();
+      } catch {
+        code = "";
+        sessionStorage.removeItem(SESSION_KEY);
+        await newSession();
+      }
+    }
     clearInterval(refreshTimer);
     refreshTimer = setInterval(refresh, 2000);
   } catch (err) {
@@ -87,10 +137,9 @@ async function enter() {
   }
 }
 
-async function newSession() {
-  const { code: fresh } = await call("POST", "/sessions");
-  code = fresh;
-  $("session-line").textContent = `رمز الجلسة: ${code}`;
+async function showSession() {
+  if (!code) return;
+  $("session-line").textContent = "رمز الجلسة: " + code;
   const net = await fetch("/api/network").then((r) => r.json()).catch(() => ({}));
   const base = net.publicUrl || location.origin;
   drawQr(base + "/vote.html?s=" + encodeURIComponent(code));
@@ -98,6 +147,12 @@ async function newSession() {
     $("poll-msg").textContent = "تنبيه: رابط localhost لا يعمل على هاتف آخر. استخدم PUBLIC_URL أو عنوان شبكة الماك.";
   }
   await refresh();
+}
+async function newSession() {
+  const result = await call("POST", "/sessions");
+  code = result.code;
+  sessionStorage.setItem(SESSION_KEY, code);
+  await showSession();
 }
 
 $("save-token").addEventListener("click", () => {
@@ -124,3 +179,30 @@ if (adminToken) {
   $("token").value = adminToken;
   enter();
 }
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== location.origin || event.source !== window.parent) return;
+  const text = event.data?.alfaQuestionDraft;
+  if (typeof text !== "string" || !text.trim()) return;
+  const question = text.trim().slice(0, 200);
+  if (!$("q-text").value.trim()) $("q-text").value = question;
+  if (!$("q-opts").value.trim() && /^(هل |تتوقعون |تعتقدون )/.test(question)) {
+    // Opinion-only answers; no fabricated correct choice.
+    $("q-opts").value = "نعم\nلا\nغير متأكد";
+  }
+  $("poll-msg").textContent = "جهّز المخرج سؤالاً من حديثك. راجعه ثم أضفه وافتحه بنفسك.";
+});
+
+$("export-poll-aggregates")?.addEventListener("click", () => {
+  if (!latestPollState?.polls?.length) {
+    $("poll-msg").textContent = "لا توجد نتائج للتصدير بعد.";
+    return;
+  }
+  const csv=exportAggregateCsv(latestPollState.polls);
+  const link=document.createElement("a");
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8;"}));
+  link.href=url;
+  link.download="alfa-voting-"+(code||"session")+".csv";
+  link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),500);
+});

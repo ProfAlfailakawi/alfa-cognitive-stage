@@ -7,6 +7,7 @@ The source .pptx is never modified.
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,8 @@ from lxml import etree
 from pptx import Presentation
 from pptx.util import Emu
 
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
@@ -53,6 +56,54 @@ def slide_text(slide):
     return "\n".join(texts)[:12000]
 
 
+def slide_compatibility(slide):
+    """Report PowerPoint features we cannot reproduce by PNG conversion.
+
+    Detection is conservative: a timing tree implies an animation is present;
+    it does not pretend the browser has recreated the animation.
+    """
+    xml = slide._element
+    timing = xml.find(f"{{{P_NS}}}timing")
+    transition = xml.find(f"{{{P_NS}}}transition")
+    chart_count = sum(
+        1 for shape in iter_shapes(slide.shapes)
+        if getattr(shape, "has_chart", False)
+    )
+    return {
+        "animationsDetected": timing is not None,
+        "transitionDetected": transition is not None,
+        "chartCount": chart_count,
+        "animationPreserved": False if timing is not None else None,
+    }
+
+
+def write_indexes(bundles_root: Path, selected_id: str):
+    """Regenerate public lecture selectors from successful manifests only."""
+    available = []
+    for file in sorted(bundles_root.glob("*/manifest.json")):
+        try:
+            manifest = json.loads(file.read_text(encoding="utf-8"))
+            bundle_id = manifest.get("id")
+            if bundle_id != file.parent.name or not isinstance(bundle_id, str):
+                continue
+            available.append({
+                "id": bundle_id,
+                "title": str(manifest.get("source", bundle_id)),
+                "slideCount": manifest.get("slideCount", 0),
+                "warnings": len(manifest.get("problems", [])),
+            })
+        except (ValueError, OSError, TypeError):
+            continue
+    bundles_root.mkdir(parents=True, exist_ok=True)
+    for name, payload in [
+        ("lectures.json", available), ("current.json", {"id": selected_id})
+    ]:
+        target = bundles_root / name
+        pending = bundles_root / (name + ".tmp")
+        pending.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        pending.replace(target)
+
+
 def video_targets(shape):
     """Return the media part names a picture shape plays as video."""
     found = []
@@ -73,7 +124,7 @@ def probe_codecs(path: Path):
     return {s["codec_type"]: s["codec_name"] for s in streams}
 
 
-def prepare_video(src: Path, dst_dir: Path) -> str:
+def prepare_video(src: Path, dst_dir: Path) -> tuple[str, str | None]:
     """Copy a video into the bundle as an H.264/AAC MP4 that browsers play."""
     codecs = probe_codecs(src)
     dst = dst_dir / (src.stem + ".mp4")
@@ -90,16 +141,18 @@ def prepare_video(src: Path, dst_dir: Path) -> str:
                "-preset", "veryfast", "-crf", "23", "-c:a", "aac",
                "-movflags", "+faststart", str(dst)]
     subprocess.run(cmd, check=True)
-    # WebM (VP9/Opus) copy as a second source: some browser builds lack H.264.
-    webm = dst.with_suffix(".webm")
-    if not webm.exists():
-        subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-c:v", "libvpx-vp9",
-             "-b:v", "0", "-crf", "36", "-deadline", "realtime", "-cpu-used", "8",
-             "-c:a", "libopus", str(webm)],
-            check=True,
-        )
-    return dst.name, webm.name
+    # MP4 is enough for modern Chrome/Safari; VP9 backup is opt-in because
+    # transcoding it can be very expensive for a full lecture.
+    webm_name = None
+    if os.environ.get("ALFA_WEBM_BACKUP") == "1":
+        webm = dst.with_suffix(".webm")
+        if not webm.exists():
+            subprocess.run(
+                ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-c:v", "libvpx-vp9",
+                 "-b:v", "0", "-crf", "36", "-deadline", "realtime", "-cpu-used", "8",
+                 "-c:a", "libopus", str(webm)], check=True)
+        webm_name = webm.name
+    return dst.name, webm_name
 
 
 def render_slides(pptx: Path, out_dir: Path, width: int) -> int:
@@ -143,9 +196,17 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
         manifest_file = out_dir / "manifest.json"
         manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
         deck = Presentation(str(pptx))
-        for entry, slide in zip(manifest["slides"], deck.slides):
+        for index, (entry, slide) in enumerate(zip(manifest["slides"], deck.slides), start=1):
             entry["text"] = slide_text(slide)
+            compatibility = slide_compatibility(slide)
+            entry["compatibility"] = compatibility
+            if compatibility["animationsDetected"]:
+                warning = {"slide": index,
+                           "problem": "powerpoint animations are not preserved in PNG rendering"}
+                if warning not in manifest.setdefault("problems", []):
+                    manifest["problems"].append(warning)
         manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_indexes(bundles_root, fingerprint)
         print(f"bundle already built, slide text refreshed: {out_dir}")
         return out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -160,6 +221,11 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     problems = []
     slides = []
     for index, slide in enumerate(deck.slides, start=1):
+        compatibility = slide_compatibility(slide)
+        if compatibility["animationsDetected"]:
+            problems.append({"slide": index, "problem": "powerpoint animations are not preserved in PNG rendering"})
+        if compatibility["chartCount"] and compatibility["animationsDetected"]:
+            problems.append({"slide": index, "problem": "potentially animated PowerPoint chart: visual compatibility review required"})
         videos = []
         for shape in iter_shapes(slide.shapes):
             for rid in video_targets(shape):
@@ -181,7 +247,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
                 mp4_name, webm_name = video_cache[name]
                 videos.append({
                     "src": f"media/{mp4_name}",
-                    "webm": f"media/{webm_name}",
+                    "webm": f"media/{webm_name}" if webm_name else None,
                     "x": round(shape.left / slide_w, 6),
                     "y": round(shape.top / slide_h, 6),
                     "w": round(shape.width / slide_w, 6),
@@ -196,6 +262,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
             "notes": notes,
             "text": slide_text(slide),
             "videos": videos,
+            "compatibility": compatibility,
         })
 
     shutil.rmtree(out_dir / "_src", ignore_errors=True)
@@ -212,6 +279,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     }
     (out_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_indexes(bundles_root, fingerprint)
     return out_dir
 
 

@@ -1,3 +1,4 @@
+import { renderStructuredScene } from "./scene-layouts.js";
 // Light, vector infographics built from a small spec. No images, no AI calls.
 // Every number and word comes from the lecturer's input; nothing is invented here.
 
@@ -17,9 +18,9 @@ const ICONS = {
 };
 
 export function validateSpec(spec) {
-  const type = ["stat", "compare", "steps"].includes(spec?.type) ? spec.type : null;
+  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story"].includes(spec?.type) ? spec.type : null;
   if (!type) throw new Error("نوع الإنفوجرافيك غير معروف");
-  const title = esc(String(spec.title ?? "").trim().slice(0, 120));
+  const title = String(spec.title ?? "").trim().slice(0, 120); // Renderers escape at the HTML boundary.
   const lines = (Array.isArray(spec.lines) ? spec.lines : [])
     .map((l) => String(l ?? "").trim().slice(0, 120)).filter(Boolean);
   if (type === "stat") {
@@ -34,7 +35,10 @@ export function validateSpec(spec) {
     }
     return { type, title, lines: pairs };
   }
-  if (lines.length < 2 || lines.length > 6) throw new Error("الخطوات: من 2 إلى 6 خطوات");
+  if (type === "steps" && (lines.length < 2 || lines.length > 6))
+    throw new Error("الخطوات: من 2 إلى 6 خطوات");
+  if (type !== "steps" && (lines.length < 2 || lines.length > (type === "story" ? 4 : 6)))
+    throw new Error("المشهد يحتاج من 2 إلى 6 عناصر (القصة حتى 4)");
   return { type, title, lines };
 }
 
@@ -89,6 +93,6 @@ function stepsSvg(spec) {
 
 export function renderInfographic(input) {
   const spec = validateSpec(input);
-  const svg = spec.type === "stat" ? statSvg(spec) : spec.type === "compare" ? compareSvg(spec) : stepsSvg(spec);
+  const svg = spec.type === "stat" ? statSvg(spec) : spec.type === "compare" ? compareSvg(spec) : spec.type === "steps" ? stepsSvg(spec) : renderStructuredScene(spec.type, spec.title, spec.lines);
   return svg;
 }

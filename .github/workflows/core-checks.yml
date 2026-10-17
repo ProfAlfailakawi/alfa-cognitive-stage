@@ -15,19 +15,33 @@ jobs:
       - name: JS syntax
         run: |
           node --check server/server.mjs
+          node --check server/lecture-import.mjs
+          node --check server/scene-store.mjs
+          node --check server/security.mjs
           node --check server/director-ai.mjs
           node --check web/app.js
+          node --check web/import-ui.js
+          node --check web/scene-layouts.js
+          node --check web/lecture-readiness.js
           node --check web/director-core.js
           node --check web/speech-director.js
           node --check web/vote-admin.js
+          node --check web/poll-analytics.js
           node --check web/vote.js
       - name: JS unit regression
         run: |
           npm run test:infographic
           npm run test:director
+          npm run test:speech
           npm run test:director-ai
           npm run test:memory
           npm run test:vote-rounds
+          npm run test:import
+          npm run test:layouts
+          npm run test:scene-store
+          npm run test:security
+          npm run test:readiness
+          npm run test:poll-analytics
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -35,3 +49,54 @@ jobs:
         run: |
           python -m pip install python-pptx lxml Pillow
           npm run test:build
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test browser and fixture tools
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          python -m pip install Pillow
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+      - name: Generate synthetic media lecture
+        run: python tools/make_test_fixture.py
+      - name: Browser presenter and audience tests
+        run: npm run test:e2e
+      - name: Five-phone browser voting and persistence test
+        run: npm run test:vote
+
+  import-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PowerPoint conversion tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libreoffice-impress poppler-utils ffmpeg
+          python -m pip install python-pptx lxml Pillow
+      - name: Generate and import real PowerPoint
+        run: |
+          python tools/make_test_pptx.py /tmp/alfa-ci-lecture.pptx
+          node tests/import-real.mjs

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const port = 4199;
+const ADMIN = "test-e2e-admin-0123456789abcdef";
 const base = `http://localhost:${port}`;
 const bundleId = JSON.parse(readFileSync(join(root, "bundles/current.json"), "utf8")).id;
 const manifest = JSON.parse(readFileSync(join(root, "bundles", bundleId, "manifest.json"), "utf8"));
@@ -18,13 +19,13 @@ const check = (name, ok, detail = "") => {
 };
 
 const server = spawn(process.execPath, [join(root, "server/server.mjs")], {
-  env: { ...process.env, PORT: String(port) },
+  env: { ...process.env, PORT: String(port), ADMIN_TOKEN: ADMIN },
   stdio: ["ignore", "pipe", "pipe"],
 });
 await new Promise((resolve) => server.stdout.once("data", resolve));
 
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME_PATH || "/opt/pw-browsers/chromium",
+  ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"],
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -42,6 +43,9 @@ try {
   check("video range request returns 206", range.status === 206, `status ${range.status}`);
   await range.body?.cancel();
 
+  const slideResponse = await fetch(`${base}/bundles/${bundleId}/slides/001.png`);
+  check("slide images are cached privately for faster navigation",
+    (slideResponse.headers.get("cache-control") || "").includes("private, max-age=600"));
   await presenter.goto(`${base}/#presenter`);
   await presenter.waitForSelector("#meta");
   check("presenter shows slide 1 of N", (await presenter.textContent("#meta")).includes(`1 من ${manifest.slideCount}`));
@@ -108,6 +112,31 @@ try {
   await audience.waitForTimeout(400);
   check("emergency hides the infographic", (await audience.locator(".info-layer").count()) === 0);
 
+  // Voting is embedded in the presenter, and the presenter can project QR on demand.
+  await presenter.click("#open-vote");
+  const votingFrame = presenter.frameLocator("#vote-iframe");
+  await votingFrame.locator("#token").fill(ADMIN);
+  await votingFrame.locator("#save-token").click();
+  await votingFrame.locator("#qr svg").waitFor({ timeout: 10000 });
+  const sessionBefore = await votingFrame.locator("#session-line").textContent();
+  await votingFrame.locator("body").evaluate(() => location.reload());
+  await votingFrame.locator("#qr svg").waitFor({ timeout: 10000 });
+  const sessionAfter = await votingFrame.locator("#session-line").textContent();
+  check("voting console resumes the same session after reload", sessionBefore === sessionAfter);
+  await presenter.locator("#director-box details").evaluate((el) => { el.open = true; });
+  await presenter.fill("#director-test-text", "تتوقعون الألعاب التعليمية أفضل من غيرها؟");
+  await presenter.click("#director-test-run");
+  await votingFrame.locator("#q-text").waitFor({ timeout: 8000 });
+  await presenter.waitForTimeout(500);
+  check("spoken classroom question is prefilled without opening a poll",
+    (await votingFrame.locator("#q-text").inputValue()).includes("تتوقعون الألعاب التعليمية"));
+  await presenter.waitForTimeout(450);
+  await presenter.click("#project-poll");
+  await audience.waitForSelector(".vote-projection .vote-qr svg", { timeout: 8000 });
+  check("presenter projects voting QR inside the audience stage", true);
+  await presenter.click("#hide-poll");
+  await audience.waitForTimeout(300);
+  check("presenter hides voting QR without changing the slide", await audience.locator(".vote-projection").count() === 0);
   check("audience page has no JavaScript errors", audienceErrors.length === 0, audienceErrors.join(" | "));
 
   await presenter.screenshot({ path: join(root, "tests/presenter.png") });
