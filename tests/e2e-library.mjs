@@ -87,7 +87,7 @@ try {
   await presenter.click("#info-show");
   await presenter.waitForTimeout(300);
   await presenter.click("#session-summary-run");
-  await presenter.waitForFunction(() => document.querySelector("#session-summary")?.textContent?.includes("ملخص الجلسة"));
+  await presenter.waitForFunction(() => document.querySelector("#session-summary")?.textContent?.includes("الشرائح التي عُرضت"));
   const summary = await presenter.textContent("#session-summary");
   check("summary reports visited slides, the scene and the disclaimer",
     summary.includes("الشرائح التي عُرضت") && summary.includes("stat") && summary.includes("ليس تقييماً"), summary.slice(0, 220));
