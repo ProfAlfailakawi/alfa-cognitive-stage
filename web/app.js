@@ -10,6 +10,7 @@ import { rememberRejectedProposal, wasProposalRejected, countRejectedProposals, 
 import { mountImportPanel } from "./import-ui.js";
 import { summarizeLecture } from "./lecture-readiness.js";
 import { testLectureMedia } from "./media-preflight.js";
+import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
 
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
@@ -30,7 +31,32 @@ const directorRuntime = {
 };
 
 function send(message) {
-  channel.postMessage(message);
+  channel.postMessage({ ...message, bundle: state.bundle });
+}
+
+function currentVideoSnapshot() {
+  return videoEls.map((el) => ({ time: validMediaTime(el.currentTime) ? el.currentTime : 0,
+    playing: !el.paused && !el.ended }));
+}
+function broadcastSnapshot() {
+  send({ type: "snapshot", index: state.index, main: state.main,
+    videos: currentVideoSnapshot() });
+}
+function adjustAudienceMediaTime(el, time, force = false) {
+  if (!el || !validMediaTime(time)) return;
+  const apply = () => {
+    if (!videoEls.includes(el)) return; // Ignore a previous slide that finished loading late.
+    if (force || needsMediaSeek(el.currentTime, time)) {
+      try { el.currentTime = time; } catch {} // A source may be unsupported in this browser.
+    }
+  };
+  if (el.readyState < 1) el.addEventListener("loadedmetadata", apply, { once: true });
+  else apply();
+}
+function playAudienceMedia(el) {
+  const attempt = el.play();
+  attempt?.catch?.(() => send({ type: "audience-media-issue", index: state.index,
+    issue: "تعذر التشغيل التلقائي للفيديو على شاشة الطلبة؛ اختبر إذن التشغيل والصوت." }));
 }
 
 function setAspect(aspect) {
@@ -74,17 +100,30 @@ function placeVideo(slide) {
     el.load();
     videoEls.push(el);
     if (role === "presenter") {
+      let lastProgressAt = 0;
+      const relay = (action) => {
+        if (videoEls[i] !== el) return; // Prevent delayed events from a replaced slide.
+        send({ type: "video", action, index: state.index, clip: i,
+          time: validMediaTime(el.currentTime) ? el.currentTime : 0 });
+      };
       el.addEventListener("play", () => {
+        if (videoEls[i] !== el) return;
         for (const other of videoEls) if (other !== el && !other.paused) other.pause();
         directorRuntime.speech?.setMediaPlaying(true);
-        send({ type: "video", action: "play", clip: i, time: el.currentTime });
+        relay("play");
       });
       el.addEventListener("pause", () => {
+        if (videoEls[i] !== el) return;
         if (videoEls.every((item) => item.paused)) directorRuntime.speech?.setMediaPlaying(false);
-        send({ type: "video", action: "pause", clip: i, time: el.currentTime });
+        relay("pause");
       });
-      el.addEventListener("seeked", () => send({ type: "video", action: "seek", clip: i, time: el.currentTime }));
-      el.addEventListener("ended", () => send({ type: "video", action: "ended", clip: i, index: state.index }));
+      el.addEventListener("seeked", () => relay("seek"));
+      el.addEventListener("ended", () => relay("ended"));
+      el.addEventListener("timeupdate", () => {
+        if (videoEls[i] !== el || el.paused || Date.now() - lastProgressAt < 1500) return;
+        lastProgressAt = Date.now();
+        relay("progress");
+      });
     }
   });
   videoEl = videoEls[0] || null;
