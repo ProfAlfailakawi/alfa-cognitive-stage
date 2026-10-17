@@ -7,6 +7,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnvFile } from "node:process";
 import { analyzeWithAI } from "./director-ai.mjs";
 import { importLecture, prerequisitesStatus } from "./lecture-import.mjs";
+import { createSceneStore, SceneStoreError } from "./scene-store.mjs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
@@ -18,6 +19,7 @@ const bundlesRoot = join(root, "bundles");
 const port = Number(process.env.PORT || 4173);
 const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
 const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });
+const scenes = createSceneStore({ file: process.env.SCENES_FILE || join(root, "data", "scenes.json") });
 const MAX_BODY = 4096;
 
 const types = {
@@ -113,6 +115,17 @@ function voterToken(req) {
 async function handleApi(req, res, path) {
   const parts = path.split("/").filter(Boolean); // api, sessions, CODE, ...
   const [, resource, code, action, pollId, verb] = parts;
+  if (resource === "memory" && code) {
+    requireAdmin(req);
+    try {
+      if (req.method === "GET" && !action) return sendJson(res, 200, { scenes: scenes.list(code) });
+      if (req.method === "POST" && !action) return sendJson(res, 201, { scene: scenes.save(code, await readBody(req)) });
+      if (req.method === "DELETE" && action) return sendJson(res, 200, scenes.remove(code, action));
+    } catch (err) {
+      if (err instanceof SceneStoreError) return sendJson(res, err.status, { error: err.message });
+      throw err;
+    }
+  }
   if (resource === "lectures" && code === "prerequisites" && req.method === "GET") {
     requireAdmin(req);
     return sendJson(res, 200, await prerequisitesStatus());
