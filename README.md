@@ -62,9 +62,10 @@ npm run test:build
 OPENAI_API_KEY=YOUR_PRIVATE_KEY
 OPENAI_MODEL=gpt-4.1-mini
 DIRECTOR_MAX_CALLS=24
+DIRECTOR_DAILY_MAX_CALLS=24
 # PUBLIC_URL=http://192.168.1.10:4173
 ```
 
-مفاتيح API ليست جزءاً من مستودع Git؛ `DIRECTOR_MAX_CALLS` حد عدد طلبات وليس سقفاً مالياً بالدولار.
+مفاتيح API ليست جزءاً من مستودع Git؛ حد `DIRECTOR_MAX_CALLS` لعدد طلبات العملية، و`DIRECTOR_DAILY_MAX_CALLS` سقف يومي محفوظ داخل `data/` حتى بعد إعادة تشغيل الخادم. هذه حدود لعدد الطلبات وليست سقفاً مالياً بالدولار. راجع [مراقبة تكلفة API](docs/DIRECTOR_API_USAGE_AR.md).
 
 **مهم:** استخدام المشروع في قاعة فعلية يتطلب بروفة على جهاز Mac بنفسه، خصوصاً الحركات، الفيديو والصوت والتصويت على هواتف الطلبة.
