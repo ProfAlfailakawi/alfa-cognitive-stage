@@ -252,6 +252,7 @@ function renderPresenter() {
           <button type="button" id="director-memory-sync">مزامنة المشاهد المعتمدة محلياً</button>
           <button type="button" id="director-forget-dismissals">مسح الاقتراحات المتجاهلة لهذه المحاضرة</button>
           <p class="meta" id="director-status" aria-live="polite">المايك متوقف. لا توجد طلبات API.</p>
+          <p class="meta" id="director-voice-health" aria-label="تشخيص استجابة التعرف الصوتي" hidden></p>
           <p class="meta" id="director-last"></p>
           <div id="director-proposal" class="director-proposal" hidden>
             <div id="director-reason"></div>
@@ -709,6 +710,19 @@ function setupDirector() {
   const speech = createSpeechDirector({
     onUtterance: receiveDirectorSpeech,
     onStatus: setDirectorStatus,
+    onDiagnostics: (health) => {
+      const element = document.getElementById("director-voice-health");
+      if (!element) return;
+      element.hidden = !health.finalSegments && !health.errors && !health.restarts;
+      const pieces = ["نتائج نهائية: " + health.finalSegments];
+      if (health.interimToFinalMs !== null)
+        pieces.push("أول معاينة ← النص النهائي: " + Math.round(health.interimToFinalMs) + "ms");
+      if (health.localHandlerMs !== null)
+        pieces.push("معالجة الحدث محلياً: " + Math.round(health.localHandlerMs) + "ms");
+      if (health.errors) pieces.push("أخطاء المتصفح: " + health.errors);
+      if (health.restarts) pieces.push("إعادة الاستماع: " + health.restarts);
+      element.textContent = pieces.join(" · ") + " (لا يقيس بدء الكلام أو زمن خدمة Chrome كاملاً)";
+    },
     onInterim: (transcript) => {
       const preview = document.getElementById("director-last");
       if (preview) preview.textContent = "أسمع الآن: " + transcript;
