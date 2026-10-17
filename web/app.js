@@ -8,6 +8,7 @@ import { createSpeechDirector } from "./speech-director.js";
 import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
 import { mountImportPanel } from "./import-ui.js";
 import { summarizeLecture } from "./lecture-readiness.js";
+import { testLectureMedia } from "./media-preflight.js";
 
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
@@ -24,6 +25,7 @@ const neighboringSlides = new Map();
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
   recent: [], cloudSeq: 0, activeOverlay: false, story: null, questionDraft: null,
+  mediaCheckAbort: null,
 };
 
 function send(message) {
@@ -273,6 +275,57 @@ function renderReadiness() {
   const verdict = document.createElement("p");
   verdict.textContent = summary.summary;
   target.replaceChildren(info, verdict);
+  const mediaButton = document.createElement("button");
+  mediaButton.id = "media-preflight-run";
+  mediaButton.type = "button";
+  mediaButton.textContent = "اختبار فك ترميز فيديوهات هذه المحاضرة";
+  const mediaResults = document.createElement("div");
+  mediaResults.id = "media-preflight-results";
+  mediaResults.setAttribute("role", "status");
+  mediaResults.setAttribute("aria-live", "polite");
+  mediaResults.textContent = summary.embeddedVideoCount
+    ? "اختبار صامت داخل هذا المتصفح. تأكد من صوت المقاطع يدوياً بعده."
+    : "لا توجد فيديوهات مضمنة في هذه المحاضرة.";
+  mediaButton.disabled = summary.embeddedVideoCount === 0;
+  target.append(mediaButton, mediaResults);
+  mediaButton.onclick = async () => {
+    if (directorRuntime.mediaCheckAbort) directorRuntime.mediaCheckAbort.abort();
+    const controller = new AbortController();
+    directorRuntime.mediaCheckAbort = controller;
+    mediaButton.disabled = true;
+    const report = document.createElement("ol");
+    report.className = "media-preflight-list";
+    mediaResults.replaceChildren(report);
+    let checked = 0;
+    try {
+      const results = await testLectureMedia(state.slides, state.bundle, {
+        signal: controller.signal, timeoutMs: 7000,
+        onProgress(item,completed,total) {
+          checked = completed;
+          const row = document.createElement("li");
+          row.textContent = "الشريحة " + item.slide + " — فيديو " + item.clipIndex + ": " +
+            (item.status === "ready" ? "تم فك ترميز أول إطار" :
+              item.status === "blocked" ? "المتصفح منع التشغيل التلقائي؛ اختبره يدوياً" :
+              item.status === "cancelled" ? "أُلغي الاختبار" :
+              "تعذّر تشغيله: " + (item.message || item.status));
+          report.appendChild(row);
+          if (!item.message && item.status === "ready") row.className = "media-ready";
+          mediaButton.textContent = "فحص الفيديو " + completed + " من " + total;
+        },
+      });
+      const headline = document.createElement("p");
+      headline.textContent = results.cancelled
+        ? "أُلغي فحص الفيديو قبل اكتماله."
+        : "فُحص " + checked + " من " + results.total + " فيديو: " +
+          results.passed + " نجح فك ترميزه، " + results.failed + " يحتاج مراجعة.";
+      mediaResults.prepend(headline);
+    } catch (err) { mediaResults.textContent = "لم يكتمل الفحص: " + err.message; }
+    finally {
+      if (directorRuntime.mediaCheckAbort === controller) directorRuntime.mediaCheckAbort = null;
+      mediaButton.disabled = false;
+      mediaButton.textContent = "إعادة اختبار فيديوهات المحاضرة";
+    }
+  };
   for (const warning of summary.warnings) {
     const p = document.createElement("p");
     p.className = "readiness-warning";

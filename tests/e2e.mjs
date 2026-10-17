@@ -98,6 +98,16 @@ try {
   const paused = await presenter.locator("video.clip").first().evaluate((v) => v.paused);
   check("emergency pauses video without removing it", paused);
 
+  // Preflight must decode a real video frame without changing the classroom's slide.
+  await presenter.locator("#readiness-drawer summary").click();
+  await presenter.locator("#media-preflight-run").click();
+  await presenter.waitForFunction(() => document.querySelector("#media-preflight-results > p")
+    ?.textContent?.includes("فُحص 1 من 1 فيديو"), { timeout: 15000 });
+  const mediaReport = await presenter.locator("#media-preflight-results > p").textContent();
+  check("one-click media preflight actually decodes the clip", mediaReport.includes("1 نجح فك ترميزه"), mediaReport);
+  check("media preflight preserves current slide",
+    (await presenter.textContent("#meta")).includes("7 من"));
+
   // Infographic: lecturer sends a stat card, audience shows it, emergency hides it.
   await presenter.bringToFront();
   await presenter.click("#toggle-info");

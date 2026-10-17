@@ -23,6 +23,7 @@ jobs:
           node --check web/import-ui.js
           node --check web/scene-layouts.js
           node --check web/lecture-readiness.js
+          node --check web/media-preflight.js
           node --check web/director-core.js
           node --check web/speech-director.js
           node --check web/vote-admin.js
@@ -38,6 +39,7 @@ jobs:
           npm run test:vote-rounds
           npm run test:import
           npm run test:layouts
+          npm run test:media-preflight
           npm run test:scene-store
           npm run test:security
           npm run test:readiness
