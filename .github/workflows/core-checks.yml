@@ -106,6 +106,8 @@ jobs:
         run: npm run test:e2e-engagement
       - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
         run: npm run test:e2e-speech
+      - name: Long-session stability, leaks, idle CPU and CSP violations
+        run: npm run test:e2e-stress
       - name: Five-phone browser voting and persistence test
         run: npm run test:vote
 

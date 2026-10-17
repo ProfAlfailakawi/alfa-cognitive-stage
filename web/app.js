@@ -48,6 +48,13 @@ const directorRuntime = {
   mediaCheckAbort: null,
 };
 
+// Read-only counters for the stability tests (no behaviour depends on them).
+globalThis.__alfaStats = () => ({
+  videos: document.querySelectorAll("video").length, trackedVideos: videoEls.length,
+  prefetched: neighboringSlides.size, overlays: document.querySelectorAll(".info-layer").length,
+  fades: document.querySelectorAll(".step-fade").length, nodes: document.getElementsByTagName("*").length,
+  heap: performance.memory?.usedJSHeapSize ?? null, stack: returnStack.depth(),
+});
 function send(message) {
   channel.postMessage({ ...message, bundle: state.bundle });
 }
@@ -312,7 +319,7 @@ function renderPresenter() {
           </div>
           <iframe id="vote-iframe" src="/vote-admin.html?embed=1" title="لوحة إدارة التصويت" loading="lazy"></iframe>
         </details>
-                <form class="info-form" id="info-form" hidden onsubmit="return false">
+                <form class="info-form" id="info-form" hidden>
           <select id="info-type" aria-label="نوع الإنفوجرافيك">
             <option value="stat">بطاقة إحصائية</option>
             <option value="compare">مقارنة (الأول | الثاني)</option>
@@ -321,6 +328,9 @@ function renderPresenter() {
             <option value="flow">تسلسل تعليمي</option>
             <option value="timeline">خط زمني</option>
             <option value="story">مشهد قصصي</option>
+            <option value="bars">أعمدة نسب (التسمية | 40%)</option>
+            <option value="cycle">دورة (مراحل متكررة)</option>
+            <option value="activity">نشاط (تعليماتك ثم المدة: …)</option>
           </select>
           <input id="info-title" type="text" maxlength="120" placeholder="العنوان" />
           <textarea id="info-lines" rows="3" placeholder="البطاقة: الرقم في السطر الأول ثم الوصف&#10;المقارنة: سطر لكل مقارنة&#10;الخطوات: خطوة في كل سطر"></textarea>
@@ -404,6 +414,7 @@ function renderPresenter() {
     const form = document.getElementById("info-form");
     form.hidden = !form.hidden;
   };
+  document.getElementById("info-form").addEventListener("submit", (event) => event.preventDefault()); // no inline handlers (CSP)
   document.getElementById("info-show").onclick = showInfographicFromForm;
   fillLecturePicker();
   document.getElementById("info-hide").onclick = () => {
@@ -889,7 +900,7 @@ function noteQuickHide() {
 function refreshTasteLine() {
   const el = document.getElementById("director-taste");
   if (!el) return;
-  const names = { stat: "إحصائية", compare: "مقارنة", steps: "خطوات", story: "قصة", timeline: "خط زمني", concept: "مفاهيم", flow: "تسلسل" };
+  const names = { stat: "إحصائية", compare: "مقارنة", steps: "خطوات", story: "قصة", timeline: "خط زمني", concept: "مفاهيم", flow: "تسلسل", bars: "أعمدة", cycle: "دورة", activity: "نشاط" };
   const rows = summarizeTaste(state.bundle).map((x) => (names[x.type] || x.type) + ": قبول " + x.approvals.toFixed(1) +
     " / رفض " + x.rejections.toFixed(1) + (x.suppressed ? " (موقوف)" : x.quieter ? " (بموافقتك فقط)" : ""));
   el.textContent = rows.length ? "تفضيلات متعلمة (تتلاشى بعد أسابيع): " + rows.join(" · ")

@@ -3,7 +3,7 @@
 // scenes shown/declined, videos played. Student data enters a report only as aggregate poll counts.
 const PREFIX = "alfa-sessions-v1:";
 const MAX_SESSIONS = 20, MAX_EVENTS = 800, IDLE_SPLIT_MS = 3 * 3600 * 1000;
-const SCENE_TYPES = new Set(["stat", "compare", "steps", "concept", "flow", "timeline", "story"]);
+const SCENE_TYPES = new Set(["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity"]);
 const SOURCES = new Set(["auto", "approved", "manual", "memory"]);
 
 function storageOrNull(custom) {
