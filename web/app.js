@@ -12,6 +12,7 @@ const role = location.hash === "#audience" ? "audience" : "presenter";
 const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9 };
 let videoEl = null;
 let clockStart = Date.now();
+let slideGeneration = 0;
 
 function send(message) {
   channel.postMessage(message);
@@ -71,9 +72,11 @@ function showSlide(index) {
   if (!slide) return;
   state.index = index;
   const img = document.getElementById("slide-img");
+  const generation = ++slideGeneration;
   if (img) {
     img.classList.add("leaving");
     setTimeout(() => {
+      if (generation !== slideGeneration) return;
       img.src = `/bundles/${state.bundle}/${slide.image}`;
       img.alt = `الشريحة ${index}`;
       img.classList.remove("leaving");
@@ -183,6 +186,7 @@ function showInfographicFromForm() {
       lines: document.getElementById("info-lines").value.split("\n"),
     };
     renderInfographic(spec); // validates before sending
+    renderLayer(spec);
     send({ type: "infographic", spec });
     msg.textContent = "معروض للطلبة. يُخفى تلقائياً عند تغيير الشريحة.";
   } catch (err) {
@@ -194,14 +198,13 @@ function hideInfographic(notify) {
   const msg = document.getElementById("info-msg");
   if (msg) msg.textContent = "";
   if (notify) send({ type: "infographic-hide" });
-  if (role === "audience") {
-    document.querySelectorAll(".info-layer").forEach((el) => el.remove());
-  }
+  document.querySelectorAll(".info-layer").forEach((el) => el.remove());
 }
 
 function go(index) {
   if (index < 1 || index > state.count) return;
   hideInfographic(true);
+  state.main = index; // A normal slide change updates the safe return anchor.
   showSlide(index);
   send({ type: "slide", index, main: state.main });
 }
@@ -220,6 +223,16 @@ function toggleVideo() {
   else videoEl.pause();
 }
 
+function renderLayer(spec) {
+  const stage = document.getElementById("stage");
+  if (!stage) return;
+  stage.querySelectorAll(".info-layer").forEach((el) => el.remove());
+  const layer = document.createElement("div");
+  layer.className = "info-layer";
+  layer.innerHTML = renderInfographic(spec);
+  stage.appendChild(layer);
+}
+
 function applyRemote(message) {
   if (message.type === "slide") {
     state.main = message.main;
@@ -227,13 +240,7 @@ function applyRemote(message) {
   }
   if (message.type === "infographic") {
     hideInfographic(false);
-    const stage = document.getElementById("stage");
-    if (stage) {
-      const layer = document.createElement("div");
-      layer.className = "info-layer";
-      layer.innerHTML = renderInfographic(message.spec);
-      stage.appendChild(layer);
-    }
+    renderLayer(message.spec);
   }
   if (message.type === "infographic-hide") hideInfographic(false);
   if (message.type === "video" && videoEl) {

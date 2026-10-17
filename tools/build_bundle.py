@@ -36,6 +36,23 @@ def iter_shapes(shapes):
             yield from iter_shapes(shape.shapes)
 
 
+def slide_text(slide):
+    """Collect ordinary slide text for contextual teaching assistance, without AI."""
+    texts = []
+    for shape in iter_shapes(slide.shapes):
+        if getattr(shape, "has_text_frame", False):
+            value = shape.text_frame.text.strip()
+            if value:
+                texts.append(value)
+        if getattr(shape, "has_table", False):
+            for row in shape.table.rows:
+                for cell in row.cells:
+                    value = cell.text.strip()
+                    if value:
+                        texts.append(value)
+    return "\n".join(texts)[:12000]
+
+
 def video_targets(shape):
     """Return the media part names a picture shape plays as video."""
     found = []
@@ -122,7 +139,14 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     fingerprint = sha256_file(pptx)[:12]
     out_dir = bundles_root / fingerprint
     if (out_dir / "manifest.json").exists():
-        print(f"bundle already built: {out_dir}")
+        # Backfill text on older bundles without rerendering expensive media.
+        manifest_file = out_dir / "manifest.json"
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        deck = Presentation(str(pptx))
+        for entry, slide in zip(manifest["slides"], deck.slides):
+            entry["text"] = slide_text(slide)
+        manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"bundle already built, slide text refreshed: {out_dir}")
         return out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     media_dir = out_dir / "media"
@@ -170,6 +194,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
             "index": index,
             "image": f"slides/{index:03d}.png",
             "notes": notes,
+            "text": slide_text(slide),
             "videos": videos,
         })
 
