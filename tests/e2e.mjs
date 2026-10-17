@@ -50,6 +50,53 @@ try {
   await presenter.waitForSelector("#meta");
   check("presenter shows slide 1 of N", (await presenter.textContent("#meta")).includes(`1 من ${manifest.slideCount}`));
 
+  // A fresh lecturer browser can restore approved scenes from other lecture bundles.
+  const archivedBundle = "archive_test_lecture";
+  const savedArchive = await fetch(base + "/api/memory/" + archivedBundle, {
+    method: "POST",
+    headers: { "X-Admin-Token": ADMIN, "Content-Type": "application/json" },
+    body: JSON.stringify({ slide: 3, utterance: "في دراسة عن تحفيز الألعاب نسبة 68%",
+      spec: { type: "stat", title: "نسبة نطق بها المحاضر",
+        lines: ["68%", "من حديث المحاضر"] } })
+  });
+  check("approved scene can be saved with lecturer token", savedArchive.status === 201);
+  const forbiddenIndex = await fetch(base + "/api/memory/library");
+  check("student cannot read the approved library", forbiddenIndex.status === 401);
+  const completeIndex = await fetch(base + "/api/memory/library", {
+    headers: { "X-Admin-Token": ADMIN }
+  });
+  const indexData = await completeIndex.json();
+  check("authorized library includes prior lecture", completeIndex.status === 200 &&
+    indexData.scenes.some(x => x.bundle === archivedBundle));
+  const separateContext = await browser.newContext();
+  const isolated = await separateContext.newPage();
+  isolated.on("pageerror", (err) => failures.push("isolated profile: " + err));
+  await isolated.goto(`${base}/#presenter`);
+  await isolated.waitForSelector("#director-memory-sync");
+  check("new lecturer profile has no cross-lecture index at first",
+    !(await isolated.evaluate(() => localStorage.getItem("alfa-approved-scenes-cross-v1") || ""))
+      .includes(archivedBundle));
+  await isolated.fill("#director-admin-token", ADMIN);
+  await isolated.click("#director-memory-sync");
+  await isolated.waitForFunction(bundle =>
+    (localStorage.getItem("alfa-approved-scenes-cross-v1") || "").includes(bundle),
+    archivedBundle, { timeout: 6000 });
+  const restored = await isolated.evaluate(async () => {
+    const { recallScene } = await import("/scene-memory.js");
+    return {
+      matched: recallScene({ bundle: "testfixture1", slide: 1,
+        utterance: "في دراسة عن تحفيز الألعاب نسبة 68%" }),
+      changed: recallScene({ bundle: "testfixture1", slide: 1,
+        utterance: "في دراسة عن تحفيز الألعاب نسبة 69%" }),
+    };
+  });
+  check("new profile reuses prior approved SVG without API",
+    restored.matched?.reusedAcrossLecture === true &&
+    restored.matched?.spec.lines[0] === "68%");
+  check("server-restored cross-lecture scene respects changed statistics",
+    restored.changed === null);
+  await separateContext.close();
+
   const unauthorizedUsage = await fetch(base + "/api/director/status");
   check("cloud consumption summary is lecturer-authenticated", unauthorizedUsage.status === 401);
   const authorizedUsage = await fetch(base + "/api/director/status", {
