@@ -20,6 +20,7 @@ import { clockState, PLANNED_CHOICES } from "./lecture-clock.js";
 import { runRehearsal } from "./rehearsal.js";
 import { mountInsight } from "./insight-ui.js";
 import { mountFieldTools } from "./field-ui.js";
+import { interpretNav } from "./voice-nav.js";
 import { createFieldRecorder } from "./field-recorder.js";
 import { createResume } from "./resume-state.js";
 import { createNumberWitness } from "./number-witness.js";
@@ -363,6 +364,8 @@ function renderPresenter() {
             <option value="safe">محافظ — موافقتك على كل مشهد</option>
             <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
+          <label class="director-cloud"><input type="checkbox" id="director-nav" checked /> التنقل بالصوت («الشريحة التالية»، «السابقة»، «روح للشريحة خمسة»)</label>
+          <button type="button" id="nav-undo" hidden>تراجع عن آخر انتقال صوتي</button>
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
           <p class="meta" id="director-usage">السحابة مغلقة. المشاهد المحلية بلا API.</p>
           <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (للذاكرة والتصويت وAPI)" />
@@ -934,9 +937,41 @@ function refreshTasteLine() {
     : "لا تفضيلات متعلمة بعد؛ الرفض المنفرد لا يغيّر السلوك.";
 }
 // All interpretation lives in director-brain.js; this function only applies its decision.
+// Spoken navigation: whole-utterance imperatives only (see voice-nav.js), never while a video plays,
+// at most once per command per 2 s, and always undoable.
+const voiceNav = { last: null, undoTimer: null };
+function navEnabled() {
+  const box = document.getElementById("director-nav");
+  return !box || box.checked;
+}
+function handleVoiceNav(command) {
+  if (videoEls.some((el) => !el.paused)) { setDirectorStatus("الفيديو يعمل؛ لم أنفّذ أمر التنقل الصوتي."); return; }
+  const key = command.kind + ":" + (command.index ?? "");
+  if (voiceNav.last && voiceNav.last.key === key && Date.now() - voiceNav.last.at < 2000) return;
+  voiceNav.last = { key, at: Date.now() };
+  const before = { index: state.index, step: state.step };
+  if (command.kind === "next") advance();
+  else if (command.kind === "prev") retreat();
+  else if (command.kind === "first") go(1);
+  else if (command.kind === "last") go(state.count);
+  else if (command.index > state.count) { setDirectorStatus(`الشريحة ${command.index} غير موجودة؛ عدد الشرائح ${state.count}.`); return; }
+  else go(command.index);
+  recorder?.note("nav");
+  if (before.index === state.index && before.step === state.step) { setDirectorStatus("لا مزيد في هذا الاتجاه."); return; }
+  setDirectorStatus(`انتقلتُ بالصوت إلى الشريحة ${state.index}. اضغط «تراجع» إن لم تقصد ذلك.`);
+  const undo = document.getElementById("nav-undo");
+  if (undo) {
+    undo.hidden = false;
+    undo.onclick = () => { undo.hidden = true; go(before.index, before.step); setDirectorStatus("تم التراجع عن الانتقال الصوتي."); };
+    clearTimeout(voiceNav.undoTimer);
+    voiceNav.undoTimer = setTimeout(() => { undo.hidden = true; }, 10000);
+  }
+}
 function receiveDirectorSpeech(text, meta = {}) {
   const raw = String(text || "").trim();
   if (!raw) return;
+  const navCommand = navEnabled() ? interpretNav(raw) : null;
+  if (navCommand) { handleVoiceNav(navCommand); return; }
   // A return command already executed from a stable interim transcript must not run twice.
   const early = directorRuntime.interimReturn;
   if (early && Date.now() - early.at < 5000 && brain.peekReturn(raw)) { directorRuntime.interimReturn = null; return; }

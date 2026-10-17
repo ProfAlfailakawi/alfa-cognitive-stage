@@ -126,6 +126,8 @@ try {
   await presenter.locator("#insight-drawer summary").click();
   await presenter.locator("#insight-drawer summary").click();
   await presenter.waitForSelector("#review-publish:not([disabled])", { timeout: 6000 });
+  // the re-opened drawer rebuilds asynchronously; wait until the newest scene is in the list
+  await presenter.waitForFunction(() => document.querySelector("#review-preview")?.textContent.includes("مصدر الرضا"), null, { timeout: 6000 });
   const clash = await presenter.locator(".review-clash").allTextContents();
   check("a scene whose number contradicts its slide is flagged and starts unticked",
     clash.length === 1 && clash[0].includes("90") && clash[0].includes("68") &&

@@ -52,6 +52,7 @@ jobs:
           node --check web/course-map.js
           node --check web/rehearsal-audience.js
           node --check web/guest.js
+          node --check web/voice-nav.js
           node --check web/insight-ui.js
           node --check web/number-witness.js
           node --check web/lecture-coach.js
@@ -122,6 +123,8 @@ jobs:
         run: npm run test:e2e-insight
       - name: Resume after a crash, field trial with labelling, timed rehearsal, course map and guest mode
         run: npm run test:e2e-field
+      - name: Spoken slide navigation - strict commands, video guard, undo
+        run: npm run test:e2e-voicenav
       - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
         run: npm run test:e2e-speech
       - name: Long-session stability, leaks, idle CPU and CSP violations
