@@ -52,6 +52,11 @@ try {
   assert.equal(manifest.slides.length,2);
   assert.equal(manifest.slides[1].videos.length,1,"embedded MP4 must be extracted");
   const videoPath=manifest.slides[1].videos[0].src;
+  // Real Chromium distributions vary in proprietary H.264 decoder availability.
+  // On CI, require an explicit royalty-free WebM fallback and verify actual decoding.
+  if (process.env.ALFA_WEBM_BACKUP === "1") {
+    assert.ok(manifest.slides[1].videos[0].webm,"WebM fallback must be built when enabled");
+  }
   const range=await fetch(base+"/bundles/"+id+"/"+videoPath, {
     headers:{"Range":"bytes=0-50"}
   });
@@ -81,6 +86,8 @@ try {
         videoWidth:v.videoWidth, networkState:v.networkState,
         sources:[...v.querySelectorAll("source")].map(s=>s.src),
         canPlay:v.canPlayType('video/mp4; codecs="avc1.42E01E,mp4a.40.2"'),
+      canPlayWebm:v.canPlayType('video/webm; codecs="vp9,opus"'),
+        canPlayWebm:v.canPlayType('video/webm; codecs="vp9,opus"'),
         mediaError:v.error?.code || null };
     }
     return {decoded:v.readyState>=2 && v.videoWidth>0,

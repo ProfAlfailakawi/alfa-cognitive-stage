@@ -101,4 +101,4 @@ jobs:
       - name: Generate and import real PowerPoint
         run: |
           python tools/make_test_pptx.py /tmp/alfa-ci-lecture.pptx
-          node tests/import-real.mjs
+          ALFA_WEBM_BACKUP=1 node tests/import-real.mjs
