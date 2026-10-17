@@ -6,6 +6,7 @@ import { renderInfographic } from "./infographic.js";
 import { interpretSpeech, eligibleForCloud } from "./director-core.js";
 import { createSpeechDirector } from "./speech-director.js";
 import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
+import { mountImportPanel } from "./import-ui.js";
 
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
@@ -132,6 +133,7 @@ function renderPresenter() {
       </div>
       <aside class="side">
         <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
+        <div id="lecture-import-mount"></div>
                 <form class="info-form" id="info-form" hidden onsubmit="return false">
           <select id="info-type" aria-label="نوع الإنفوجرافيك">
             <option value="stat">بطاقة إحصائية</option>
@@ -194,6 +196,7 @@ function renderPresenter() {
     window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
   showSlide(state.index);
   setupDirector();
+  mountImportPanel(document.getElementById("lecture-import-mount"));
 }
 
 function renderPresenterPanels() {
@@ -491,7 +494,12 @@ async function boot() {
   const current = await fetch("/bundles/current.json").then((r) => r.json()).catch(() => null);
   state.bundle = params.get("bundle") || (current && current.id);
   if (!state.bundle) {
-    app.innerHTML = `<p class="error">لا توجد محاضرة مجهزة. شغّل أداة البناء أولاً.</p>`;
+    if (role === "presenter") {
+      app.replaceChildren();
+      mountImportPanel(app, { empty: true });
+    } else {
+      app.textContent = "لا توجد محاضرة مفتوحة بعد.";
+    }
     return;
   }
   const manifest = await fetch(`/bundles/${state.bundle}/manifest.json`).then((r) => r.json());

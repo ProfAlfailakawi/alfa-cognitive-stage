@@ -111,3 +111,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .director-box details { border-top: 1px solid var(--hair); padding-top: .5rem; }
 .director-box details input { margin: .4rem 0; }
 .side { grid-template-rows: auto auto auto 1fr; overflow-y: auto; }
+
+/* Presenter-only lecture import */
+.import-panel { border:1px solid var(--hair); border-radius:14px; background:var(--wash); padding:.8rem; width:100%; }
+.import-panel summary { cursor:pointer; font-weight:600; }
+.import-panel h2 { font-size:1.2rem; margin-bottom:.5rem; }
+.import-panel .import-fields { display:grid; gap:.65rem; margin-top:.7rem; }
+.import-panel input { font:inherit; max-width:100%; width:100%; color:var(--ink); background:var(--canvas); padding:.5rem; border:1px solid var(--hair); border-radius:9px; }
+.import-panel .import-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+.import-panel .import-report { font-size:.8rem; color:var(--soft); overflow-wrap:anywhere; line-height:1.8; margin:0; }
+.app > .import-panel { width:min(95%,650px); margin:8vh auto; }

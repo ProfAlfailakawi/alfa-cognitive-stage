@@ -18,6 +18,7 @@ jobs:
           node --check server/lecture-import.mjs
           node --check server/director-ai.mjs
           node --check web/app.js
+          node --check web/import-ui.js
           node --check web/director-core.js
           node --check web/speech-director.js
           node --check web/vote-admin.js
