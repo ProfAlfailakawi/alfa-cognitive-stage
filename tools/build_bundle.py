@@ -191,33 +191,66 @@ def video_targets(shape):
     return found
 
 
-def probe_codecs(path: Path):
+def probe_streams(path: Path) -> dict:
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "stream=codec_name,codec_type",
+        ["ffprobe", "-v", "error", "-show_entries",
+         "stream=codec_name,codec_type,pix_fmt,profile,width,height:format=duration",
          "-of", "json", str(path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, timeout=120,
     )
-    streams = json.loads(out.stdout).get("streams", [])
-    return {s["codec_type"]: s["codec_name"] for s in streams}
+    data = json.loads(out.stdout)
+    info = {"video": None, "audio": None, "pix_fmt": None, "profile": None,
+            "width": None, "height": None, "duration": None}
+    for stream in data.get("streams", []):
+        kind = stream.get("codec_type")
+        if kind in ("video", "audio") and info[kind] is None:
+            info[kind] = stream.get("codec_name")
+            if kind == "video":
+                info["pix_fmt"], info["profile"] = stream.get("pix_fmt"), stream.get("profile")
+                info["width"], info["height"] = stream.get("width"), stream.get("height")
+    try:
+        info["duration"] = round(float(data.get("format", {}).get("duration")), 2)
+    except (TypeError, ValueError):
+        pass
+    return info
 
 
-def prepare_video(src: Path, dst_dir: Path) -> tuple[str, str | None]:
-    """Copy a video into the bundle as an H.264/AAC MP4 that browsers play."""
-    codecs = probe_codecs(src)
+def probe_codecs(path: Path):
+    info = probe_streams(path)
+    return {k: v for k, v in (("video", info["video"]), ("audio", info["audio"])) if v}
+
+
+def browser_safe_h264(info: dict) -> bool:
+    """H.264 8-bit 4:2:0 with even dimensions and AAC/no audio plays in every mainstream browser."""
+    even = all(isinstance(info.get(k), int) and info[k] % 2 == 0 for k in ("width", "height"))
+    return (info["video"] == "h264" and info["pix_fmt"] == "yuv420p" and even and
+            info["profile"] in (None, "Baseline", "Constrained Baseline", "Main", "High") and
+            info["audio"] in (None, "aac"))
+
+
+def prepare_video(src: Path, dst_dir: Path):
+    """Copy a video into the bundle as an H.264/AAC MP4 that browsers play.
+
+    Returns (mp4_name, webm_name, details). `details` tells the lecturer what was found and done.
+    """
+    info = probe_streams(src)
+    if not info["video"]:
+        raise ValueError("no video stream")
     dst = dst_dir / (src.stem + ".mp4")
     counter = 1
     while dst.exists():
         dst = dst_dir / f"{src.stem}-{counter}.mp4"
         counter += 1
-    h264_ok = codecs.get("video") == "h264" and codecs.get("audio") in (None, "aac")
-    if h264_ok:
+    safe = browser_safe_h264(info)
+    if safe:
         cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-c", "copy",
                "-movflags", "+faststart", str(dst)]
     else:
         cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-c:v", "libx264",
-               "-preset", "veryfast", "-crf", "23", "-c:a", "aac",
-               "-movflags", "+faststart", str(dst)]
-    subprocess.run(cmd, check=True)
+               "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+               "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+               "-c:a", "aac", "-movflags", "+faststart", str(dst)]
+    subprocess.run(cmd, check=True, timeout=1800)
     # MP4 is enough for modern Chrome/Safari; VP9 backup is opt-in because
     # transcoding it can be very expensive for a full lecture.
     webm_name = None
@@ -225,11 +258,16 @@ def prepare_video(src: Path, dst_dir: Path) -> tuple[str, str | None]:
         webm = dst.with_suffix(".webm")
         if not webm.exists():
             subprocess.run(
-                ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-c:v", "libvpx-vp9",
+                ["ffmpeg", "-v", "error", "-y", "-i", str(dst), "-c:v", "libvpx-vp9",
                  "-b:v", "0", "-crf", "36", "-deadline", "realtime", "-cpu-used", "8",
-                 "-c:a", "libopus", str(webm)], check=True)
+                 "-c:a", "libopus", str(webm)], check=True, timeout=3600)
         webm_name = webm.name
-    return dst.name, webm_name
+    details = {
+        "sourceVideo": info["video"], "sourceAudio": info["audio"],
+        "hasAudio": info["audio"] is not None, "transcoded": not safe,
+        "duration": info["duration"],
+    }
+    return dst.name, webm_name, details
 
 
 def render_slides(pptx: Path, out_dir: Path, width: int) -> int:
@@ -317,12 +355,27 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
                     tmp.mkdir(exist_ok=True)
                     raw = tmp / name
                     raw.write_bytes(part.blob)
-                    video_cache[name] = prepare_video(raw, media_dir)
-                    raw.unlink()
-                mp4_name, webm_name = video_cache[name]
+                    try:
+                        video_cache[name] = prepare_video(raw, media_dir)
+                    except (subprocess.SubprocessError, ValueError, OSError):
+                        # One unreadable clip must not lose the whole lecture.
+                        video_cache[name] = None
+                    finally:
+                        raw.unlink(missing_ok=True)
+                if video_cache[name] is None:
+                    problems.append({"slide": index, "problem": "video could not be converted for the browser",
+                                     "target": name})
+                    continue
+                mp4_name, webm_name, details = video_cache[name]
+                if details["transcoded"]:
+                    problems.append({"slide": index, "problem": "video was converted for browser playback",
+                                     "target": f"{details['sourceVideo']}/{details['sourceAudio'] or 'no audio'}"})
+                if not details["hasAudio"]:
+                    problems.append({"slide": index, "problem": "video has no audio track", "target": name})
                 videos.append({
                     "src": f"media/{mp4_name}",
                     "webm": f"media/{webm_name}" if webm_name else None,
+                    "info": details,
                     "x": round(shape.left / slide_w, 6),
                     "y": round(shape.top / slide_h, 6),
                     "w": round(shape.width / slide_w, 6),
@@ -360,6 +413,104 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     return out_dir
 
 
+MAX_PDF_PAGES = 400
+
+
+def pdf_info(pdf: Path) -> dict:
+    """Validate a PDF with poppler (never executes embedded scripts) and read page count/size."""
+    with pdf.open("rb") as fh:
+        if fh.read(5) != b"%PDF-":
+            raise ValueError("هذا ليس ملف PDF صالحاً")
+    out = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True, timeout=60)
+    if out.returncode != 0:
+        raise ValueError("تعذر قراءة ملف PDF (قد يكون تالفاً أو محمياً بكلمة مرور)")
+    fields = dict(line.split(":", 1) for line in out.stdout.splitlines() if ":" in line)
+    pages = int(fields.get("Pages", "0").strip() or 0)
+    if pages < 1:
+        raise ValueError("ملف PDF بلا صفحات")
+    if pages > MAX_PDF_PAGES:
+        raise ValueError(f"عدد صفحات PDF يتجاوز {MAX_PDF_PAGES}")
+    size = fields.get("Page size", "").replace("x", " ").split()
+    try:
+        width_pt, height_pt = float(size[0]), float(size[1])
+    except (IndexError, ValueError):
+        width_pt, height_pt = 16.0, 9.0
+    return {"pages": pages, "aspect": round(width_pt / height_pt, 6) if height_pt else 16 / 9,
+            "encrypted": fields.get("Encrypted", "").strip().startswith("yes")}
+
+
+def pdf_page_text(pdf: Path, page: int) -> str:
+    out = subprocess.run(["pdftotext", "-f", str(page), "-l", str(page), "-layout", str(pdf), "-"],
+                         capture_output=True, text=True, timeout=60)
+    return " ".join(out.stdout.split())[:12000] if out.returncode == 0 else ""
+
+
+def build_pdf(pdf: Path, bundles_root: Path, width: int = 1920, source_name: str | None = None,
+              notes: list | None = None) -> Path:
+    """A PDF becomes a lecture of still pages: no animation, no video, text from the PDF."""
+    info = pdf_info(pdf)
+    if info["encrypted"]:
+        raise ValueError("ملف PDF مشفر؛ صدّر نسخة غير مشفرة")
+    fingerprint = sha256_file(pdf)[:12]
+    out_dir = bundles_root / fingerprint
+    if (out_dir / "manifest.json").exists():
+        write_indexes(bundles_root, fingerprint)
+        print(f"bundle already built: {out_dir}")
+        return out_dir
+    slides_dir = out_dir / "slides"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slides_dir.mkdir(exist_ok=True)
+    try:
+        subprocess.run(["pdftoppm", "-png", "-scale-to-x", str(width), "-scale-to-y", "-1",
+                        str(pdf), str(out_dir / "page")], check=True, timeout=1800)
+        pages = sorted(out_dir.glob("page-*.png"))
+        if len(pages) != info["pages"]:
+            raise RuntimeError(f"rendered {len(pages)} pages but PDF has {info['pages']}")
+        slides = []
+        for index, page in enumerate(pages, start=1):
+            shutil.move(str(page), slides_dir / f"{index:03d}.png")
+            slides.append({"index": index, "image": f"slides/{index:03d}.png", "notes": "",
+                           "text": pdf_page_text(pdf, index), "videos": [],
+                           "compatibility": {"animationsDetected": False, "timingDetected": False,
+                                             "transitionDetected": False, "chartCount": 0,
+                                             "animationFidelity": "none", "animationPreserved": None,
+                                             "unsupportedEffects": []}})
+    except Exception:
+        shutil.rmtree(out_dir, ignore_errors=True)
+        raise
+    problems = [{"slide": None, "problem": text} for text in (notes or [])]
+    if not any(entry["text"] for entry in slides):
+        problems.append({"slide": None, "problem": "PDF has no extractable text (scanned images?): the director cannot read slide content"})
+    manifest = {"id": fingerprint, "source": source_name or pdf.name, "format": "pdf",
+                "slideCount": len(slides), "aspect": info["aspect"], "slides": slides,
+                "buildVersion": 1, "problems": problems}
+    (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_indexes(bundles_root, fingerprint)
+    return out_dir
+
+
+def build_keynote(key: Path, bundles_root: Path, width: int = 1920) -> Path:
+    """Best effort: LibreOffice (libetonyek) converts Keynote to PDF. Motion and video are lost."""
+    work = bundles_root / "_keynote_work"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    try:
+        shutil.copy(key, work / "deck.key")
+        try:
+            result = subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(work),
+                                     str(work / "deck.key")], capture_output=True, timeout=600)
+        except (OSError, subprocess.TimeoutExpired):
+            result = None
+        pdf = work / "deck.pdf"
+        if result is None or result.returncode != 0 or not pdf.exists() or pdf.stat().st_size < 100:
+            raise ValueError("تعذر تحويل ملف Keynote على هذا الجهاز؛ في Keynote اختر ملف ← تصدير إلى ← PowerPoint أو PDF ثم ارفع الناتج")
+        return build_pdf(pdf, bundles_root, width, source_name=key.name, notes=[
+            "Keynote was converted through PDF: build animations, transitions and embedded video are not carried over; "
+            "export to PowerPoint from Keynote to keep embedded video"])
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pptx", type=Path)
@@ -368,7 +519,12 @@ def main(argv=None):
     parser.add_argument("--rerender", action="store_true",
                         help="re-render slide images only, keep media and manifest")
     args = parser.parse_args(argv)
-    if args.rerender:
+    suffix = args.pptx.suffix.lower()
+    if suffix == ".pdf":
+        out = build_pdf(args.pptx, args.bundles, args.width)
+    elif suffix == ".key":
+        out = build_keynote(args.pptx, args.bundles, args.width)
+    elif args.rerender:
         out = rerender(args.pptx, args.bundles, args.width)
     else:
         out = build(args.pptx, args.bundles, args.width)

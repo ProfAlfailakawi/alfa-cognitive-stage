@@ -4,7 +4,7 @@ export function mountImportPanel(mount, { empty = false } = {}) {
   const root = document.createElement(empty ? "section" : "details");
   root.className = "import-panel";
   const heading = document.createElement(empty ? "h2" : "summary");
-  heading.textContent = empty ? "ابدأ برفع محاضرتك PowerPoint" : "رفع محاضرة PowerPoint جديدة";
+  heading.textContent = empty ? "ابدأ برفع محاضرتك (PowerPoint أو PDF أو Keynote)" : "رفع محاضرة جديدة (PPTX / PDF / Keynote)";
   root.append(heading);
   const form = document.createElement("form");
   form.className = "import-fields";
@@ -15,8 +15,8 @@ export function mountImportPanel(mount, { empty = false } = {}) {
   secret.setAttribute("aria-label", "رمز المحاضر");
   const file = document.createElement("input");
   file.type = "file";
-  file.accept = ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation";
-  file.setAttribute("aria-label", "ملف PowerPoint");
+  file.accept = ".pptx,.pdf,.key,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  file.setAttribute("aria-label", "ملف PowerPoint أو PDF أو Keynote");
   const actions = document.createElement("div");
   actions.className = "import-actions";
   const check = document.createElement("button");
@@ -30,7 +30,7 @@ export function mountImportPanel(mount, { empty = false } = {}) {
   const report = document.createElement("p");
   report.className = "import-report";
   report.setAttribute("role", "status");
-  report.textContent = "لا يعدل البرنامج PowerPoint الأصلي؛ وينبهك إلى الحركات التي لم تُنقل.";
+  report.textContent = "PowerPoint هو الأفضل (حركات النقر والفيديو). PDF صفحات ثابتة بلا حركة أو فيديو. Keynote: يُفضّل تصديره إلى PowerPoint.";
   form.append(secret, file, actions, report);
   root.append(form);
   mount.append(root);
@@ -46,7 +46,7 @@ export function mountImportPanel(mount, { empty = false } = {}) {
       const result = await response.json();
       if (!response.ok) throw Error(result.error || "تعذّر التحقق من رمز المحاضر");
       setStatus(result.ready
-        ? "أدوات التحويل جاهزة. تذكير: الحركات الأصلية غير محفوظة بعد."
+        ? "أدوات التحويل جاهزة. حركات النقر تُحفظ ترتيباً وحالة؛ شكل الحركة تلاشٍ."
         : "الأدوات الناقصة: " + result.missing.join("، "));
     } catch (error) { setStatus(error.message); }
     finally { check.disabled = false; }
@@ -54,7 +54,7 @@ export function mountImportPanel(mount, { empty = false } = {}) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const selected = file.files?.[0];
-    if (!selected || !/\.pptx$/i.test(selected.name)) { setStatus("اختر ملف PPTX."); return; }
+    if (!selected || !/\.(pptx|pdf|key)$/i.test(selected.name)) { setStatus("اختر ملف PPTX أو PDF أو Keynote."); return; }
     if (selected.size > 80 * 1024 * 1024) { setStatus("الحد الأقصى 80 MB."); return; }
     if (!token()) { setStatus("أدخل رمز المحاضر أولاً."); return; }
     run.disabled = true;
@@ -65,7 +65,7 @@ export function mountImportPanel(mount, { empty = false } = {}) {
         headers: {
           "X-Admin-Token": token(),
           "X-Lecture-Filename": encodeURIComponent(selected.name),
-          "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+          "Content-Type": "application/octet-stream"
         },
         body: selected,
       });
