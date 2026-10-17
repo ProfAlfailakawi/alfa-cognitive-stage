@@ -26,6 +26,7 @@ jobs:
           npm run test:infographic
           npm run test:director
           npm run test:director-ai
+          npm run test:memory
           npm run test:vote-rounds
       - uses: actions/setup-python@v5
         with:

@@ -5,6 +5,7 @@
 import { renderInfographic } from "./infographic.js";
 import { interpretSpeech, eligibleForCloud } from "./director-core.js";
 import { createSpeechDirector } from "./speech-director.js";
+import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
 
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
@@ -302,6 +303,9 @@ function revealDirectorScene(proposal) {
     renderLayer(proposal.spec);
     send({ type: "infographic", spec: proposal.spec });
     directorRuntime.activeOverlay = true;
+    if (proposal.utterance) rememberScene({
+      bundle: state.bundle, slide: state.index, utterance: proposal.utterance, spec: proposal.spec
+    });
     clearDirectorProposal();
     setDirectorStatus("مشهد بصري — زر E للعودة الفورية");
     return true;
@@ -327,7 +331,7 @@ async function requestDirectorAI(text, seq) {
     if (seq !== directorRuntime.cloudSeq) return; // Topic or slide changed.
     if (!response.ok) { setDirectorStatus(data.error || "تعذر تحليل المخرج"); return; }
     if (!data.proposal?.spec) { setDirectorStatus("لا يوجد مشهد إضافي يستحق الظهور."); return; }
-    showDirectorProposal(data.proposal, data.proposal.reason || "مشهد من التحليل السحابي — يحتاج موافقتك.");
+    showDirectorProposal({ ...data.proposal, utterance: text }, data.proposal.reason || "مشهد من التحليل السحابي — يحتاج موافقتك.");
   } catch (err) {
     if (seq === directorRuntime.cloudSeq) setDirectorStatus("الاتصال السحابي غير متاح؛ العرض مستمر.");
   }
@@ -342,7 +346,14 @@ function receiveDirectorSpeech(text) {
   directorRuntime.recent = directorRuntime.recent.filter((r) => Date.now() - r.at < 25000).slice(-3);
   const recent = directorRuntime.recent.map((r) => r.text).join(" ");
   const moment = interpretSpeech(raw) || interpretSpeech(recent);
-  if (!moment) return;
+  if (!moment) {
+    const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
+    if (saved && document.getElementById("director-mode")?.value !== "shadow") {
+      showDirectorProposal({ spec: saved.spec, utterance: raw },
+        "مشهد محفوظ سابقاً — بلا تكلفة API. أكد ظهوره أمام الطلبة.");
+    }
+    return;
+  }
   const key = moment.kind + ":" + (moment.spec?.lines?.[0] || raw.slice(0, 35));
   if (key === directorRuntime.lastKey && Date.now() - directorRuntime.lastAt < 15000) return;
   directorRuntime.lastKey = key;
@@ -360,7 +371,7 @@ function receiveDirectorSpeech(text) {
     return;
   }
   if (moment.spec) {
-    const proposal = { spec: moment.spec, slide: state.index, at: Date.now() };
+    const proposal = { spec: moment.spec, utterance: raw, slide: state.index, at: Date.now() };
     if (mode === "balanced" && moment.confidence >= 0.95 && !(videoEl && !videoEl.paused)) {
       revealDirectorScene(proposal);
     } else showDirectorProposal(proposal, "إحصائية التقطت من حديث المحاضر — تأكد من الرقم.");
@@ -368,6 +379,11 @@ function receiveDirectorSpeech(text) {
   }
   const names = { story: "بداية قصة أو استطراد", compare: "فرصة مقارنة تعليمية", question: "سؤال موجه للطلبة" };
   setDirectorStatus("التقطت " + (names[moment.kind] || moment.kind) + " — لم أعرض حقائق غير مؤكدة.");
+  const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
+  if (saved) {
+    showDirectorProposal({ spec: saved.spec, utterance: raw }, "مشهد محفوظ — لا يحتاج API.");
+    return;
+  }
   if (document.getElementById("director-cloud")?.checked && eligibleForCloud(moment, raw)) {
     const seq = ++directorRuntime.cloudSeq;
     requestDirectorAI(raw, seq); // Explicitly enabled, billed API; never auto-displays response.
@@ -385,6 +401,8 @@ function setupDirector() {
     if (pending && !revealDirectorScene(pending)) setDirectorStatus("المشهد انتهت صلاحيته أو يوجد فيديو نشط.");
   };
   document.getElementById("director-reject").onclick = () => { clearDirectorProposal(); setDirectorStatus("تم تجاهل الاقتراح."); };
+  setDirectorStatus("مكتبة المشاهد المعتمدة لهذه المحاضرة: " +
+    countSavedScenes(state.bundle) + " — الاستماع متوقف.");
   document.getElementById("director-test-run").onclick = () => receiveDirectorSpeech(
     document.getElementById("director-test-text").value);
 }

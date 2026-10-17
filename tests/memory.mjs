@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { rememberScene, recallScene, countSavedScenes } from "../web/scene-memory.js";
+const map = new Map();
+const storage = { getItem: (k) => map.get(k), setItem: (k, v) => map.set(k, v) };
+const spec = { type: "stat", title: "إحصائية", lines: ["68%", "من حديث المحاضر"] };
+assert.equal(rememberScene({bundle:"lecture1",slide:12,utterance:"في دراسة عن تحفيز الألعاب نسبة 68%",spec},storage),true);
+assert.equal(countSavedScenes("lecture1",storage),1);
+assert.equal(recallScene({bundle:"lecture1",slide:12,utterance:"في دراسة عن الدافعية للألعاب نسبة 68%"},storage)?.spec.lines[0],"68%");
+assert.equal(recallScene({bundle:"lecture2",slide:12,utterance:"في دراسة عن تحفيز الألعاب نسبة 68%"},storage),null);
+assert.equal(recallScene({bundle:"lecture1",slide:12,utterance:"مقدمة أخرى ليس لها علاقة"},storage),null);
+assert.equal(rememberScene({bundle:"lecture1",slide:12,utterance:"في دراسة عن تحفيز الألعاب نسبة 68%",spec},storage),true);
+assert.equal(countSavedScenes("lecture1",storage),1);
+console.log("approved scene memory: all checks passed");
