@@ -808,9 +808,28 @@ function renderLayer(spec) {
 }
 
 function applyRemote(message) {
+  if (!sameLecture(message, state.bundle)) return;
   if (message.type === "slide") {
+    if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
     state.main = message.main;
     if (message.index !== state.index) showSlide(message.index);
+    return;
+  }
+  if (message.type === "snapshot") {
+    if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
+    state.main = message.main;
+    if (message.index !== state.index) showSlide(message.index);
+    if (!validSnapshot(message, state.bundle, videoEls.length)) return;
+    message.videos.forEach((item, i) => {
+      const el = videoEls[i];
+      if (!item.playing) el.pause();
+      adjustAudienceMediaTime(el, item.time, true);
+      if (item.playing) {
+        for (const other of videoEls) if (other !== el) other.pause();
+        playAudienceMedia(el);
+      }
+    });
+    return;
   }
   if (message.type === "infographic") {
     hideInfographic(false);
@@ -819,15 +838,21 @@ function applyRemote(message) {
   if (message.type === "infographic-hide") hideInfographic(false);
   if (message.type === "poll-projection") renderPollScreen(message.data);
   if (message.type === "video") {
-    const target = videoEls[Number(message.clip) || 0];
-    if (!target) return;
+    if (!validVideoPacket(message, state.bundle, state.index, videoEls.length)) return;
+    const target = videoEls[message.clip];
     if (message.action === "play") {
       for (const el of videoEls) if (el !== target) el.pause();
-      if (Number.isFinite(message.time)) target.currentTime = message.time;
-      target.play().catch(() => {});
+      adjustAudienceMediaTime(target, message.time);
+      playAudienceMedia(target);
     }
-    if (message.action === "pause") target.pause();
-    if (message.action === "seek" && Number.isFinite(message.time)) target.currentTime = message.time;
+    if (message.action === "pause" || message.action === "ended") {
+      target.pause();
+      adjustAudienceMediaTime(target, message.time);
+    }
+    if (message.action === "seek") adjustAudienceMediaTime(target, message.time);
+    if (message.action === "progress" && !target.paused && !target.seeking) {
+      adjustAudienceMediaTime(target, message.time);
+    }
   }
 }
 
@@ -896,6 +921,21 @@ async function boot() {
   state.count = manifest.slideCount;
   state.aspect = manifest.aspect;
 
+  // Install listeners before the first hello to avoid missing a fast snapshot reply.
+  channel.onmessage = (event) => {
+    const message = event.data;
+    if (!sameLecture(message, state.bundle)) return;
+    if (role === "presenter" && message.type === "hello") {
+      broadcastSnapshot(); // Includes current video time/status for late-joining screens.
+      return;
+    }
+    if (role === "presenter" && message.type === "audience-media-issue" &&
+        message.index === state.index && typeof message.issue === "string") {
+      setDirectorStatus("شاشة الطلبة: " + message.issue.slice(0, 150));
+      return;
+    }
+    if (role === "audience") applyRemote(message);
+  };
   if (role === "audience") {
     renderAudience();
     send({ type: "hello" });
@@ -904,19 +944,7 @@ async function boot() {
     window.addEventListener("message", receiveVoteAdminMessage);
     setupKeys();
     setupClock();
-    channel.postMessage({ type: "slide", index: state.index, main: state.main });
-  }
-  channel.onmessage = (event) => {
-    const message = event.data;
-    if (role === "presenter" && message.type === "hello") {
-      send({ type: "slide", index: state.index, main: state.main });
-      return;
-    }
-    if (role === "audience") applyRemote(message);
-  };
-  if (role === "audience") {
-    // Audience tab mirrors whatever the presenter is showing.
-    channel.onmessage = (event) => applyRemote(event.data);
+    send({ type: "slide", index: state.index, main: state.main });
   }
 }
 
