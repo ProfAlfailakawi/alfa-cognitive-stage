@@ -23,9 +23,9 @@ export function interpretSpeech(utterance) {
     const [first, second] = percentages;
     const prefix = text.slice(Math.max(0, first.index - 32), first.index);
     const connector = text.slice(first.index + first[0].length, second.index);
-    const fromTo = /(?:^|\\s)من\\s*$/.test(prefix) && /^\\s*(?:الى|الي)\\s*$/.test(connector);
-    const beforeAfter = /(?:^|\\s)(?:قبل|كانت|كان)\\s*$/.test(prefix) &&
-      /^\\s*(?:وصارت|صارت|وبعد|بعد|ثم صارت|وبعدين صارت)\\s*$/.test(connector);
+    const fromTo = /(?:^|\s)من\s*$/.test(prefix) && /^\s*(?:الى|الي)\s*$/.test(connector);
+    const beforeAfter = /(?:^|\s)(?:قبل|كانت|كان)\s+(?:النسبه\s*|نسبه\s*)?$/.test(prefix) &&
+      /^\s*(?:وصارت|صارت|وبعد|بعد|ثم صارت|وبعدين صارت)\s*$/.test(connector);
     const left = Number(first[1].replace(",", "."));
     const right = Number(second[1].replace(",", "."));
     if ((fromTo || beforeAfter) && [left, right].every((n) => Number.isFinite(n) && n >= 0 && n <= 100) &&
