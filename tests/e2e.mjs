@@ -325,6 +325,24 @@ try {
     await audience.locator(".info-layer").count() === 0 &&
     (await presenter.textContent("#meta")).includes("7 من"));
 
+  const sameSlideNumeric = await presenter.evaluate(async (bundle) => {
+    const { rememberScene, recallScene } = await import("/scene-memory.js");
+    const scene = { type: "stat", title: "نسبة من قول المحاضر",
+      lines: ["68%", "من حديث المحاضر"] };
+    rememberScene({ bundle, slide: 7,
+      utterance: "في دراسة عن تحفيز الألعاب نسبة 68%", spec: scene });
+    return {
+      original: recallScene({ bundle, slide: 7,
+        utterance: "في دراسة عن تحفيز الألعاب نسبة 68%" }),
+      corrected: recallScene({ bundle, slide: 7,
+        utterance: "في دراسة عن تحفيز الألعاب نسبة 69%" }),
+    };
+  }, bundleId);
+  check("same-slide approved statistics still replay when unchanged",
+    sameSlideNumeric.original?.spec.lines[0] === "68%");
+  check("same-slide memory refuses stale 68% after spoken correction to 69%",
+    sameSlideNumeric.corrected === null);
+
   check("audience page has no JavaScript errors", audienceErrors.length === 0, audienceErrors.join(" | "));
 
   await presenter.screenshot({ path: join(root, "tests/presenter.png") });
