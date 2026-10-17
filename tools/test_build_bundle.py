@@ -60,6 +60,19 @@ class ManifestTests(unittest.TestCase):
         name = None
         self.assertIsNone(f"media/{name}" if name else None)
 
+    def test_pptx_container_guard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            invalid = tmp / "invalid.pptx"
+            invalid.write_bytes(b"bad file")
+            with self.assertRaises(ValueError):
+                build_bundle.validate_pptx_container(invalid)
+            deck = Presentation()
+            deck.slides.add_slide(deck.slide_layouts[6])
+            good = tmp / "good.pptx"
+            deck.save(good)
+            build_bundle.validate_pptx_container(good)
+
     def test_video_source_is_recognised_by_extension(self):
         self.assertIn(".mov", build_bundle.VIDEO_EXTS)
         self.assertIn(".mp4", build_bundle.VIDEO_EXTS)
