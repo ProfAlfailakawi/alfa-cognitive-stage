@@ -5,7 +5,7 @@ import { createReadStream, promises as fs } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnvFile } from "node:process";
-import { analyzeWithAI } from "./director-ai.mjs";
+import { analyzeWithAI, directorUsageStatus } from "./director-ai.mjs";
 import { importLecture, prerequisitesStatus } from "./lecture-import.mjs";
 import { createSceneStore, SceneStoreError } from "./scene-store.mjs";
 import { allowedLectureClient } from "./security.mjs";
@@ -159,8 +159,7 @@ async function handleApi(req, res, path) {
   }
   if (resource === "director" && code === "status" && req.method === "GET") {
     requireAdmin(req);
-    return sendJson(res, 200, { available: Boolean(process.env.OPENAI_API_KEY),
-      maxCalls: Math.max(0, Math.min(100, Number(process.env.DIRECTOR_MAX_CALLS ?? 24))) });
+    return sendJson(res, 200, directorUsageStatus());
   }
   if (resource === "director" && code === "analyze" && req.method === "POST") {
     requireAdmin(req);
