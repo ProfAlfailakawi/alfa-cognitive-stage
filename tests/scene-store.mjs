@@ -34,9 +34,15 @@ try {
       utterance: "محاضرة تعليمية تجربة محفوظة رقم " + i + " مع أرقام مختلفة",
       spec: scene.spec });
   }
-  assert.equal(restarted.listAll().length, 150, "Server response is bounded");
-  assert.equal(restarted.listAll().some(x => x.id === sibling.id), true,
-    "An unrelated approved prior scene should remain until enough newer scenes exist");
+  // A separate bundle is necessary: each bundle itself is capped at 120.
+  for (let i = 0; i < 60; i++) {
+    restarted.save("lecture_more", { slide: i + 1,
+      utterance: "نشاط تعلم تفاعلي إضافي " + i + " مبني على كلام المحاضر",
+      spec: scene.spec });
+  }
+  assert.equal(restarted.listAll().length, 150, "Server response is bounded across bundles");
+  assert.equal(restarted.listAll().some(x => x.id === sibling.id), false,
+    "Older scenes leave only the bounded aggregate response, not their bundle");
   const id=scene.id;
   assert.equal(restarted.remove("lecture_01",id).removed,true);
   assert.equal(createSceneStore({file:filename}).list("lecture_01").length,0);
