@@ -1,14 +1,19 @@
-// Local server: serves the player (web/) and lecture bundles (bundles/).
-// Supports HTTP Range requests so video can seek.
+// Local server: serves the player (web/), lecture bundles (bundles/) and the voting API.
+// HTTP Range requests are supported so video can seek.
 import { createServer } from "node:http";
 import { createReadStream, promises as fs } from "node:fs";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createVoteStore, VoteError } from "./votes.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const webRoot = join(root, "web");
 const bundlesRoot = join(root, "bundles");
 const port = Number(process.env.PORT || 4173);
+const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
+const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });
+const MAX_BODY = 4096;
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -17,6 +22,7 @@ const types = {
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".woff2": "font/woff2",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
 };
@@ -52,9 +58,102 @@ async function sendFile(req, res, file) {
   createReadStream(file).pipe(res);
 }
 
+function sendJson(res, status, body) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(body));
+}
+
+function readBody(req) {
+  return new Promise((resolveBody, reject) => {
+    let size = 0;
+    const chunks = [];
+    let tooLarge = false;
+    req.on("data", (chunk) => {
+      if (tooLarge) return;
+      size += chunk.length;
+      if (size > MAX_BODY) {
+        tooLarge = true;
+        chunks.length = 0;
+        reject(new VoteError("الطلب كبير جداً", 413));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (tooLarge) return;
+      try {
+        resolveBody(chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {});
+      } catch {
+        reject(new VoteError("صيغة الطلب غير صحيحة"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function isAdmin(req) {
+  const given = Buffer.from(String(req.headers["x-admin-token"] || ""));
+  const expected = Buffer.from(adminToken);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+function requireAdmin(req) {
+  if (!isAdmin(req)) throw new VoteError("غير مصرح", 401);
+}
+
+function voterToken(req) {
+  return String(req.headers["x-voter-token"] || "");
+}
+
+async function handleApi(req, res, path) {
+  const parts = path.split("/").filter(Boolean); // api, sessions, CODE, ...
+  const [, resource, code, action, pollId, verb] = parts;
+  if (resource === "admin" && code === "check" && req.method === "GET") {
+    requireAdmin(req);
+    return sendJson(res, 200, { ok: true });
+  }
+  if (resource !== "sessions") throw new VoteError("غير موجود", 404);
+
+  if (!code && req.method === "POST") {
+    requireAdmin(req);
+    return sendJson(res, 201, { code: store.createSession() });
+  }
+  if (!code) throw new VoteError("غير موجود", 404);
+  const upper = code.toUpperCase();
+  if (!store.hasSession(upper)) throw new VoteError("الجلسة غير موجودة", 404);
+
+  if (action === "state" && req.method === "GET") {
+    return sendJson(res, 200, store.studentState(upper, voterToken(req)));
+  }
+  if (action === "vote" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = store.vote(upper, voterToken(req), body.option);
+    return sendJson(res, 200, { ok: true, ...result });
+  }
+  if (action === "presenter" && req.method === "GET") {
+    requireAdmin(req);
+    return sendJson(res, 200, store.presenterState(upper));
+  }
+  if (action === "polls" && req.method === "POST" && !pollId) {
+    requireAdmin(req);
+    const poll = store.createPoll(upper, await readBody(req));
+    return sendJson(res, 201, { poll });
+  }
+  if (action === "polls" && pollId && req.method === "POST") {
+    requireAdmin(req);
+    const id = Number(pollId);
+    if (verb === "open") return sendJson(res, 200, { poll: store.setStatus(upper, id, "open") });
+    if (verb === "close") return sendJson(res, 200, { poll: store.setStatus(upper, id, "closed") });
+    if (verb === "reveal") return sendJson(res, 200, { poll: store.setReveal(upper, id, true) });
+    if (verb === "hide") return sendJson(res, 200, { poll: store.setReveal(upper, id, false) });
+  }
+  throw new VoteError("غير موجود", 404);
+}
+
 const server = createServer(async (req, res) => {
   try {
     const path = new URL(req.url, "http://x").pathname;
+    if (path.startsWith("/api/")) return await handleApi(req, res, path);
     const isBundle = path.startsWith("/bundles/");
     const file = isBundle
       ? safePath(bundlesRoot, path.slice("/bundles/".length))
@@ -64,7 +163,8 @@ const server = createServer(async (req, res) => {
       return res.end();
     }
     await sendFile(req, res, file);
-  } catch {
+  } catch (err) {
+    if (err instanceof VoteError) return sendJson(res, err.status, { error: err.message });
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("غير موجود");
   }
@@ -72,6 +172,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(port, () => {
   console.log(`ALFA Cognitive Stage على http://localhost:${port}`);
+  if (!process.env.ADMIN_TOKEN) console.log(`رمز المحاضر (لا تشاركه): ${adminToken}`);
 });
 
-export { server };
+export { server, adminToken };

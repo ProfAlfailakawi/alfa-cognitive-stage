@@ -102,6 +102,7 @@ function renderPresenter() {
           <button id="playvid">تشغيل الفيديو</button>
           <button class="emergency" id="home" aria-label="عودة فورية إلى العرض الأصلي">عودة فورية (E)</button>
           <button id="open-audience">فتح نافذة الطلبة</button>
+          <button id="open-vote">التصويت</button>
         </div>
       </div>
       <aside class="side">
@@ -115,6 +116,7 @@ function renderPresenter() {
   document.getElementById("next").onclick = () => go(state.index + 1);
   document.getElementById("home").onclick = () => goMain();
   document.getElementById("playvid").onclick = () => toggleVideo();
+  document.getElementById("open-vote").onclick = () => window.open("/vote-admin.html", "alfa-vote-admin");
   document.getElementById("open-audience").onclick = () =>
     window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
   showSlide(state.index);

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>التصويت</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .vote { max-width: 520px; margin: 0 auto; padding: 1.25rem; display: grid; gap: 1rem; min-height: 100vh; align-content: start; }
+    .vote .q { font-size: 1.35rem; line-height: 1.7; margin: 0.5rem 0 0; }
+    .vote .opt { width: 100%; text-align: start; font-size: 1.1rem; padding: 0.9rem 1rem; }
+    .vote .opt.selected { border-color: var(--accent); background: var(--wash); }
+    .vote .status { color: var(--soft); }
+    .vote .result { display: grid; gap: 0.4rem; }
+    .vote .bar { height: 10px; border-radius: 6px; background: var(--wash); overflow: hidden; }
+    .vote .bar > span { display: block; height: 100%; background: var(--accent); }
+    .vote .row { display: grid; gap: 0.25rem; }
+  </style>
+</head>
+<body>
+  <main class="vote" id="app">
+    <p class="status" id="status">جارٍ الاتصال…</p>
+  </main>
+  <script src="vote.js" type="module"></script>
+</body>
+</html>

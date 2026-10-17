@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>إدارة التصويت</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .admin { max-width: 980px; margin: 0 auto; padding: 1.25rem; display: grid; gap: 1.25rem; }
+    .admin .grid { display: grid; grid-template-columns: 280px 1fr; gap: 1.25rem; align-items: start; }
+    .admin textarea, .admin input[type=text], .admin input[type=password] {
+      font: inherit; width: 100%; padding: 0.6rem; border-radius: 10px; border: 1px solid var(--hair); background: var(--canvas); color: var(--ink);
+    }
+    .admin .card { border: 1px solid var(--hair); border-radius: 16px; padding: 1rem; background: var(--wash); }
+    .admin .poll { border: 1px solid var(--hair); border-radius: 14px; padding: 0.9rem; display: grid; gap: 0.5rem; background: var(--canvas); }
+    .admin .bar { height: 10px; border-radius: 6px; background: var(--wash); overflow: hidden; }
+    .admin .bar > span { display: block; height: 100%; background: var(--accent); }
+    .admin .row { display: grid; gap: 0.2rem; }
+    .admin .meta { color: var(--soft); font-size: 0.9rem; }
+    .admin .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    @media (max-width: 760px) { .admin .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="admin" id="app">
+    <h1>التصويت</h1>
+    <section class="card" id="auth">
+      <label>رمز المحاضر (يظهر في الطرفية عند تشغيل الخادم)
+        <input type="password" id="token" autocomplete="off" />
+      </label>
+      <div class="actions"><button class="primary" id="save-token">حفظ</button></div>
+      <p class="meta" id="auth-msg"></p>
+    </section>
+    <section id="panel" hidden class="grid">
+      <div class="card">
+        <div class="actions"><button class="primary" id="new-session">جلسة جديدة</button></div>
+        <p class="meta" id="session-line"></p>
+        <div id="qr" aria-label="رمز QR للطلبة"></div>
+        <p class="meta" id="join-url" style="word-break:break-all"></p>
+      </div>
+      <div class="card">
+        <h2>سؤال جديد</h2>
+        <div class="row">
+          <input type="text" id="q-text" placeholder="نص السؤال" maxlength="200" />
+          <textarea id="q-opts" rows="4" placeholder="خيار في كل سطر (2 إلى 6)"></textarea>
+          <label><input type="checkbox" id="q-change" /> السماح بتغيير الإجابة</label>
+          <div class="actions"><button class="primary" id="add-poll">إضافة السؤال</button></div>
+          <p class="meta" id="poll-msg"></p>
+        </div>
+        <div id="polls" class="row" style="margin-top:1rem"></div>
+      </div>
+    </section>
+  </main>
+  <script src="vendor/qrcode.js"></script>
+  <script src="vote-admin.js" type="module"></script>
+</body>
+</html>

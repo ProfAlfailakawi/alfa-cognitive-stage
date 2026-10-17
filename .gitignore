@@ -6,3 +6,4 @@ bundles/
 *.webm
 tests/*.png
 __pycache__/
+data/

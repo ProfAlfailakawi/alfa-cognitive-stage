@@ -1,0 +1,120 @@
+// Lecturer's voting console: create a session, add questions, open/close/reveal, see results.
+const $ = (id) => document.getElementById(id);
+const KEY = "alfa-admin-token";
+let adminToken = sessionStorage.getItem(KEY) || "";
+let code = "";
+let refreshTimer = null;
+
+async function call(method, path, body) {
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", "X-Admin-Token": adminToken },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "تعذّر تنفيذ الطلب");
+  return data;
+}
+
+function esc(value) {
+  const node = document.createElement("span");
+  node.textContent = String(value);
+  return node.innerHTML;
+}
+
+function drawQr(url) {
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  $("qr").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2 });
+  $("join-url").textContent = url;
+}
+
+function renderPolls(state) {
+  $("polls").innerHTML = state.polls.map((p) => {
+    const total = p.total || 0;
+    const rows = p.options.map((text, i) => {
+      const pct = total ? Math.round((p.counts[i] / total) * 100) : 0;
+      return `<div class="row"><div>${esc(text)} — ${p.counts[i]} (${pct}%)</div>
+        <div class="bar"><span style="width:${pct}%"></span></div></div>`;
+    }).join("");
+    const state_ = p.status === "open" ? "مفتوح" : p.status === "closed" ? "مغلق" : "مسودة";
+    return `<div class="poll">
+      <strong>${esc(p.question)}</strong>
+      <div class="meta">${state_} — الإجابات: ${total}${p.allowChange ? " — يسمح بالتغيير" : ""}</div>
+      ${rows}
+      <div class="actions">
+        ${p.status !== "open" ? `<button data-act="open" data-id="${p.id}" class="primary">فتح</button>` : `<button data-act="close" data-id="${p.id}">إغلاق</button>`}
+        ${p.reveal ? `<button data-act="hide" data-id="${p.id}">إخفاء النتائج</button>` : `<button data-act="reveal" data-id="${p.id}">إظهار النتائج</button>`}
+      </div>
+    </div>`;
+  }).join("") || `<p class="meta">لا توجد أسئلة بعد.</p>`;
+  $("polls").querySelectorAll("button[data-act]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await call("POST", `/sessions/${code}/polls/${btn.dataset.id}/${btn.dataset.act}`);
+        await refresh();
+      } catch (err) {
+        $("poll-msg").textContent = err.message;
+      }
+    });
+  });
+}
+
+async function refresh() {
+  if (!code) return;
+  try {
+    renderPolls(await call("GET", `/sessions/${code}/presenter`));
+  } catch (err) {
+    $("poll-msg").textContent = err.message;
+  }
+}
+
+async function enter() {
+  try {
+    await call("GET", "/admin/check");
+    adminToken && sessionStorage.setItem(KEY, adminToken);
+    $("auth-msg").textContent = "";
+    $("auth").hidden = true;
+    $("panel").hidden = false;
+    if (!code) await newSession();
+    clearInterval(refreshTimer);
+    refreshTimer = setInterval(refresh, 2000);
+  } catch (err) {
+    sessionStorage.removeItem(KEY);
+    $("auth-msg").textContent = err.message === "غير مصرح" ? "الرمز غير صحيح." : err.message;
+  }
+}
+
+async function newSession() {
+  const { code: fresh } = await call("POST", "/sessions");
+  code = fresh;
+  $("session-line").textContent = `رمز الجلسة: ${code}`;
+  drawQr(`${location.origin}/vote.html?s=${code}`);
+  await refresh();
+}
+
+$("save-token").addEventListener("click", () => {
+  adminToken = $("token").value.trim();
+  enter();
+});
+$("new-session").addEventListener("click", () => newSession().catch((e) => ($("poll-msg").textContent = e.message)));
+$("add-poll").addEventListener("click", async () => {
+  const options = $("q-opts").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  try {
+    await call("POST", `/sessions/${code}/polls`, {
+      question: $("q-text").value, options, allowChange: $("q-change").checked,
+    });
+    $("q-text").value = "";
+    $("q-opts").value = "";
+    $("poll-msg").textContent = "تمت إضافة السؤال.";
+    await refresh();
+  } catch (err) {
+    $("poll-msg").textContent = err.message;
+  }
+});
+
+if (adminToken) {
+  $("token").value = adminToken;
+  enter();
+}
