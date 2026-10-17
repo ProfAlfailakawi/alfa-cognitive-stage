@@ -204,6 +204,7 @@ function renderPresenter() {
             <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
+          <p class="meta" id="director-usage">السحابة مغلقة. المشاهد المحلية بلا API.</p>
           <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (للذاكرة والتصويت وAPI)" />
           <button type="button" id="director-memory-sync">مزامنة المشاهد المعتمدة محلياً</button>
           <button type="button" id="director-forget-dismissals">مسح الاقتراحات المتجاهلة لهذه المحاضرة</button>
@@ -505,6 +506,28 @@ function revealDirectorScene(proposal) {
     return false;
   }
 }
+async function refreshDirectorUsage() {
+  const target = document.getElementById("director-usage");
+  if (!target) return;
+  if (!document.getElementById("director-cloud")?.checked) {
+    target.textContent = "السحابة مغلقة. المشاهد المحلية بلا API.";
+    return;
+  }
+  const token = directorAdminToken();
+  if (!token) { target.textContent = "عرض الاستهلاك يحتاج رمز المحاضر."; return; }
+  try {
+    const response = await fetch("/api/director/status", { headers: { "X-Admin-Token": token } });
+    if (!response.ok) throw Error("status unavailable");
+    const info = await response.json();
+    if (!document.getElementById("director-cloud")?.checked) return;
+    target.textContent = info.available
+      ? "السحابة: " + info.callsUsed + "/" + info.maxCalls + " طلب، " +
+        (info.inputTokens + info.outputTokens) + " توكن مُبلّغ عنه" +
+        (info.callsWithoutUsage ? " (" + info.callsWithoutUsage + " طلب بلا بيانات استخدام)" : "") +
+        " — لا يوجد حساب تكلفة بالدولار. يُصفّر العداد عند إعادة تشغيل الخادم."
+      : "السحابة غير مجهزة بمفتاح API؛ العرض المحلي مستمر.";
+  } catch { target.textContent = "تعذر قراءة عداد API المحلي."; }
+}
 async function requestDirectorAI(text, seq) {
   const token = directorAdminToken();
   if (!token) { setDirectorStatus("API يحتاج رمز المحاضر من شاشة Terminal."); return; }
@@ -518,11 +541,13 @@ async function requestDirectorAI(text, seq) {
         notes: String(current.notes || "").slice(0, 500) }),
     });
     const data = await response.json();
+    void refreshDirectorUsage();
     if (seq !== directorRuntime.cloudSeq) return; // Topic or slide changed.
     if (!response.ok) { setDirectorStatus(data.error || "تعذر تحليل المخرج"); return; }
     if (!data.proposal?.spec) { setDirectorStatus("لا يوجد مشهد إضافي يستحق الظهور."); return; }
     showDirectorProposal({ ...data.proposal, utterance: text }, data.proposal.reason || "مشهد من التحليل السحابي — يحتاج موافقتك.");
   } catch (err) {
+    void refreshDirectorUsage();
     if (seq === directorRuntime.cloudSeq) setDirectorStatus("الاتصال السحابي غير متاح؛ العرض مستمر.");
   }
 }
@@ -650,8 +675,10 @@ function setupDirector() {
     setDirectorStatus(cleared ? "تم مسح التجاهلات المحفوظة لهذه المحاضرة." : "تعذر مسح التجاهلات من المتصفح.");
   };
   document.getElementById("director-memory-sync").onclick = syncApprovedScenes;
+  document.getElementById("director-cloud").addEventListener("change", () => void refreshDirectorUsage());
   document.getElementById("director-admin-token").addEventListener("change", () => {
     if (directorAdminToken()) void syncApprovedScenes();
+    if (document.getElementById("director-cloud")?.checked) void refreshDirectorUsage();
   });
   if (sessionStorage.getItem("alfa-admin-token")) void syncApprovedScenes();
   setDirectorStatus("مكتبة المشاهد المعتمدة لهذه المحاضرة: " +
