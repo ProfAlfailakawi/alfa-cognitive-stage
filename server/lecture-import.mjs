@@ -1,8 +1,8 @@
 // Authenticated PPTX import. Uploaded source is temporary and never served to students.
 // Requires Python, python-pptx, LibreOffice, poppler and ffmpeg installed on the lecturer's Mac.
-import { createWriteStream, promises as fs } from "node:fs";
+import { createWriteStream, existsSync, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, basename } from "node:path";
+import { join, resolve, basename, dirname, delimiter } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { execFile } from "node:child_process";
@@ -12,6 +12,12 @@ const exec = promisify(execFile);
 const LIMIT = 80 * 1024 * 1024;
 let busy = false;
 const prerequisites = ["python3", "soffice", "pdftoppm", "ffmpeg", "ffprobe"];
+function toolEnvironment() {
+  const macSoffice = "/Applications/LibreOffice.app/Contents/MacOS/soffice";
+  const pathExtra = process.platform === "darwin" && existsSync(macSoffice)
+    ? delimiter + dirname(macSoffice) : "";
+  return { ...process.env, PATH: (process.env.PATH || "") + pathExtra };
+}
 const isAllowed = (name) => /^[\p{L}\p{N}_ ().\-]{1,180}\.pptx$/iu.test(name);
 
 export function lectureFileName(raw) {
@@ -25,10 +31,10 @@ export function lectureFileName(raw) {
 export async function prerequisitesStatus() {
   const missing = [];
   for (const cmd of prerequisites) {
-    try { await exec("which", [cmd], { timeout: 4000 }); }
+    try { await exec("which", [cmd], { timeout: 4000, env: toolEnvironment() }); }
     catch { missing.push(cmd); }
   }
-  try { await exec("python3", ["-c", "import pptx, lxml, PIL"], { timeout: 10000 }); }
+  try { await exec("python3", ["-c", "import pptx, lxml, PIL"], { timeout: 10000, env: toolEnvironment() }); }
   catch { missing.push("python-pptx/lxml/Pillow"); }
   return { ready: missing.length === 0, missing };
 }
@@ -69,7 +75,7 @@ export async function importLecture(req, { root, bundlesRoot }) {
     const file = join(directory, filename);
     await receivePptx(req, file);
     const { stdout } = await exec("python3", [resolve(root, "tools/build_bundle.py"), file,
-      "--bundles", bundlesRoot], { timeout: 12 * 60 * 1000, maxBuffer: 512 * 1024 });
+      "--bundles", bundlesRoot], { timeout: 12 * 60 * 1000, maxBuffer: 512 * 1024, env: toolEnvironment() });
     const produced = stdout.trim().split(/\r?\n/).at(-1);
     const id = basename(produced);
     if (!/^[a-f0-9]{12}$/.test(id)) throw new Error("لم يتم إنتاج حزمة محاضرة صحيحة");

@@ -196,8 +196,15 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
         manifest_file = out_dir / "manifest.json"
         manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
         deck = Presentation(str(pptx))
-        for entry, slide in zip(manifest["slides"], deck.slides):
+        for index, (entry, slide) in enumerate(zip(manifest["slides"], deck.slides), start=1):
             entry["text"] = slide_text(slide)
+            compatibility = slide_compatibility(slide)
+            entry["compatibility"] = compatibility
+            if compatibility["animationsDetected"]:
+                warning = {"slide": index,
+                           "problem": "powerpoint animations are not preserved in PNG rendering"}
+                if warning not in manifest.setdefault("problems", []):
+                    manifest["problems"].append(warning)
         manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         write_indexes(bundles_root, fingerprint)
         print(f"bundle already built, slide text refreshed: {out_dir}")
