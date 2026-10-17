@@ -299,6 +299,11 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
 
   return {
     observe,
+    // Reversible navigation commands may act on a stable interim transcript; nothing else may.
+    peekReturn(text) {
+      const kind = interpretSpeech(numeralizePercents(String(text || "")))?.kind;
+      return kind === "return" || kind === "return-level" ? kind : null;
+    },
     noteShown(slideIndex) {
       lastShownAt = now();
       perSlide.set(slideIndex, (perSlide.get(slideIndex) || 0) + 1);

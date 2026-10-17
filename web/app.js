@@ -4,6 +4,7 @@
 
 import { renderInfographic } from "./infographic.js";
 import { createDirectorBrain } from "./director-brain.js";
+import { createLatencyMeter } from "./latency-meter.js";
 import { createSpeechDirector } from "./speech-director.js";
 import { rememberScene, recallScene, countSavedScenes, clearSceneMemory } from "./scene-memory.js";
 import { fingerprint, rememberRejectedProposal, wasProposalRejected, countRejectedProposals, clearRejectedProposals } from "./director-preferences.js";
@@ -37,6 +38,8 @@ let autoStepTimer = null;
 let currentOverlay = null; // spec of the scene now on screen, for return snapshots
 const returnStack = createReturnStack();
 const brain = createDirectorBrain();
+const meter = createLatencyMeter();
+let lastVoiceHealth = null;
 let sessionLog = { slide() {}, scene() {}, declined() {}, video() {}, digression() {}, current: () => null, clear() {}, end() {} };
 const neighboringSlides = new Map();
 const directorRuntime = {
@@ -893,9 +896,19 @@ function refreshTasteLine() {
     : "لا تفضيلات متعلمة بعد؛ الرفض المنفرد لا يغيّر السلوك.";
 }
 // All interpretation lives in director-brain.js; this function only applies its decision.
-function receiveDirectorSpeech(text) {
+function receiveDirectorSpeech(text, meta = {}) {
   const raw = String(text || "").trim();
   if (!raw) return;
+  // A return command already executed from a stable interim transcript must not run twice.
+  const early = directorRuntime.interimReturn;
+  if (early && Date.now() - early.at < 5000 && brain.peekReturn(raw)) { directorRuntime.interimReturn = null; return; }
+  const finalAt = Number.isFinite(meta.finalAt) ? meta.finalAt : Date.now();
+  const timed = (kind) => {
+    const decidedAt = Date.now();
+    requestAnimationFrame(() => { // the frame in which the scene/proposal is actually painted
+      if (meter.record({ kind, onsetAt: meta.firstInterimAt, finalAt, decidedAt, shownAt: Date.now(), engine: meta.engine })) renderVoiceHealth();
+    });
+  };
   const last = document.getElementById("director-last");
   if (last) last.textContent = "سمعت: " + raw.slice(0, 160);
   directorRuntime.cloudSeq++;
@@ -935,11 +948,13 @@ function receiveDirectorSpeech(text) {
     }
     const proposal = { spec: decision.spec, utterance: decision.utterance || raw, slide: state.index, at: Date.now() };
     if (decision.action === "auto") {
-      if (!revealAndRecord(proposal, { automatic: true })) showDirectorProposal(proposal, decision.reason || "راجع المشهد قبل إظهاره.");
+      if (revealAndRecord(proposal, { automatic: true })) timed("scene");
+      else { showDirectorProposal(proposal, decision.reason || "راجع المشهد قبل إظهاره."); timed("proposal"); }
     } else {
       showDirectorProposal(proposal, decision.reason || (decision.kind === "stat"
         ? "إحصائية التقطت من حديث المحاضر — تأكد من الرقم."
         : "اقتراح من حديثك كما نطقته؛ راجعه قبل إظهاره."));
+      timed("proposal");
     }
     return;
   }
@@ -966,22 +981,46 @@ function receiveDirectorSpeech(text) {
     requestDirectorAI(decision.cloudText, seq); // Explicitly enabled, billed API; never auto-displays response.
   }
 }
+function renderVoiceHealth() {
+  const element = document.getElementById("director-voice-health");
+  const health = lastVoiceHealth;
+  if (!element || !health) return;
+  const latency = meter.summary();
+  element.hidden = !health.finalSegments && !health.errors && !health.restarts && !latency.count;
+  const pieces = ["نتائج نهائية: " + health.finalSegments];
+  if (health.engine && health.engine !== "unknown" && health.engine !== "pending")
+    pieces.push(health.engine === "local" ? "التعرف على الجهاز" : "التعرف عبر خدمة المتصفح" +
+      (health.localStatus && health.localStatus !== "available" ? " (المحلي: " + health.localStatus + ")" : ""));
+  if (health.interimToFinalMs !== null) pieces.push("أول معاينة ← النص النهائي: " + Math.round(health.interimToFinalMs) + "ms");
+  if (latency.count) {
+    pieces.push("إلى ظهور المشهد/الاقتراح بعد النص النهائي: وسيط " + Math.round(latency.localP50) + "ms، 95٪ " + Math.round(latency.localP95) + "ms");
+    if (latency.totalP50 !== null) pieces.push("من أول معاينة: وسيط " + Math.round(latency.totalP50) + "ms (ن=" + latency.count + ")");
+  }
+  if (health.errors) pieces.push("أخطاء المتصفح: " + health.errors);
+  if (health.restarts) pieces.push("إعادة الاستماع: " + health.restarts);
+  element.textContent = pieces.join(" · ") + " (من أول نص مسموع، لا من موجة الصوت ولا يشمل مخزن المايك)";
+}
 function setupDirector() {
   const speech = createSpeechDirector({
     onUtterance: receiveDirectorSpeech,
-    onStatus: setDirectorStatus,
-    onDiagnostics: (health) => {
-      const element = document.getElementById("director-voice-health");
-      if (!element) return;
-      element.hidden = !health.finalSegments && !health.errors && !health.restarts;
-      const pieces = ["نتائج نهائية: " + health.finalSegments];
-      if (health.interimToFinalMs !== null)
-        pieces.push("أول معاينة ← النص النهائي: " + Math.round(health.interimToFinalMs) + "ms");
-      if (health.localHandlerMs !== null)
-        pieces.push("معالجة الحدث محلياً: " + Math.round(health.localHandlerMs) + "ms");
-      if (health.errors) pieces.push("أخطاء المتصفح: " + health.errors);
-      if (health.restarts) pieces.push("إعادة الاستماع: " + health.restarts);
-      element.textContent = pieces.join(" · ") + " (لا يقيس بدء الكلام أو زمن خدمة Chrome كاملاً)";
+    onStatus: (message) => {
+      setDirectorStatus(message);
+      // No microphone service: bring the typed fallback forward instead of leaving the lecturer stranded.
+      if (/لا يوجد إنترنت|not-allowed|service-not-allowed/.test(message)) {
+        const details = document.querySelector("#director-box details");
+        if (details) details.open = true;
+      }
+    },
+    onDiagnostics: (health) => { lastVoiceHealth = health; renderVoiceHealth(); },
+    onStableInterim: (transcript) => {
+      // Only reversible navigation commands may act before the final transcript arrives.
+      const kind = brain.peekReturn(transcript);
+      if (!kind || !(directorRuntime.activeOverlay || returnStack.active())) return;
+      directorRuntime.interimReturn = { at: Date.now() };
+      directorRuntime.cloudSeq++;
+      clearDirectorProposal();
+      if (kind === "return-level") backOneLevel(); else goMain();
+      setDirectorStatus("فُهمت العودة من المعاينة المستقرة قبل اكتمال الجملة.");
     },
     onInterim: (transcript) => {
       const preview = document.getElementById("director-last");
@@ -989,6 +1028,7 @@ function setupDirector() {
     }
   });
   directorRuntime.speech = speech;
+  navigator.mediaDevices?.addEventListener?.("devicechange", () => speech.deviceChanged());
   const start = document.getElementById("director-start");
   const stop = document.getElementById("director-stop");
   start.onclick = () => speech.start();

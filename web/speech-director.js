@@ -1,8 +1,16 @@
 // Browser microphone adapter. Voice is session-scoped; never records audio to disk.
-// Diagnostics time browser interim-to-final events, NOT audio-onset-to-screen latency.
+// Engine: on-device recognition (Chrome processLocally) ONLY when the browser reports the language
+// pack as available; otherwise the browser's cloud service. Whether Arabic/ar-KW is available
+// on-device depends on the browser and OS and has not been verified on a real Mac.
+// Diagnostics time browser events; end-to-end latency is measured in app.js with latency-meter.js.
 export function createSpeechDirector({
   onUtterance, onStatus, onInterim, onDiagnostics,
   Recognition = undefined, // injectable for rehearsal drills and tests
+  onStableInterim = undefined, // an interim transcript that stopped changing (for reversible commands only)
+  isOnline = () => globalThis.navigator?.onLine !== false,
+  listenOnline = (handler) => { globalThis.addEventListener?.("online", handler); return () => globalThis.removeEventListener?.("online", handler); },
+  preferLocal = true,
+  lang = "ar-KW",
   now = () => Date.now(),
   setTimer = (fn, ms) => setTimeout(fn, ms),
   clearTimer = (id) => clearTimeout(id),
@@ -18,17 +26,23 @@ export function createSpeechDirector({
   let lastInterimTime = 0;
   let firstInterimAt = null;
   let consecutiveErrors = 0;
+  let wanted = false;     // the lecturer asked for listening and has not stopped it
+  let engine = "unknown"; // "local" | "cloud" once chosen
+  let localStatus = null;  // what the browser said about the on-device language pack
+  let stopOnline = null;
+  let stableTimer = null;
+  let lastInterimText = "";
   let metrics = {
     finalSegments: 0, restarts: 0, errors: 0, lastError: null,
     interimToFinalMs: null, localHandlerMs: null,
   };
   const status = (message) => onStatus?.(message);
-  const emit = () => onDiagnostics?.({ ...metrics });
+  const emit = () => onDiagnostics?.({ ...metrics, engine, localStatus });
   function initialize() {
     if (!Ctor) { status("المتصفح لا يدعم التعرف الصوتي؛ استخدم Chrome أو الوضع النصي التجريبي."); return false; }
     if (recognition) return true;
     recognition = new Ctor();
-    recognition.lang = "ar-KW";
+    recognition.lang = lang;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onresult = (event) => {
@@ -39,6 +53,11 @@ export function createSpeechDirector({
           const liveText = result[0]?.transcript?.trim();
           if (!liveText) continue;
           if (firstInterimAt === null) firstInterimAt = now();
+          if (onStableInterim && liveText !== lastInterimText) {
+            lastInterimText = liveText;
+            clearTimer(stableTimer);
+            stableTimer = setTimer(() => { stableTimer = null; if (enabled && !mediaPlaying) onStableInterim(liveText); }, 800);
+          }
           if (now() - lastInterimTime > 350) {
             lastInterimTime = now();
             onInterim?.(liveText.slice(0, 180));
@@ -55,7 +74,8 @@ export function createSpeechDirector({
         lastFinal = text;
         lastTime = finishedAt;
         const handlerStart = now();
-        try { onUtterance?.(text); }
+        clearTimer(stableTimer); stableTimer = null; lastInterimText = "";
+        try { onUtterance?.(text, { firstInterimAt: observed === null ? null : finishedAt - observed, finalAt: finishedAt, engine }); }
         finally {
           metrics.finalSegments++;
           metrics.interimToFinalMs = interimToFinalMs;
@@ -96,9 +116,30 @@ export function createSpeechDirector({
     };
     return true;
   }
+  async function chooseEngine() {
+    engine = "cloud";
+    if (!preferLocal || typeof Ctor.available !== "function") return;
+    try {
+      localStatus = await Ctor.available({ langs: [lang], processLocally: true });
+      if (localStatus === "available") { recognition.processLocally = true; engine = "local"; }
+    } catch { localStatus = "error"; }
+  }
   function begin() {
     if (!enabled || mediaPlaying || active || !initialize()) return;
-    try { recognition.start(); active = true; status("يستمع لشرحك — دون حفظ الصوت"); }
+    if (engine === "unknown" && typeof Ctor.available === "function") {
+      engine = "pending";
+      chooseEngine().then(() => { if (engine === "pending") engine = "cloud"; begin(); });
+      return;
+    }
+    if (engine === "unknown") engine = "cloud"; // no on-device API in this browser
+    if (engine === "pending") return;
+    if (engine !== "local" && !isOnline()) {
+      status("لا يوجد إنترنت والتعرف الصوتي السحابي متوقف. استخدم الإدخال النصي في «أدوات متقدمة»؛ سيستأنف الاستماع تلقائياً عند عودة الاتصال.");
+      metrics.lastError = "offline"; emit();
+      stopOnline ||= listenOnline(() => { if (enabled) begin(); });
+      return;
+    }
+    try { recognition.start(); active = true; status(engine === "local" ? "يستمع لشرحك على الجهاز — دون حفظ الصوت" : "يستمع لشرحك — دون حفظ الصوت (خدمة المتصفح)"); }
     catch (err) { status("تعذر بدء المايك: " + err.message); }
   }
   function start() {
@@ -113,13 +154,21 @@ export function createSpeechDirector({
       emit();
     }
     enabled = true;
+    wanted = true;
     begin();
+  }
+  // A microphone plugged in after "audio-capture" failed: try again once, without re-prompting loops.
+  function deviceChanged() {
+    if (wanted && !enabled && metrics.lastError === "audio-capture") { enabled = true; metrics.lastError = null; begin(); }
   }
   function stop() {
     enabled = false;
+    wanted = false;
     clearTimer(restart);
+    clearTimer(stableTimer);
     restart = null;
     firstInterimAt = null;
+    stopOnline?.(); stopOnline = null;
     try { recognition?.stop(); } catch {}
     active = false;
     status("الاستماع متوقف");
@@ -135,5 +184,6 @@ export function createSpeechDirector({
       status("معلّق أثناء تشغيل الفيديو");
     } else if (enabled) begin();
   }
-  return { start, stop, setMediaPlaying, diagnostics: () => ({ ...metrics }), supported: Boolean(Ctor) };
+  return { start, stop, setMediaPlaying, deviceChanged, diagnostics: () => ({ ...metrics, engine, localStatus }), engine: () => engine,
+    supported: Boolean(Ctor) };
 }
