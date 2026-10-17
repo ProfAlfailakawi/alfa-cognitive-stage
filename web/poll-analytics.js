@@ -27,6 +27,32 @@ export function compareRounds(polls) {
   }
   return results;
 }
+
+// Lecturer-only, deterministic guidance from anonymous counts.
+// No correct answer or learning outcome is inferred from a vote distribution.
+export function summarizePollDistribution(poll) {
+  if (!poll || !Array.isArray(poll.options) || poll.options.length < 2 ||
+      !Array.isArray(poll.counts) || poll.counts.length !== poll.options.length ||
+      !Number.isSafeInteger(poll.total) || poll.total < 0 ||
+      poll.counts.some(n => !Number.isSafeInteger(n) || n < 0) ||
+      poll.counts.reduce((sum, n) => sum + n, 0) !== poll.total) return null;
+  const total = poll.total;
+  if (!total) return { kind: "empty",
+    text: "لا توجد إجابات بعد؛ انتظر مشاركة الطلبة قبل تفسير التوزيع." };
+  if (total < 8) return { kind: "small",
+    text: "عدد المشاركات قليل؛ انتظر مزيداً من الإجابات قبل مناقشة نمط الاختيارات." };
+  const sorted = [...poll.counts].sort((a,b) => b-a);
+  const largest = sorted[0] / total;
+  const runnerUp = sorted[1] / total;
+  // Only describe concentration; popularity never implies an objectively correct answer.
+  if (largest >= 0.75) return { kind: "concentrated",
+    text: "معظم الإجابات اتجهت إلى اختيار واحد. اسأل عن الأسباب أو مثال مضاد؛ الأغلبية لا تثبت صحة الاختيار." };
+  if (largest - runnerUp <= 0.15 && largest + runnerUp >= 0.65) return { kind: "divided",
+    text: "هناك تقارب بين أكثر اختيارين. اطلب توضيح مبررات كل رأي قبل إعادة طرح السؤال." };
+  return { kind: "varied",
+    text: "الإجابات موزّعة على بدائل مختلفة. ناقش الفروق بين البدائل ثم أعد السؤال إن كان ذلك مفيداً." };
+}
+
 function escapeCsv(value){
   let s=String(value??"");
   if (/^[\s]*[=+\-@]/.test(s)) s="'"+s; // Prevent spreadsheet formula injection.
