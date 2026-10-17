@@ -3,7 +3,7 @@ import { normalizeArabic } from './director-core.js';
 const PERCENT = /(\d+(?:[.,]\d+)?)\s*(?:%|بالمئه|بالمائه|بالميه|بالمايه|في الميه)/g;
 export function hasHypotheticalPercent(raw) {
   const text = normalizeArabic(raw);
-  return /(?:^|\s)(?:لو|ولو|اذا|واذا|افترضنا|نفترض)(?=\s|$)/.test(text) && [...text.matchAll(PERCENT)].length > 0;
+  return /(?:^|\s)(?:لو|ولو|اذا|واذا|افترضنا|نفترض|تخيل|تخيلوا|فرضنا|تتوقعون)(?=\s|$)/.test(text) && [...text.matchAll(PERCENT)].length > 0;
 }
 export function detectWhatIf(raw) {
   const text = normalizeArabic(raw);
@@ -21,7 +21,7 @@ export function detectWhatIf(raw) {
   const tail = between.slice(marker.index + marker[0].length).trim();
   if (lead && !/^[،؛,.\sو]+$/.test(lead)) return null;
   if (!/^(?:صارت|صار|كانت|تصير|تكون|وصلت|ارتفعت|انخفضت|النسبه|نسبتها|هالنسبه|نفس النسبه|صارت النسبه|تصير النسبه|تكون النسبه|وصلت النسبه|ارتفعت النسبه|انخفضت النسبه)?$/.test(tail) || /\d/.test(after)) return null;
-  if ([current, assumed].some(m => /[-−]/.test(text[m.index - 1] || ''))) return null;
+  if ([current, assumed].some(m => /[-−+]\s*$/.test(text.slice(Math.max(0, m.index - 4), m.index)))) return null;
   const numbers = values.map(m => Number(m[1].replace(',', '.')));
   if (numbers.some(n => !Number.isFinite(n) || n < 0 || n > 100) || numbers[0] === numbers[1]) return null;
   return { type: 'whatif', title: 'افتراض رقمي من شرح المحاضر', lines: values.map(m => m[1].replace(',', '.') + '%') };

@@ -12,6 +12,8 @@ const cases = [
 for (const [phrase, values] of cases) assert.deepEqual(detectWhatIf(phrase)?.lines, values, phrase);
 const refused = [
   "لو افترضنا نسبة النجاح 70%",
+  "تخيلوا نسبة النجاح 70%",
+  "النسبة حاليا 30% ولو افترضنا صارت - 50%",
   "نسبة الحضور حاليا 30% ولو افترضنا نسبة النجاح 50%",
   "نسبة الحضور حاليا 30% ولو افترضنا صارت 120%",
   "نسبة الحضور حاليا 30% ولو افترضنا صارت 30%",
@@ -22,6 +24,7 @@ const refused = [
 ];
 for (const phrase of refused) assert.equal(detectWhatIf(phrase), null, phrase);
 assert.equal(hasHypotheticalPercent("لو افترضنا نسبة الطلاب 70 بالمية"), true);
+assert.equal(interpretSpeech("تخيلوا نسبة الطلاب 70 بالمية")?.kind, "example");
 assert.equal(interpretSpeech("لو افترضنا نسبة الطلاب 70 بالمية")?.kind, "example",
   "hypothetical speech must not become an observed statistic");
 

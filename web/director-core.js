@@ -22,7 +22,7 @@ export function interpretSpeech(utterance) {
   if (spokenSteps) return { kind: "steps", confidence: 0.96, utterance: raw, spec: spokenSteps };
   const percentages = [...text.matchAll(/([0-9]+(?:[.,][0-9]+)?)\s*(%|بالمئه|بالمائه|بالميه|في الميه)/g)];
   // Hypothetical percentages are assumptions, never observed statistics.
-  if (percentages.length && /(?:^|\s)(?:لو|ولو|اذا|واذا|افترضنا|نفترض)(?=\s|$)/.test(text)) {
+  if (percentages.length && /(?:^|\s)(?:لو|ولو|اذا|واذا|افترضنا|نفترض|تخيل|تخيلوا|فرضنا|تتوقعون)(?=\s|$)/.test(text)) {
     return { kind: "example", confidence: 0.65, utterance: raw };
   }
   const correction = /(عفوا|اقصد|التصحيح|اصحح|مو قصدي|بل الصحيح)/.test(text);
