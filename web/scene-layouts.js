@@ -81,5 +81,40 @@ export function renderStructuredScene(type,title,lines) {
   }).join("");
   return base(title,nodes);
  }
+ if(type==="bars") {
+  // Bars are scaled to the largest spoken value; every number is exactly what the lecturer said.
+  const rows=lines.map((l)=>l.split("|").map((x)=>x.trim()));
+  const values=rows.map(([,v])=>Number(v.slice(0,-1).replace(",",".")));
+  const top=Math.max(...values,1);
+  const rowH=Math.min(62,360/rows.length);
+  const nodes=rows.map(([name,value],i)=>{
+   const y=125+i*(rowH+10),w=Math.max(4,(values[i]/top)*430);
+   return label(name,170,y+rowH/2+6,{size:20,limit:16,rows:2})+
+    '<rect x="250" y="'+y+'" width="430" height="'+rowH+'" rx="10" fill="'+C.white+'" stroke="'+C.edge+'"/>'+
+    '<rect x="250" y="'+y+'" width="'+w+'" height="'+rowH+'" rx="10" fill="'+(i%2?C.gold:C.blue)+'"/>'+
+    label(value,740,y+rowH/2+8,{size:26,color:C.ink,limit:8,rows:1});
+  }).join("");
+  return base(title,nodes);
+ }
+ if(type==="cycle") {
+  const n=lines.length,cx=480,cy=315,r=150;
+  const pts=lines.map((_,i)=>{const a=-Math.PI/2+i*2*Math.PI/n;return [cx+r*Math.cos(a),cy+r*Math.sin(a)];});
+  const arcs=pts.map(([x,y],i)=>{const [nx,ny]=pts[(i+1)%n];
+   return '<line x1="'+x.toFixed(1)+'" y1="'+y.toFixed(1)+'" x2="'+nx.toFixed(1)+'" y2="'+ny.toFixed(1)+'" stroke="'+C.blue+'" stroke-width="3" marker-end="url(#a)"/>';}).join("");
+  const nodes=lines.map((v,i)=>{const [x,y]=pts[i];
+   return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="26" fill="'+C.blue+'"/>'+label(String(i+1),x,y+7,{size:20,color:C.white,limit:3,rows:1})+
+    label(v,x,y+(y<cy?-44:50),{size:18,limit:18,rows:2});}).join("");
+  const defs='<defs><marker id="a" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="'+C.blue+'"/></marker></defs>';
+  return base(title,defs+arcs+nodes);
+ }
+ if(type==="activity") {
+  const dur=lines[1]||"";
+  const nodes='<rect x="130" y="130" width="700" height="300" rx="26" fill="'+C.white+'" stroke="'+C.edge+'"/>'+
+   '<circle cx="480" cy="190" r="34" fill="'+C.bg+'" stroke="'+C.edge+'"/>'+
+   '<path d="M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" transform="translate('+(480-14)+' '+(190-14)+') scale(1.16)" fill="none" stroke="'+C.gold+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'+
+   label(lines[0],480,285,{size:28,limit:34,rows:4})+
+   (dur?label(dur,480,400,{size:24,color:C.gold,limit:30,rows:1}):"");
+  return base(title,nodes);
+ }
  throw new Error("نوع المشهد غير مدعوم");
 }

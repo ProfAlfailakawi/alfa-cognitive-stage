@@ -67,6 +67,8 @@ const negatives = [
   silent("single year", ["في 2010 ظهر البرنامج"]),
   silent("filler", ["يعني زين هاه"]),
   silent("short contrast", ["هذا بينما ذاك"]),
+  silent("past tense discussion is not an activity", ["ناقشنا الموضوع أمس مع الطلبة الجداد"]),
+  silent("activity word as noun", ["هذا النشاط موجود في الكتاب صفحة عشرين"]),
   silent("shadow stays silent", ["في دراسة 68 بالمية من الطلبة استخدموا الجوال"], { mode: "shadow", expectObserve: true }),
 ];
 

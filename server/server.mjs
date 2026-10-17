@@ -43,8 +43,20 @@ const types = {
   ".webm": "video/webm",
 };
 
+// Defence in depth: no inline scripts, no third-party origins, no MIME sniffing, no framing by other sites.
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+  "media-src 'self' blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; " +
+  "form-action 'self'; frame-ancestors 'self'";
+function hardenHeaders(res) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Content-Security-Policy", CSP);
+  res.setHeader("Permissions-Policy", "microphone=(self), camera=(), geolocation=()");
+}
 function safePath(base, urlPath) {
   const decoded = decodeURIComponent(urlPath.split("?")[0]);
+  if (decoded.includes("\0")) return null;
   const full = resolve(join(base, normalize(decoded)));
   return full === base || full.startsWith(base + sep) ? full : null;
 }
@@ -104,7 +116,9 @@ function readBody(req, maxBody = MAX_BODY) {
     req.on("end", () => {
       if (tooLarge) return;
       try {
-        resolveBody(chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {});
+        const parsed = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("shape");
+        resolveBody(parsed);
       } catch {
         reject(new VoteError("صيغة الطلب غير صحيحة"));
       }
@@ -307,6 +321,7 @@ async function handleApi(req, res, path) {
 
 const handler = async (req, res) => {
   try {
+    hardenHeaders(res);
     const path = new URL(req.url, "http://x").pathname;
     // Remote clients (phones, tunnels, proxies) only ever see the student surface, even with a valid token.
     if (requestOrigin(req.socket.remoteAddress, req.headers) === "remote" &&

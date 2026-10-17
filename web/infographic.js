@@ -18,7 +18,7 @@ const ICONS = {
 };
 
 export function validateSpec(spec) {
-  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story"].includes(spec?.type) ? spec.type : null;
+  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity"].includes(spec?.type) ? spec.type : null;
   if (!type) throw new Error("نوع الإنفوجرافيك غير معروف");
   const title = String(spec.title ?? "").trim().slice(0, 120); // Renderers escape at the HTML boundary.
   const lines = (Array.isArray(spec.lines) ? spec.lines : [])
@@ -35,9 +35,20 @@ export function validateSpec(spec) {
     }
     return { type, title, lines: pairs };
   }
+  if (type === "bars") {
+    const rows = lines.map((l) => l.split("|").map((x) => x.trim()));
+    const valid = rows.every((r) => r.length === 2 && r[0] && r[0].length <= 40 && /^\d{1,3}(?:[.,]\d+)?%$/.test(r[1]) && Number(r[1].slice(0, -1).replace(",", ".")) <= 100);
+    if (rows.length < 2 || rows.length > 6 || !valid) throw new Error("الأعمدة: من 2 إلى 6 سطور بصيغة (التسمية | 40%) والنسبة بين 0 و100");
+    return { type, title, lines: rows.map((r) => r[0] + " | " + r[1]) };
+  }
+  if (type === "cycle" && (lines.length < 3 || lines.length > 6)) throw new Error("الدورة: من 3 إلى 6 مراحل");
+  if (type === "activity") {
+    if (lines.length < 1 || lines.length > 2 || (lines[1] && !/^المدة:/.test(lines[1]))) throw new Error("النشاط: تعليمات المحاضر ثم (المدة: …) اختيارياً");
+    return { type, title, lines };
+  }
   if (type === "steps" && (lines.length < 2 || lines.length > 6))
     throw new Error("الخطوات: من 2 إلى 6 خطوات");
-  if (type !== "steps" && (lines.length < 2 || lines.length > (type === "story" ? 4 : 6)))
+  if (type !== "steps" && type !== "cycle" && (lines.length < 2 || lines.length > (type === "story" ? 4 : 6)))
     throw new Error("المشهد يحتاج من 2 إلى 6 عناصر (القصة حتى 4)");
   return { type, title, lines };
 }

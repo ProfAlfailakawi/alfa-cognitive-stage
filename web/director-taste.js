@@ -6,7 +6,7 @@ const PREFIX = "alfa-director-taste-v1:";
 const GLOBAL = "alfa-director-taste-v1:*";
 const HALF_LIFE_MS = 30 * 24 * 3600 * 1000;
 const MAX_EVENTS = 60;
-const TYPES = new Set(["stat", "compare", "steps", "concept", "flow", "timeline", "story"]);
+const TYPES = new Set(["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity"]);
 
 function storageOrNull(custom) {
   if (custom) return custom;

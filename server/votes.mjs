@@ -39,9 +39,19 @@ export function createVoteStore({ file = null } = {}) {
     renameSync(tmp, file);
   }
 
+  let loaded = null;
   if (file && existsSync(file)) {
-    const data = JSON.parse(readFileSync(file, "utf8"));
+    try { loaded = JSON.parse(readFileSync(file, "utf8")); if (!loaded || typeof loaded !== "object" || Array.isArray(loaded)) throw new Error("shape"); }
+    catch {
+      // A damaged file must neither crash the lecture nor be silently overwritten: keep it aside and start clean.
+      try { renameSync(file, file + ".damaged-" + Date.now()); } catch {}
+      loaded = null;
+    }
+  }
+  if (loaded) {
+    const data = loaded;
     for (const [code, s] of Object.entries(data)) {
+      if (!/^[A-Z2-9]{6}$/.test(code) || !s || !Array.isArray(s.polls) || !Number.isInteger(s.nextId)) continue; // never trust the file
       const questions = Array.isArray(s.questions) ? s.questions.filter(q => q &&
         Number.isInteger(q.id) && typeof q.text === "string").slice(-MAX_PENDING_QUESTIONS) : [];
       sessions.set(code, { polls: s.polls, nextId: s.nextId, lastVoteAt: new Map(),

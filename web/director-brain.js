@@ -134,6 +134,60 @@ function detectTimeline(raw) {
   if (lines.some((l) => !l)) return null;
   return { type: "timeline", title: "تسلسل زمني كما ذكره المحاضر", lines };
 }
+// ---- labelled percentages -> bars: "الفئة أ 40% والفئة ب 35% والفئة ج 25%" ----
+const LABEL_NOISE = new Set(["و", "في", "كانت", "كان", "نسبه", "نسبة", "ثم", "اللي", "الي", "عند", "عن", "من", "الى", "إلى", "بينما", "اما", "أما", "حوالي", "تقريبا", "تقريباً", "هي", "هو", "يمثلون", "تمثل", "يشكلون", "تشكل", "بلغت", "وصلت", "منهم", "فقط", "كذلك", "وايضا", "أيضا"]);
+const PERCENT_MARK = /^(?:%|بالمئه|بالميه|بالمايه|بالمائه|بالمية|بالمئة|بالمائة)$/;
+function detectBars(spoken) {
+  const tokens = spoken.split(/\s+/).filter(Boolean);
+  const spans = []; // { value, words } where words are the candidate label words before the number
+  let labelStart = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const digit = normalizeArabic(tokens[i]);
+    const joined = /^\d+(?:[.,]\d+)?%$/.test(digit);
+    const numeric = joined || /^\d+(?:[.,]\d+)?$/.test(digit);
+    const marker = joined || (numeric && i + 1 < tokens.length && PERCENT_MARK.test(normalizeArabic(tokens[i + 1])));
+    if (!marker) continue;
+    const number = Number(digit.replace(/%$/, "").replace(",", "."));
+    if (!Number.isFinite(number) || number < 0 || number > 100) return null;
+    const words = tokens.slice(labelStart, i).map((t) => t.replace(/^و(?=[\u0621-\u064a]{3,})/u, ""))
+      .filter((t) => t && !LABEL_NOISE.has(t) && !LABEL_NOISE.has(normalizeArabic(t)) && !/^\d/.test(normalizeArabic(t)));
+    spans.push({ value: String(number), words });
+    labelStart = i + (joined ? 1 : 2);
+    i = labelStart - 1;
+  }
+  if (spans.length < 3 || spans.length > 6) return null;
+  // Later labels start right after the previous number, so they are clean. The first one drags the
+  // sentence preamble along; trim it to the typical label length of the others.
+  const sizes = spans.slice(1).map((x) => Math.min(3, x.words.length)).sort((a, b) => a - b);
+  const typical = Math.max(1, sizes[Math.floor(sizes.length / 2)] || 1);
+  const items = spans.map((x, index) => ({ label: x.words.slice(-(index === 0 ? typical : 3)).join(" ").replace(CLAUSE_TRIM, ""), value: x.value }));
+  if (items.some((x) => x.label.length < 2)) return null;
+  const labels = items.map((x) => x.label);
+  if (new Set(labels).size !== labels.length) return null;
+  return { type: "bars", title: "توزيع كما ذكره المحاضر", lines: items.map((x) => x.label + " | " + x.value + "%") };
+}
+const ACTIVITY = /(?:^|\s)(?:ناقشوا|ناقش|تناقشون|فكروا|اشتغلوا|شاركوا زميلكم|خلونا نسوي نشاط|عندنا نشاط|نشاط سريع|كل واحد يكتب|اكتبوا)(?=\s|$)/;
+const MINUTE_WORDS = { دقيقه: 1, دقيقتين: 2, ثلاث: 3, اربع: 4, خمس: 5, ست: 6, سبع: 7, ثمان: 8, تسع: 9, عشر: 10 };
+function detectActivity(spoken) {
+  const normalized = normalizeArabic(spoken);
+  if (!ACTIVITY.test(normalized)) return null;
+  const words = spoken.trim().split(/\s+/);
+  if (words.length < 4) return null;
+  let minutes = null;
+  const digit = normalized.match(/(\d{1,3})\s*(?:دقيقه|دقايق|دقائق)/);
+  if (digit) minutes = Number(digit[1]);
+  else {
+    const word = normalized.match(/(دقيقتين|(?:ثلاث|اربع|خمس|ست|سبع|ثمان|تسع|عشر)\w*)\s*(?:دقيقه|دقايق|دقائق)?/);
+    if (word) { const key = word[1] === "دقيقتين" ? "دقيقتين" : Object.keys(MINUTE_WORDS).find((k) => word[1].startsWith(k)); minutes = MINUTE_WORDS[key] ?? null; }
+    if (!/دقيق|دقايق|دقائق/.test(normalized)) minutes = null;
+  }
+  if (minutes !== null && (minutes < 1 || minutes > 60)) minutes = null;
+  const instruction = trimClause(spoken, 110);
+  const lines = [instruction];
+  if (minutes !== null) lines.push("المدة: " + minutes + (minutes === 1 ? " دقيقة" : minutes === 2 ? " دقيقتان" : minutes <= 10 ? " دقائق" : " دقيقة"));
+  return { type: "activity", title: "نشاط كما شرحه المحاضر", lines };
+}
+const CYCLIC = /(?:دوره|حلقه|يتكرر|مستمره|دائريه|مره ثانيه ونرجع للاول)/;
 const SHIFT_MARKER = /(?:الحين نتكلم عن|الحين نتحدث عن|ننتقل الى|نروح لموضوع|موضوع ثاني|نغير الموضوع|نبدا موضوع|نتكلم الحين عن)/;
 const EXAMPLE = /(?:مثلا|على سبيل المثال|خلوني اعطيكم مثال|خذوا مثال|تخيلوا|تخيل|لو افترضنا|فرضا)/;
 const CONCEPT = /(?:المقصود ب|نقصد ب|نعني ب|تعريف|يعرف ب|مفهوم)/;
@@ -247,6 +301,17 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       else {
         const contrast = detectContrast(spoken);
         if (contrast) found = { kind: "compare", confidence: 0.86, spec: contrast, utterance: raw };
+      }
+    }
+    if (found?.kind === "steps" && found.spec && CYCLIC.test(normalized)) {
+      found = { ...found, kind: "cycle", confidence: 0.9, spec: { ...found.spec, type: "cycle", title: "دورة كما شرحها المحاضر" } };
+    }
+    if (!found) {
+      const bars = detectBars(spoken);
+      if (bars) found = { kind: "bars", confidence: 0.88, spec: bars, utterance: raw };
+      else {
+        const activity = detectActivity(spoken);
+        if (activity) found = { kind: "activity", confidence: 0.84, spec: activity, utterance: raw };
       }
     }
     if (!found) {
