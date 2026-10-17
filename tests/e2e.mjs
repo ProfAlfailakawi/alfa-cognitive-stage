@@ -122,6 +122,40 @@ try {
   await audience.waitForTimeout(400);
   check("emergency hides the infographic", (await audience.locator(".info-layer").count()) === 0);
 
+  // Explicitly rejected director proposals are remembered only for this lecture and slide.
+  await presenter.selectOption("#director-mode", "safe");
+  await presenter.locator("#director-box details").evaluate((el) => { el.open = true; });
+  const dismissedStat = "ذكرت دراسة أن نسبة ٦٨٪ من الطلبة تعلموا";
+  await presenter.fill("#director-test-text", dismissedStat);
+  await presenter.click("#director-test-run");
+  check("first stat proposal requires lecturer approval in safe mode",
+    await presenter.locator("#director-proposal").isVisible());
+  await presenter.click("#director-reject");
+  check("rejected proposal immediately disappears",
+    await presenter.locator("#director-proposal").isHidden());
+  await presenter.reload();
+  await presenter.waitForSelector("#director-box");
+  for (let i = 0; i < 6; i++) await presenter.keyboard.press("ArrowRight");
+  await presenter.waitForFunction(() => document.querySelector("#meta")?.textContent?.includes("7 من"));
+  await presenter.locator("#director-box details").evaluate((el) => { el.open = true; });
+  await presenter.selectOption("#director-mode", "safe");
+  await presenter.fill("#director-test-text", dismissedStat);
+  await presenter.click("#director-test-run");
+  check("previously dismissed stat stays suppressed after refresh",
+    await presenter.locator("#director-proposal").isHidden() &&
+    (await presenter.locator("#director-status").textContent()).includes("تجاهلته سابقاً"));
+  await presenter.fill("#director-test-text", "ذكرت دراسة أن نسبة ٦٩٪ من الطلبة تعلموا");
+  await presenter.click("#director-test-run");
+  check("corrected percentage must remain eligible",
+    await presenter.locator("#director-proposal").isVisible());
+  await presenter.click("#director-reject");
+  await presenter.click("#director-forget-dismissals");
+  await presenter.fill("#director-test-text", dismissedStat);
+  await presenter.click("#director-test-run");
+  check("lecturer can clear dismissal preferences in the presenter",
+    await presenter.locator("#director-proposal").isVisible());
+  await presenter.click("#director-reject");
+
   // Voting is embedded in the presenter, and the presenter can project QR on demand.
   await presenter.click("#open-vote");
   const votingFrame = presenter.frameLocator("#vote-iframe");

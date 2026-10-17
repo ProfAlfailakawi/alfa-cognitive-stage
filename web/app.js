@@ -6,6 +6,7 @@ import { renderInfographic } from "./infographic.js";
 import { interpretSpeech, eligibleForCloud } from "./director-core.js";
 import { createSpeechDirector } from "./speech-director.js";
 import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
+import { rememberRejectedProposal, wasProposalRejected, countRejectedProposals, clearRejectedProposals } from "./director-preferences.js";
 import { mountImportPanel } from "./import-ui.js";
 import { summarizeLecture } from "./lecture-readiness.js";
 import { testLectureMedia } from "./media-preflight.js";
@@ -205,6 +206,7 @@ function renderPresenter() {
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
           <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (للذاكرة والتصويت وAPI)" />
           <button type="button" id="director-memory-sync">مزامنة المشاهد المعتمدة محلياً</button>
+          <button type="button" id="director-forget-dismissals">مسح الاقتراحات المتجاهلة لهذه المحاضرة</button>
           <p class="meta" id="director-status" aria-live="polite">المايك متوقف. لا توجد طلبات API.</p>
           <p class="meta" id="director-last"></p>
           <div id="director-proposal" class="director-proposal" hidden>
@@ -434,7 +436,7 @@ function clearDirectorProposal() {
   if (panel) panel.hidden = true;
 }
 function showDirectorProposal(proposal, reason) {
-  if (!proposal) return;
+  if (!proposal || wasProposalRejected({ bundle: state.bundle, slide: state.index, utterance: proposal.utterance })) return;
   directorRuntime.pending = { ...proposal, slide: state.index, at: Date.now() };
   const panel = document.getElementById("director-proposal");
   const description = document.getElementById("director-reason");
@@ -561,6 +563,7 @@ function receiveDirectorSpeech(text) {
       observeStorySpeech(raw, mode);
       return;
     }
+    if (wasProposalRejected({ bundle: state.bundle, slide: state.index, utterance: raw })) return;
     const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
     if (saved && document.getElementById("director-mode")?.value !== "shadow") {
       showDirectorProposal({ spec: saved.spec, utterance: raw },
@@ -578,6 +581,11 @@ function receiveDirectorSpeech(text) {
     clearDirectorProposal();
     if (directorRuntime.activeOverlay) goMain();
     setDirectorStatus("تم فهم العودة إلى الموضوع الأصلي.");
+    return;
+  }
+  // Avoid repeating a dismissed exact proposal on the same slide; skip paid AI too.
+  if (wasProposalRejected({ bundle: state.bundle, slide: state.index, utterance: raw })) {
+    setDirectorStatus("تم تجاوز اقتراح تجاهلته سابقاً على هذه الشريحة. يمكنك مسح التجاهلات.");
     return;
   }
   if (moment.kind === "story") {
@@ -628,14 +636,27 @@ function setupDirector() {
     const pending = directorRuntime.pending;
     if (pending && !revealDirectorScene(pending)) setDirectorStatus("المشهد انتهت صلاحيته أو يوجد فيديو نشط.");
   };
-  document.getElementById("director-reject").onclick = () => { clearDirectorProposal(); setDirectorStatus("تم تجاهل الاقتراح."); };
+  document.getElementById("director-reject").onclick = () => {
+    const proposal = directorRuntime.pending;
+    const saved = proposal && rememberRejectedProposal({
+      bundle: state.bundle, slide: proposal.slide, utterance: proposal.utterance
+    });
+    directorRuntime.cloudSeq++; // Ignore any outdated paid analysis still in flight.
+    clearDirectorProposal();
+    setDirectorStatus(saved ? "تم تجاهل الاقتراح وتذكّر القرار محلياً لهذه الشريحة (14 يوماً)." : "تم تجاهل الاقتراح لهذه المرة.");
+  };
+  document.getElementById("director-forget-dismissals").onclick = () => {
+    const cleared = clearRejectedProposals(state.bundle);
+    setDirectorStatus(cleared ? "تم مسح التجاهلات المحفوظة لهذه المحاضرة." : "تعذر مسح التجاهلات من المتصفح.");
+  };
   document.getElementById("director-memory-sync").onclick = syncApprovedScenes;
   document.getElementById("director-admin-token").addEventListener("change", () => {
     if (directorAdminToken()) void syncApprovedScenes();
   });
   if (sessionStorage.getItem("alfa-admin-token")) void syncApprovedScenes();
   setDirectorStatus("مكتبة المشاهد المعتمدة لهذه المحاضرة: " +
-    countSavedScenes(state.bundle) + " — الاستماع متوقف.");
+    countSavedScenes(state.bundle) + " — الاقتراحات المتجاهلة: " +
+    countRejectedProposals(state.bundle) + " — الاستماع متوقف.");
   document.getElementById("director-test-run").onclick = () => receiveDirectorSpeech(
     document.getElementById("director-test-text").value);
 }
