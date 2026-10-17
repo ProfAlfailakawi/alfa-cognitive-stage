@@ -12,7 +12,7 @@ const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
 const role = location.hash === "#audience" ? "audience" : "presenter";
 
-const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9 };
+const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, problems: [] };
 let videoEl = null;
 let videoEls = [];
 let clockStart = Date.now();
@@ -127,6 +127,7 @@ function renderPresenter() {
           <button id="open-audience">فتح نافذة الطلبة</button>
           <button id="open-vote">التصويت</button>
           <button id="toggle-info">إنفوجرافيك</button>
+          <button id="import-lecture" type="button">إضافة PowerPoint</button>
           <select id="lecture-picker" aria-label="اختيار المحاضرة"></select>
         </div>
       </div>
@@ -173,6 +174,7 @@ function renderPresenter() {
             <button id="director-test-run" type="button">اختبر العبارة</button>
           </details>
         </section>
+        <div class="meta" id="compatibility" role="status"></div>
         <div><div class="label">ملاحظات المحاضر</div></div>
         <div class="notes" id="notes"></div>
       </aside>
@@ -183,6 +185,7 @@ function renderPresenter() {
   document.getElementById("home").onclick = () => goMain();
   document.getElementById("playvid").onclick = () => toggleVideo();
   document.getElementById("open-vote").onclick = () => window.open("/vote-admin.html", "alfa-vote-admin");
+  document.getElementById("import-lecture").onclick = () => openLectureImport();
   document.getElementById("toggle-info").onclick = () => {
     const form = document.getElementById("info-form");
     form.hidden = !form.hidden;
@@ -202,6 +205,12 @@ function renderPresenterPanels() {
   if (meta) meta.textContent = `الشريحة ${state.index} من ${state.count}`;
   const notes = document.getElementById("notes");
   if (notes) notes.textContent = slide.notes || "لا توجد ملاحظات لهذه الشريحة.";
+  const compatibility = document.getElementById("compatibility");
+  if (compatibility) {
+    compatibility.textContent = slide.hasAnimations
+      ? "⚠️ الشريحة تحتوي حركات PowerPoint أصلية لم تُنقل بعد إلى محرك الويب؛ تحقق منها قبل العرض."
+      : (state.problems.length ? "⚠️ بعض الوسائط مرتبطة بخارج الملف. راجع تقرير الاستيراد." : "");
+  }
   const next = state.slides[state.index];
   const thumb = document.getElementById("next-thumb");
   if (thumb) {
@@ -487,14 +496,82 @@ function setupClock() {
   }, 1000);
 }
 
+
+function openLectureImport() {
+  let dialog = document.getElementById("alfa-import-dialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "alfa-import-dialog";
+    dialog.className = "import-dialog";
+    dialog.innerHTML = `<form method="dialog" id="alfa-import-form">
+      <h2>إضافة محاضرة PowerPoint</h2>
+      <p>ارفع PPTX كما هو. يحتفظ النظام بالفيديوهات ويخبرك بالحركات التي تحتاج اختباراً. لا يُعدّل الملف الأصلي.</p>
+      <label>ملف المحاضرة <input id="import-file" type="file" accept=".pptx" required /></label>
+      <label>رمز المحاضر من Terminal <input id="import-token" type="password" autocomplete="off" required /></label>
+      <p class="import-status" id="import-status" role="status" aria-live="polite">قد يستغرق تحويل الفيديوهات بعض الوقت.</p>
+      <div class="director-actions">
+        <button id="import-submit" type="submit" class="primary">ابدأ التحويل</button>
+        <button id="import-cancel" type="button">إلغاء</button>
+      </div>
+    </form>`;
+    document.body.appendChild(dialog);
+    const form = dialog.querySelector("#alfa-import-form");
+    dialog.querySelector("#import-cancel").onclick = () => dialog.close();
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const file = dialog.querySelector("#import-file").files[0];
+      const token = dialog.querySelector("#import-token").value.trim();
+      const label = dialog.querySelector("#import-status");
+      const submit = dialog.querySelector("#import-submit");
+      if (!file || !/\.pptx$/i.test(file.name) || !token) {
+        label.textContent = "اختر ملف PPTX وأدخل رمز المحاضر."; return;
+      }
+      if (file.size > 150 * 1024 * 1024) {
+        label.textContent = "حجم الملف يتجاوز 150 ميغابايت."; return;
+      }
+      submit.disabled = true;
+      label.textContent = "جارٍ استيراد العرض وتحويل الوسائط. لا تغلق هذه النافذة…";
+      try {
+        const res = await fetch("/api/lectures/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "X-Admin-Token": token, "X-Alfa-Filename": encodeURIComponent(file.name) },
+          body: file,
+        });
+        const response = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(response.error || "فشل التحويل");
+        sessionStorage.setItem("alfa-admin-token", token);
+        const warning = response.animatedSlides
+          ? "تم اكتشاف " + response.animatedSlides + " شريحة فيها حركات غير محفوظة بصيغة الويب. "
+          : "";
+        label.textContent = "تم الاستيراد. " + warning + "سيفتح العرض الجديد.";
+        window.location.assign("/?bundle=" + encodeURIComponent(response.id));
+      } catch (err) {
+        label.textContent = err.message || "لم يكتمل الاستيراد؛ تحقق من Terminal.";
+      } finally { submit.disabled = false; }
+    });
+  }
+  dialog.querySelector("#import-token").value = sessionStorage.getItem("alfa-admin-token") || "";
+  dialog.showModal();
+}
+
 async function boot() {
   const current = await fetch("/bundles/current.json").then((r) => r.json()).catch(() => null);
   state.bundle = params.get("bundle") || (current && current.id);
   if (!state.bundle) {
-    app.innerHTML = `<p class="error">لا توجد محاضرة مجهزة. شغّل أداة البناء أولاً.</p>`;
+    if (role === "presenter") {
+      app.innerHTML = '<section class="empty-library"><h1>ALFA Cognitive Stage</h1><p>مكتبة المحاضرات فارغة. أضف PowerPoint لبدء التحضير، دون كتابة أي برومبت.</p><button id="import-first" class="primary">رفع محاضرة PPTX</button></section>';
+      document.getElementById("import-first").onclick = openLectureImport;
+    } else app.textContent = "لا توجد محاضرة جاهزة بعد.";
     return;
   }
-  const manifest = await fetch(`/bundles/${state.bundle}/manifest.json`).then((r) => r.json());
+  const response = await fetch("/bundles/" + encodeURIComponent(state.bundle) + "/manifest.json");
+  if (!response.ok) {
+    app.textContent = "تعذر تحميل هذه المحاضرة. تحقق من مكتبة المحاضرات.";
+    return;
+  }
+  const manifest = await response.json();
+  state.problems = manifest.problems || [];
   state.slides = manifest.slides;
   state.count = manifest.slideCount;
   state.aspect = manifest.aspect;

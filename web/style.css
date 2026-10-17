@@ -111,3 +111,16 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .director-box details { border-top: 1px solid var(--hair); padding-top: .5rem; }
 .director-box details input { margin: .4rem 0; }
 .side { grid-template-rows: auto auto auto 1fr; overflow-y: auto; }
+
+/* Native PPTX upload in a single presenter-facing experience. */
+.import-dialog { color: var(--ink); background: var(--canvas); border: 1px solid var(--hair);
+  border-radius: 18px; width: min(94vw, 540px); padding: 1.5rem; max-height: 90vh; }
+.import-dialog::backdrop { background: rgba(8,18,36,.68); }
+.import-dialog form { display: grid; gap: .9rem; }
+.import-dialog label { display: grid; gap: .35rem; }
+.import-dialog input { max-width: 100%; padding: .65rem; border: 1px solid var(--hair); border-radius: 9px; }
+.import-dialog .import-status { color: var(--soft); min-height: 1.6rem; }
+.empty-library { margin: min(12vh, 7rem) auto; max-width: 540px; padding: 2rem; text-align: center; }
+.empty-library h1 { font-size: clamp(1.5rem, 4vw, 2.6rem); }
+#compatibility:not(:empty) { padding: .65rem; border-radius: 9px; border: 1px solid #d8b463; color: #7b5209;
+  background: #fff7e2; font-size: .78rem; line-height: 1.6; }
