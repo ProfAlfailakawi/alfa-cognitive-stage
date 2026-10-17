@@ -519,11 +519,30 @@ async function syncApprovedScenes() {
     const data = await response.json();
     if (!response.ok) throw Error(data.error || "تعذر فتح ذاكرة المحاضرة");
     let recovered = 0;
+    // The current lecture stays a first-class cache, even when a second
+    // cross-lecture index request is not available (older local servers).
     for (const item of data.scenes || []) {
       if (rememberScene({ bundle: state.bundle, slide: item.slide, utterance: item.utterance,
         spec: item.spec })) recovered++;
     }
-    setDirectorStatus("تمت مزامنة " + recovered + " مشهد معتمد من الذاكرة المحلية. بلا API.");
+    let restoredAcross = 0;
+    try {
+      const libraryResponse = await fetch("/api/memory/library",
+        { headers: { "X-Admin-Token": token } });
+      if (libraryResponse.ok) {
+        const library = await libraryResponse.json();
+        for (const item of Array.isArray(library.scenes) ? library.scenes : []) {
+          if (item.bundle === state.bundle || typeof item.bundle !== "string" ||
+              !/^[a-zA-Z0-9_-]{4,64}$/.test(item.bundle)) continue;
+          try {
+            if (rememberScene({ bundle: item.bundle, slide: item.slide,
+              utterance: item.utterance, spec: item.spec })) restoredAcross++;
+          } catch {} // A damaged stored scene cannot interrupt the lecture.
+        }
+      }
+    } catch {} // Current lecture cache still works if cross-lecture sync fails.
+    setDirectorStatus("تمت مزامنة " + recovered + " مشهد لهذه المحاضرة و" +
+      restoredAcross + " من محاضرات سابقة محلياً. بلا API.");
   } catch (error) { setDirectorStatus(error.message); }
   finally { if (button) button.disabled = false; }
 }
