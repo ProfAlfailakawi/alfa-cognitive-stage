@@ -1,0 +1,12 @@
+{
+  "name": "alfa-cognitive-stage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ALFA Cognitive Stage — عرض المحاضرات بوضعين: المحاضر والطلبة",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.mjs",
+    "test:e2e": "node tests/e2e.mjs",
+    "test:build": "python3 -m unittest discover -s tools -p 'test_*.py'"
+  }
+}

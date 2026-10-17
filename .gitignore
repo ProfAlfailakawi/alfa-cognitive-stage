@@ -1,0 +1,7 @@
+node_modules/
+bundles/
+*.pptx
+*.mp4
+*.mov
+*.webm
+tests/*.png
