@@ -97,3 +97,17 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .info-form select, .info-form input, .info-form textarea {
   font: inherit; width: 100%; padding: 0.55rem; border-radius: 10px; border: 1px solid var(--hair); background: var(--canvas); color: var(--ink);
 }
+
+/* Session-only, opt-in speech director. All controls remain presenter-only. */
+.director-box { border: 1px solid var(--hair); background: var(--wash); border-radius: 14px; padding: .8rem; display: grid; gap: .6rem; }
+.director-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.director-box select, .director-box input[type="text"], .director-box input[type="password"] {
+  font: inherit; color: var(--ink); background: var(--canvas); border: 1px solid var(--hair);
+  border-radius: 10px; padding: .55rem; width: 100%; min-width: 0;
+}
+.director-cloud { display:flex; gap: .5rem; align-items: center; font-size: .85rem; }
+.director-box .meta { font-size: .78rem; margin: 0; color: var(--soft); overflow-wrap:anywhere; }
+.director-proposal { background: var(--canvas); border: 1px solid var(--hair); border-radius: 10px; padding: .75rem; }
+.director-box details { border-top: 1px solid var(--hair); padding-top: .5rem; }
+.director-box details input { margin: .4rem 0; }
+.side { grid-template-rows: auto auto auto 1fr; overflow-y: auto; }
