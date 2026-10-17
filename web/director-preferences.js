@@ -23,9 +23,10 @@ function fingerprint(utterance) {
   }
   return hash.toString(16).padStart(16, "0");
 }
-function valid({ bundle, slide, utterance } = {}) {
-  if (typeof bundle !== "string" || !bundle || !Number.isInteger(slide) || slide < 1) return null;
-  return fingerprint(utterance);
+function valid(input) {
+  if (!input || typeof input.bundle !== "string" || !input.bundle ||
+      !Number.isInteger(input.slide) || input.slide < 1) return null;
+  return fingerprint(input.utterance);
 }
 function read(bundle, storage, now) {
   try {
