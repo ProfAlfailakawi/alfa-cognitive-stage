@@ -45,6 +45,12 @@ jobs:
           node --check web/engagement-insights.js
           node --check web/poll-analytics.js
           node --check web/vote.js
+          node --check web/review.js
+          node --check web/insight-ui.js
+          node --check web/number-witness.js
+          node --check web/lecture-coach.js
+          node --check web/review-builder.js
+          node --check web/audience-sim.js
       - name: JS unit regression
         run: |
           npm run test:build-steps
@@ -61,6 +67,7 @@ jobs:
           npm run test:security
           npm run test:library
           npm run test:engagement
+          npm run test:insight
           npm run test:readiness
           npm run test:poll-analytics
       - uses: actions/setup-python@v5
@@ -104,6 +111,8 @@ jobs:
         run: npm run test:e2e-library
       - name: Word cloud, moderated questions, summaries and section comparison
         run: npm run test:e2e-engagement
+      - name: Understanding pulse, number witness, coach, student review and rehearsal audience
+        run: npm run test:e2e-insight
       - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
         run: npm run test:e2e-speech
       - name: Long-session stability, leaks, idle CPU and CSP violations

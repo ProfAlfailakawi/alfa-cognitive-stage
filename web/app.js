@@ -18,6 +18,8 @@ import { createSessionLog } from "./session-log.js";
 import { mountLibraryPanel } from "./library-ui.js";
 import { clockState, PLANNED_CHOICES } from "./lecture-clock.js";
 import { runRehearsal } from "./rehearsal.js";
+import { mountInsight } from "./insight-ui.js";
+import { createNumberWitness } from "./number-witness.js";
 import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
 
 const app = document.getElementById("app");
@@ -31,6 +33,8 @@ const audienceRequestId = role === "audience"
 const state = { index: 1, step: 0, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null };
 let videoEl = null;
 let videoEls = [];
+let insight = null;
+const numberWitness = createNumberWitness();
 const pollScreen = { visible: false, url: "", active: null };
 let clockStart = Date.now();
 let slideGeneration = 0;
@@ -250,6 +254,7 @@ function showSlide(index, step = 0) {
   state.step = clampStep(slide, step);
   clearTimeout(autoStepTimer);
   if (role === "presenter") sessionLog.slide(index, state.step);
+  if (role === "presenter") insight?.slideChanged();
   if (role === "presenter") {
     directorRuntime.cloudSeq++;
     directorRuntime.pending = null;
@@ -307,6 +312,7 @@ function renderPresenter() {
         <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
         <div id="lecture-import-mount"></div>
         <div id="library-mount"></div>
+        <div id="insight-mount"></div>
         <details class="readiness-drawer" id="readiness-drawer">
           <summary>جاهزية العرض وتوافق PowerPoint</summary>
           <div id="readiness-content" aria-live="polite"></div>
@@ -430,6 +436,11 @@ function renderPresenter() {
     getPollCode: () => { try { return new URL(pollScreen.url).searchParams.get("s"); } catch { return null; } },
     getUsage: async () => { const r = await fetch("/api/director/status", { headers: { "X-Admin-Token": directorAdminToken() } }); return r.ok ? r.json() : null; },
     onOpen: (bundle) => { sessionLog.end(); location.search = "?bundle=" + bundle; },
+  });
+  insight = mountInsight(document.getElementById("insight-mount"), {
+    getToken: directorAdminToken, getBundle: () => state.bundle, getManifest: () => state.manifest,
+    getSlide: () => state.index, sessionLog, getSlides: () => state.slides,
+    getPollCode: () => { try { return new URL(pollScreen.url).searchParams.get("s"); } catch { return null; } },
   });
   renderReadiness();
   setupPlannedClock();
@@ -925,6 +936,8 @@ function receiveDirectorSpeech(text, meta = {}) {
   directorRuntime.cloudSeq++;
   const context = directorContext();
   const decision = brain.observe(raw, context);
+  const slip = numberWitness.check(state.index, raw, context.slide.text + " " + context.slide.notes);
+  if (slip) insight?.witness(slip.message);
   if (decision.topic.shifted) {
     clearDirectorProposal();
     setDirectorStatus("لاحظت تغيّر الموضوع؛ أغلقت الاقتراحات المعلقة.");

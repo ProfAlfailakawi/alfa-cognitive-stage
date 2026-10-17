@@ -14,6 +14,11 @@ const OPEN_QUESTION_LIMIT = 280;
 const QUESTION_COOLDOWN_MS = 30000;
 const MAX_WORDS_PER_DEVICE = 3;
 const MAX_DISTINCT_WORDS = 200;
+const PULSE_COOLDOWN_MS = 3000;
+const PULSE_WINDOW_MS = 120000;
+const MAX_PULSE_SLIDES = 600;
+const MAX_REVIEW_ITEMS = 40;
+const LECTURE_ID = /^[a-f0-9]{12}$/;
 
 export class VoteError extends Error {
   constructor(message, status = 400) {
@@ -33,6 +38,7 @@ export function createVoteStore({ file = null } = {}) {
     const data = Object.fromEntries([...sessions].map(([code, s]) => [code, {
       polls: s.polls, nextId: s.nextId, questions: s.questions, nextQuestionId: s.nextQuestionId,
       createdAt: s.createdAt, label: s.label || "",
+      pulseSlides: s.pulseSlides, questionSlides: s.questionSlides, review: s.review || null,
     }]));
     const tmp = `${file}.tmp`;
     writeFileSync(tmp, JSON.stringify(data));
@@ -57,9 +63,43 @@ export function createVoteStore({ file = null } = {}) {
       sessions.set(code, { polls: s.polls, nextId: s.nextId, lastVoteAt: new Map(),
         createdAt: Number.isFinite(s.createdAt) ? s.createdAt : Date.now(), // legacy sessions start their retention clock now
         label: typeof s.label === "string" ? s.label.slice(0, 60) : "", wordDevices: new Map(),
+        ...pulseFields(s),
         questions, nextQuestionId: Math.max(1, Number(s.nextQuestionId) || 1,
           ...questions.map(q => q.id + 1)), lastQuestionAt: new Map() });
     }
+  }
+
+  // Pulse and review state. Only aggregate counts reach the disk; device tokens live in memory.
+  function slideKey(c) { return `${c.lecture}#${c.slide}`; }
+  function countMap(value) {
+    const out = {};
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const [k, v] of Object.entries(value).slice(0, MAX_PULSE_SLIDES)) {
+        if (/^[a-f0-9]{12}#\d{1,4}$/.test(k) && v && typeof v === "object") {
+          const got = Number.isSafeInteger(v.got) && v.got > 0 ? v.got : 0, lost = Number.isSafeInteger(v.lost) && v.lost > 0 ? v.lost : 0;
+          out[k] = { got, lost };
+        }
+      }
+    }
+    return out;
+  }
+  function countOnly(value) {
+    const out = {};
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const [k, v] of Object.entries(value).slice(0, MAX_PULSE_SLIDES)) if (/^[a-f0-9]{12}#\d{1,4}$/.test(k) && Number.isSafeInteger(v) && v > 0) out[k] = v;
+    }
+    return out;
+  }
+  function pulseFields(s) {
+    return { pulseSlides: countMap(s.pulseSlides), questionSlides: countOnly(s.questionSlides), review: validReview(s.review),
+      context: null, pulseDevices: new Map(), pulseRecent: [], lastPulseAt: new Map() };
+  }
+  function validReview(r) {
+    if (!r || typeof r !== "object" || !Array.isArray(r.items)) return null;
+    return { title: clean(r.title, 120), publishedAt: Number.isFinite(r.publishedAt) ? r.publishedAt : Date.now(),
+      items: r.items.slice(0, MAX_REVIEW_ITEMS).map((i) => ({ slide: Number.isInteger(i?.slide) && i.slide > 0 ? i.slide : 0,
+        heading: clean(i?.heading, 120), lines: (Array.isArray(i?.lines) ? i.lines : []).slice(0, 4).map((l) => clean(l, 140)).filter(Boolean) }))
+        .filter((i) => i.heading || i.lines.length) };
   }
 
   function session(code) {
@@ -80,7 +120,7 @@ export function createVoteStore({ file = null } = {}) {
       code = Array.from({ length: 6 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join("");
     } while (sessions.has(code));
     sessions.set(code, { polls: [], nextId: 1, lastVoteAt: new Map(), createdAt: Date.now(), label: "", wordDevices: new Map(),
-      questions: [], nextQuestionId: 1, lastQuestionAt: new Map() });
+      ...pulseFields({}), questions: [], nextQuestionId: 1, lastQuestionAt: new Map() });
     persist();
     return code;
   }
@@ -221,15 +261,17 @@ export function createVoteStore({ file = null } = {}) {
       throw new VoteError("يمكن إرسال سؤال آخر بعد 30 ثانية", 429);
     }
     s.lastQuestionAt.set(token, now);
-    const item = { id: s.nextQuestionId++, text: message, createdAt: now, flagged: !screening.ok };
+    const slide = s.context ? slideKey(s.context) : null;
+    const item = { id: s.nextQuestionId++, text: message, createdAt: now, flagged: !screening.ok, ...(slide ? { slide } : {}) };
     s.questions.push(item);
+    if (slide && screening.ok) s.questionSlides[slide] = (s.questionSlides[slide] || 0) + 1;
     persist();
     return { id: item.id };
   }
 
   function listQuestions(code) {
-    return session(code).questions.slice().reverse().map(({ id, text, createdAt, flagged }) => ({
-      id, text, createdAt, flagged: Boolean(flagged)
+    return session(code).questions.slice().reverse().map(({ id, text, createdAt, flagged, slide }) => ({
+      id, text, createdAt, flagged: Boolean(flagged), ...(slide ? { slide } : {})
     }));
   }
 
@@ -288,6 +330,88 @@ export function createVoteStore({ file = null } = {}) {
       polls: s.polls.length })).sort((a, b) => b.createdAt - a.createdAt);
   }
 
+  // ---- Understanding pulse: two anonymous buttons on the phone, attributed to the slide the lecturer is on ----
+  function setContext(code, { lecture, slide }) {
+    const s = session(code);
+    if (!LECTURE_ID.test(String(lecture)) || !Number.isInteger(slide) || slide < 1 || slide > 9999) throw new VoteError("سياق الشريحة غير صالح");
+    s.context = { lecture, slide, since: Date.now() };
+    return { ok: true };
+  }
+  function sendPulse(code, token, state) {
+    const s = session(code);
+    if (typeof token !== "string" || !/^[a-f0-9]{24,64}$/.test(token)) throw new VoteError("رمز الجهاز غير صالح");
+    if (state !== "got" && state !== "lost") throw new VoteError("إشارة غير معروفة");
+    if (!s.context) throw new VoteError("المحاضرة لم تبدأ بعد", 409);
+    const now = Date.now();
+    if (now - (s.lastPulseAt.get(token) || 0) < PULSE_COOLDOWN_MS) throw new VoteError("انتظر لحظة قبل إشارة جديدة", 429);
+    s.lastPulseAt.set(token, now);
+    const key = slideKey(s.context);
+    if (!s.pulseSlides[key] && Object.keys(s.pulseSlides).length >= MAX_PULSE_SLIDES) throw new VoteError("امتلأ سجل الشرائح", 429);
+    // One standing answer per device per slide: changing your mind moves your signal, it never doubles it.
+    const mapKey = key + ":" + token;
+    const before = s.pulseDevices.get(mapKey);
+    const row = (s.pulseSlides[key] ||= { got: 0, lost: 0 });
+    if (before === state) return { ok: true, state };
+    if (before) row[before] = Math.max(0, row[before] - 1);
+    row[state] += 1;
+    s.pulseDevices.set(mapKey, state);
+    s.pulseRecent = s.pulseRecent.filter((x) => now - x.at < PULSE_WINDOW_MS && !(x.token === token && x.key === key));
+    s.pulseRecent.push({ at: now, token, key, state });
+    persist();
+    return { ok: true, state };
+  }
+  const MIN_PULSE_DEVICES = 3; // below this, a share could point at a person: show nothing but the count of signals
+  const HOT_PULSE_DEVICES = 5, HOT_LOST_SHARE = 0.4; // lecturer-facing alert thresholds (design choices, not measured norms)
+  function pulseLive(code) {
+    const s = session(code);
+    const now = Date.now();
+    s.pulseRecent = s.pulseRecent.filter((x) => now - x.at < PULSE_WINDOW_MS);
+    const key = s.context ? slideKey(s.context) : null;
+    const rows = key ? s.pulseRecent.filter((x) => x.key === key) : [];
+    const lost = rows.filter((x) => x.state === "lost").length;
+    const out = { slide: s.context?.slide ?? null, devices: rows.length, windowSeconds: PULSE_WINDOW_MS / 1000, hidden: rows.length < MIN_PULSE_DEVICES };
+    if (!out.hidden) {
+      out.lost = lost; out.got = rows.length - lost; out.lostShare = Number((lost / rows.length).toFixed(2));
+      out.level = rows.length >= HOT_PULSE_DEVICES && lost / rows.length >= HOT_LOST_SHARE ? "watch" : "calm";
+    }
+    return out;
+  }
+  function pulseReport(code) {
+    const s = session(code);
+    const keys = new Set([...Object.keys(s.pulseSlides), ...Object.keys(s.questionSlides)]);
+    return [...keys].map((k) => { const [lecture, slide] = k.split("#"); const p = s.pulseSlides[k] || { got: 0, lost: 0 };
+      return { lecture, slide: Number(slide), got: p.got, lost: p.lost, questions: s.questionSlides[k] || 0 }; })
+      .sort((a, b) => a.lecture.localeCompare(b.lecture) || a.slide - b.slide);
+  }
+  /** Per-session slide aggregates for one lecture (counts only), newest session first. */
+  function lectureHistory(lecture) {
+    if (!LECTURE_ID.test(String(lecture))) throw new VoteError("معرّف المحاضرة غير صالح");
+    return [...sessions].map(([code, s]) => ({ code, label: s.label || "", createdAt: s.createdAt,
+      slides: pulseReport(code).filter((r) => r.lecture === lecture).map(({ slide, got, lost, questions }) => ({ slide, got, lost, questions })) }))
+      .filter((x) => x.slides.length).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  // ---- Student review page: published by the lecturer, built from the scenes the lecturer actually showed ----
+  function publishReview(code, input) {
+    const review = validReview({ ...input, publishedAt: Date.now() });
+    if (!review || !review.items.length) throw new VoteError("لا توجد عناصر للمراجعة");
+    session(code).review = review;
+    persist();
+    return { ok: true, items: review.items.length };
+  }
+  function unpublishReview(code) { session(code).review = null; persist(); return { ok: true }; }
+  function studentReview(code) {
+    const r = session(code).review;
+    if (!r) throw new VoteError("لم تُنشر مراجعة لهذه الجلسة", 404);
+    return r;
+  }
+  function keepQuestion(code, id) {
+    const q = session(code).questions.find((x) => x.id === id);
+    if (!q) throw new VoteError("السؤال غير موجود", 404);
+    if (q.flagged) throw new VoteError("لا يُحفظ سؤال مُعلَّم للمراجعة", 422);
+    return { text: q.text, slide: q.slide || null };
+  }
+
   // Privacy maintenance. Device tokens exist only to stop double voting while a poll is open:
   // once a poll has been closed for a while they are dropped and only the counts remain.
   function maintain({ now = Date.now(), tokenHours = 24, retentionDays = 180 } = {}) {
@@ -322,5 +446,6 @@ export function createVoteStore({ file = null } = {}) {
 
   return { createSession, createPoll, repeatPoll, setStatus, setReveal, vote,
     studentState, presenterState, submitQuestion, listQuestions, dismissQuestion, hasSession,
-    maintain, deleteSession, deleteAll, summary, submitWords, hideWord, setLabel, listSessions };
+    maintain, deleteSession, deleteAll, summary, submitWords, hideWord, setLabel, listSessions,
+    setContext, sendPulse, pulseLive, pulseReport, lectureHistory, publishReview, unpublishReview, studentReview, keepQuestion };
 }

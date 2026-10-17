@@ -26,13 +26,14 @@ npm start
 - **الرسومات:** 10 أنواع SVG بسيطة دون توليد صور: stat، compare، steps، concept، flow، timeline، story، bars، cycle، activity ([التفاصيل](docs/SCENES_AR.md)).
 - **التصويت:** لوحة داخل الاستوديو، QR للطلبة عبر LAN، نتائج مباشرة وإعادة جولات، ومقارنة نسب جولات السؤال وتصدير CSV مجمّع؛ يحتاج الشبكة نفسها أو استضافة خاصة.
 - **الذاكرة:** حفظ المشاهد في المتصفح وعلى الخادم بعد إدخال رمز الإدارة؛ الإعادة بلا طلبات OpenAI جديدة عند مطابقة محفوظة.
+- **نبض الفهم والمراجعة والبروفة:** زرّا «فاهم/ضايع» المجهولان، وتنبيه خاص عند مخالفة رقم تنطقه لما في الشريحة، ومقترح واحد قبل المحاضرة القادمة، ومراجعة تنشرها للطلاب من مشاهد محاضرتك فقط، وأسئلة سابقة حقيقية للتدرّب — [التفاصيل](docs/INSIGHT_AR.md).
 - **الخصوصية:** لا يُرسل مفتاح OpenAI إلى المتصفح، وملفات الشرائح والملاحظات لا تُشارك؛ أي طلب بعيد (هاتف/نفق) يرى صفحة التصويت فقط — [المشاركة الآمنة](docs/SECURE_SHARING_AR.md).
 
 ## حدود التجربة الحالية
 
 حركات التأكيد والمسارات وSmartArt غير مدعومة، وفهم الذكاء الاصطناعي ليس بثاً صوتياً كاملاً، والتعرف الصوتي قد يستعين بخدمة Chrome الخارجية. لم نختبر هذه النسخة بعد على Mac الحقيقي أو 5 هواتف فعلية أو شبكة الجامعة.
 
-لمعرفة حالة كل متطلب بالتفصيل، اقرأ **[مصفوفة القبول](docs/ACCEPTANCE_MATRIX_AR.md)** و**[التدقيق الشامل](docs/SPEC_STATUS_AR.md)**؛ ومن الوثائق: [المشاهد](docs/SCENES_AR.md)، [التحصين](docs/HARDENING_AR.md)، [الصوت](docs/VOICE_PATH_AR.md)، [التفاعل](docs/ENGAGEMENT_AR.md)، [الذاكرة](docs/SEMANTIC_MEMORY_AR.md)، [المكتبة والبروفة](docs/LIBRARY_REHEARSAL_REPORTS_AR.md)، [الاستيراد](docs/IMPORT_FORMATS_AR.md)، [المشاركة الآمنة](docs/SECURE_SHARING_AR.md).
+لمعرفة حالة كل متطلب بالتفصيل، اقرأ **[مصفوفة القبول](docs/ACCEPTANCE_MATRIX_AR.md)** و**[التدقيق الشامل](docs/SPEC_STATUS_AR.md)**؛ ومن الوثائق: [المشاهد](docs/SCENES_AR.md)، [التحصين](docs/HARDENING_AR.md)، [الصوت](docs/VOICE_PATH_AR.md)، [التفاعل](docs/ENGAGEMENT_AR.md)، [نبض الفهم والمراجعة](docs/INSIGHT_AR.md)، [الذاكرة](docs/SEMANTIC_MEMORY_AR.md)، [المكتبة والبروفة](docs/LIBRARY_REHEARSAL_REPORTS_AR.md)، [الاستيراد](docs/IMPORT_FORMATS_AR.md)، [المشاركة الآمنة](docs/SECURE_SHARING_AR.md).
 
 ## الاختبارات
 

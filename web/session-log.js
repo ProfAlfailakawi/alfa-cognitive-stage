@@ -116,7 +116,7 @@ export function summarizeSession(session, { manifest = {}, polls = [], pendingQu
     scenes: { shown: scenes.length, byType, auto: scenes.filter((s) => s.source === "auto").length,
       approved: scenes.filter((s) => s.source === "approved" || s.source === "memory").length,
       manual: scenes.filter((s) => s.source === "manual").length, declined: declined.length,
-      list: scenes.slice(0, 40).map((s) => ({ slide: s.slide, type: s.sceneType, title: s.title, source: s.source })) },
+      list: scenes.slice(0, 40).map((s) => ({ slide: s.slide, type: s.sceneType, title: s.title, lines: s.lines || [], source: s.source })) },
     videos: [...videoMs].map(([key, ms]) => { const [slide, clip] = key.split(":").map(Number); return { slide, clip: clip + 1, playedMs: ms }; }),
     digressions,
     polls: (Array.isArray(polls) ? polls : []).slice(0, 20).map((p) => ({

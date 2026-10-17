@@ -24,15 +24,15 @@ export function requestOrigin(address, headers = {}) {
   return "local";
 }
 
-const STUDENT_FILES = new Set(["/vote.html", "/vote.js", "/style.css", "/favicon.ico"]);
+const STUDENT_FILES = new Set(["/vote.html", "/vote.js", "/review.html", "/review.js", "/style.css", "/favicon.ico"]);
 /** Is this request part of what a student phone may use? Called only for "remote" requests. */
 export function studentSurfaceAllows(method, pathname) {
   if (method === "GET" || method === "HEAD") {
     if (STUDENT_FILES.has(pathname)) return true;
     if (/^\/fonts\/[A-Za-z0-9_.-]+\.woff2$/.test(pathname)) return true;
   }
-  const api = pathname.match(/^\/api\/sessions\/([A-Za-z0-9]{6})\/(state|vote|questions|words)$/);
+  const api = pathname.match(/^\/api\/sessions\/([A-Za-z0-9]{6})\/(state|vote|questions|words|pulse|review)$/);
   if (!api) return false;
-  if (api[2] === "state") return method === "GET";
-  return method === "POST";
+  if (api[2] === "state" || api[2] === "review") return method === "GET";
+  return method === "POST"; // pulse included: the lecturer-only reads and context writes use other paths or the admin token
 }
