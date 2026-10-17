@@ -16,7 +16,7 @@ assert.equal(eligibleForCloud(stat, "في دراسة ذكرت أن ٦٨٪"), fal
 assert.equal(eligibleForCloud(interpretSpeech("بقولكم قصة مؤثرة عن شخص"), "بقولكم قصة مؤثرة عن شخص"), true);
 assert.equal(eligibleForCloud(interpretSpeech("زين نرجع لموضوعنا"), "زين نرجع لموضوعنا"), false);
 assert.equal(interpretSpeech("ذكرت الدراسة نسبة 68% عفواً أقصد 86%")?.spec?.lines[0],"86%");
-assert.equal(interpretSpeech("ارتفعت النسبة من 30% إلى 70%")?.kind,undefined);
+assert.equal(interpretSpeech("ارتفعت النسبة من 30% إلى 70%")?.kind,"compare");
 assert.equal(interpretSpeech("وصلت نسبة المشاركة إلى ٧٤ بالمية")?.spec?.lines[0],"74%");
 const fromTo = interpretSpeech("ارتفعت النسبة من ٣٠٪ إلى ٧٠٪");
 assert.equal(fromTo?.kind, "compare");
