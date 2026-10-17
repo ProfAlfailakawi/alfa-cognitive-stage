@@ -16,7 +16,7 @@ import { createVoteStore, VoteError } from "./votes.mjs";
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 try { loadEnvFile(join(root, ".env")); } catch (err) { if (err.code !== "ENOENT") throw err; }
 const webRoot = join(root, "web");
-const bundlesRoot = join(root, "bundles");
+const bundlesRoot = process.env.BUNDLES_ROOT ? resolve(process.env.BUNDLES_ROOT) : join(root, "bundles");
 const port = Number(process.env.PORT || 4173);
 const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
 const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });

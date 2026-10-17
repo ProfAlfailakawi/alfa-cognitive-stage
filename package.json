@@ -20,6 +20,7 @@
     "test:library": "node tests/library.mjs",
     "test:library-api": "node tests/library-api.mjs",
     "test:browser-smoke": "node tests/browser-smoke.mjs",
-    "test:readiness": "node tests/readiness.mjs"
+    "test:readiness": "node tests/readiness.mjs",
+    "test:real-pptx": "node tests/import-pptx.mjs"
   }
 }
