@@ -6,7 +6,7 @@ import { createDirectorBrain } from "../web/director-brain.js";
 const bars = renderInfographic({ type: "bars", title: "توزيع", lines: ["الجوال | 40%", "الكمبيوتر | 35%", "التابلت | 25%"] });
 assert.match(bars, /viewBox="0 0 960 540"/);
 for (const t of ["الجوال", "40%", "35%", "25%"]) assert.ok(bars.includes(t), t);
-const widths = [...bars.matchAll(/<rect x="250" y="[\d.]+" width="([\d.]+)" height="[\d.]+" rx="10" fill="#(?:3e5c78|8f5a28)"/g)].map((m) => Number(m[1]));
+const widths = [...bars.matchAll(/<rect class="bar-fill" x="[\d.]+" y="[\d.]+" width="([\d.]+)"/g)].map((m) => Number(m[1]));
 assert.deepEqual(widths.map((w) => Math.round(w)), [430, 376, 269], "bars scale to the largest SPOKEN value, no invented total");
 for (const bad of [["أ | 120%", "ب | 5%"], ["أ | 40", "ب | 5%"], ["أ | 40%"], ["أ | 1%", "ب | 2%", "ج | 3%", "د | 4%", "هـ | 5%", "و | 6%", "ز | 7%"], ["بلا فاصل 40%", "ب | 5%"]])
   assert.throws(() => validateSpec({ type: "bars", title: "x", lines: bad }), /الأعمدة/);
