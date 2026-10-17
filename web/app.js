@@ -16,6 +16,9 @@ const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
 const role = location.hash === "#audience" ? "audience" : "presenter";
+const audienceRequestId = role === "audience"
+  ? Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("")
+  : null;
 
 const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null };
 let videoEl = null;
@@ -38,8 +41,9 @@ function currentVideoSnapshot() {
   return videoEls.map((el) => ({ time: validMediaTime(el.currentTime) ? el.currentTime : 0,
     playing: !el.paused && !el.ended }));
 }
-function broadcastSnapshot() {
-  send({ type: "snapshot", index: state.index, main: state.main,
+function broadcastSnapshot(requestId) {
+  if (typeof requestId !== "string" || !/^[a-f0-9]{16}$/.test(requestId)) return;
+  send({ type: "snapshot", requestId, index: state.index, main: state.main,
     videos: currentVideoSnapshot() });
 }
 function adjustAudienceMediaTime(el, time, force = false) {
@@ -816,6 +820,7 @@ function applyRemote(message) {
     return;
   }
   if (message.type === "snapshot") {
+    if (message.requestId !== audienceRequestId) return; // Do not disturb other audience tabs.
     if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
     state.main = message.main;
     if (message.index !== state.index) showSlide(message.index);
@@ -926,7 +931,7 @@ async function boot() {
     const message = event.data;
     if (!sameLecture(message, state.bundle)) return;
     if (role === "presenter" && message.type === "hello") {
-      broadcastSnapshot(); // Includes current video time/status for late-joining screens.
+      broadcastSnapshot(message.requestId); // Targeted late-join playback state.
       return;
     }
     if (role === "presenter" && message.type === "audience-media-issue" &&
@@ -938,7 +943,7 @@ async function boot() {
   };
   if (role === "audience") {
     renderAudience();
-    send({ type: "hello" });
+    send({ type: "hello", requestId: audienceRequestId });
   } else {
     renderPresenter();
     window.addEventListener("message", receiveVoteAdminMessage);
