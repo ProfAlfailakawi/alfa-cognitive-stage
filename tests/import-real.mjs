@@ -62,13 +62,26 @@ try {
   await page.goto(base+"/?bundle="+id+"#presenter");
   await page.locator("#next").click();
   await page.locator("video.clip").waitFor();
-  const decodes=await page.locator("video.clip").evaluate((v)=>new Promise((resolve)=>{
-    if(v.readyState>=2)return resolve(v.videoWidth>0);
-    v.addEventListener("loadeddata",()=>resolve(v.videoWidth>0),{once:true});
-    v.addEventListener("error",()=>resolve(false),{once:true});
-    setTimeout(()=>resolve(false),10000);
-  }));
-  assert.equal(decodes,true,"real embedded video must decode in Chromium");
+  // A metadata-only video remains readyState=1 until playback begins.
+  // Explicitly play before waiting for decoded frames; this tests media, not preload policy.
+  const playback=await page.locator("video.clip").evaluate(async (v)=>{
+    v.muted=true;
+    try {
+      await v.play();
+      if (v.readyState < 2) await Promise.race([
+        new Promise((resolve)=>v.addEventListener("loadeddata",resolve,{once:true})),
+        new Promise((resolve)=>v.addEventListener("error",resolve,{once:true})),
+        new Promise((resolve)=>setTimeout(resolve,10000))
+      ]);
+    } catch (error) {
+      return { decoded:false, reason:error.message, src:v.currentSrc, readyState:v.readyState,
+        videoWidth:v.videoWidth, mediaError:v.error?.code || null };
+    }
+    return {decoded:v.readyState>=2 && v.videoWidth>0,
+      src:v.currentSrc,readyState:v.readyState,videoWidth:v.videoWidth,
+      mediaError:v.error?.code || null};
+  });
+  assert.equal(playback.decoded,true,"real embedded video must decode in Chromium: "+JSON.stringify(playback));
   await page.close();
   assert.ok(manifest.slides[0].text.includes("الألعاب"));
   assert.ok(manifest.slides[1].notes.includes("2"));
