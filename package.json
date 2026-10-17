@@ -29,7 +29,7 @@
     "test:spoken-steps": "node tests/spoken-steps.mjs",
     "test:quota": "node tests/director-quota.mjs",
     "test:build-steps": "node tests/build-steps.mjs",
-    "test:e2e-return": "node tests/e2e-return.mjs",
+    "test:e2e-return": "node tests/e2e-return.mjs && node tests/e2e-fade-race.mjs",
     "test:import-animated": "node tests/import-animated.mjs",
     "test:e2e-memory": "node tests/e2e-memory.mjs",
     "test:remote-surface": "node tests/remote-surface.mjs",

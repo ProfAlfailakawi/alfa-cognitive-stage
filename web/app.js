@@ -34,6 +34,7 @@ let videoEls = [];
 const pollScreen = { visible: false, url: "", active: null };
 let clockStart = Date.now();
 let slideGeneration = 0;
+let stepTransitionId = 0;
 let autoStepTimer = null;
 let currentOverlay = null; // spec of the scene now on screen, for return snapshots
 const returnStack = createReturnStack();
@@ -194,20 +195,24 @@ function slideImageUrl(slide, step) {
 }
 // Calm single cross-fade between two build states of the SAME slide; never restarts the slide.
 function swapStepImage(img, url, alt, generation, ms) {
+  const transitionId = ++stepTransitionId;
+  document.querySelectorAll(".step-fade").forEach((el) => el.remove());
   const incoming = new Image();
   incoming.decoding = "async";
   incoming.src = url;
   const commit = () => {
-    if (generation !== slideGeneration) return;
+    if (generation !== slideGeneration || transitionId !== stepTransitionId) return;
     const layer = document.createElement("img");
     layer.className = "slide step-fade";
     layer.alt = alt;
     layer.src = url;
     layer.style.transition = `opacity ${ms}ms ease`;
     img.after(layer);
-    requestAnimationFrame(() => requestAnimationFrame(() => { layer.style.opacity = "1"; }));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (generation === slideGeneration && transitionId === stepTransitionId) layer.style.opacity = "1";
+    }));
     setTimeout(() => {
-      if (generation === slideGeneration) { img.src = url; img.alt = alt; }
+      if (generation === slideGeneration && transitionId === stepTransitionId) { img.src = url; img.alt = alt; }
       layer.remove();
     }, ms + 40);
   };
@@ -248,6 +253,7 @@ function showSlide(index, step = 0) {
   if (!slide) return;
   state.index = index;
   state.step = clampStep(slide, step);
+  ++stepTransitionId;
   clearTimeout(autoStepTimer);
   if (role === "presenter") sessionLog.slide(index, state.step);
   if (role === "presenter") {
