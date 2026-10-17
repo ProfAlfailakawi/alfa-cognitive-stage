@@ -20,7 +20,7 @@ let clockStart = Date.now();
 let slideGeneration = 0;
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
-  recent: [], cloudSeq: 0, activeOverlay: false,
+  recent: [], cloudSeq: 0, activeOverlay: false, story: null,
 };
 
 function send(message) {
@@ -88,6 +88,7 @@ function showSlide(index) {
   if (role === "presenter") {
     directorRuntime.cloudSeq++;
     directorRuntime.pending = null;
+    directorRuntime.story = null;
   }
   const img = document.getElementById("slide-img");
   const generation = ++slideGeneration;
@@ -139,6 +140,10 @@ function renderPresenter() {
             <option value="stat">بطاقة إحصائية</option>
             <option value="compare">مقارنة (الأول | الثاني)</option>
             <option value="steps">خطوات</option>
+            <option value="concept">خريطة مفاهيم</option>
+            <option value="flow">تسلسل تعليمي</option>
+            <option value="timeline">خط زمني</option>
+            <option value="story">مشهد قصصي</option>
           </select>
           <input id="info-title" type="text" maxlength="120" placeholder="العنوان" />
           <textarea id="info-lines" rows="3" placeholder="البطاقة: الرقم في السطر الأول ثم الوصف&#10;المقارنة: سطر لكل مقارنة&#10;الخطوات: خطوة في كل سطر"></textarea>
@@ -158,6 +163,7 @@ function renderPresenter() {
             <option value="balanced">متوازن — الإحصائية الواضحة تلقائياً</option>
             <option value="shadow">وضع الظل — تحليل فقط</option>
             <option value="safe">محافظ — موافقتك على كل مشهد</option>
+            <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
           <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (لـAPI فقط)" />
@@ -339,6 +345,27 @@ async function requestDirectorAI(text, seq) {
     if (seq === directorRuntime.cloudSeq) setDirectorStatus("الاتصال السحابي غير متاح؛ العرض مستمر.");
   }
 }
+function observeStorySpeech(utterance, mode) {
+  const story = directorRuntime.story;
+  if (!story || story.slide !== state.index || Date.now() - story.started > 75000) {
+    directorRuntime.story = null;
+    return;
+  }
+  const clean = String(utterance || "").trim();
+  if (!clean || clean.length < 15 || story.last === clean) return;
+  story.last = clean;
+  story.events.push(clean.slice(0, 100));
+  story.events = story.events.slice(0, 4);
+  if (story.events.length < 2) return;
+  const spec = { type: "story", title: "قصة يرويها المحاضر", lines: [...story.events] };
+  const proposal = { spec, utterance: story.events.join(" "), slide: state.index, at: Date.now() };
+  if (mode === "creative" && !videoEls.some((el) => !el.paused)) {
+    revealDirectorScene(proposal);
+  } else if (mode !== "shadow") {
+    showDirectorProposal(proposal, "قصة من حديثك كما نطقتها دون اختراع أحداث. راجع النص قبل إظهاره.");
+  }
+}
+
 function receiveDirectorSpeech(text) {
   const raw = String(text || "").trim();
   if (!raw) return;
@@ -361,13 +388,19 @@ function receiveDirectorSpeech(text) {
   if (key === directorRuntime.lastKey && Date.now() - directorRuntime.lastAt < 15000) return;
   directorRuntime.lastKey = key;
   directorRuntime.lastAt = Date.now();
-  const mode = document.getElementById("director-mode")?.value || "balanced";
   if (moment.kind === "return") {
+    directorRuntime.story = null;
     directorRuntime.cloudSeq++;
     clearDirectorProposal();
     if (directorRuntime.activeOverlay) goMain();
     setDirectorStatus("تم فهم العودة إلى الموضوع الأصلي.");
     return;
+  }
+  if (moment.kind === "story") {
+    directorRuntime.story = {
+      slide: state.index, started: Date.now(), last: raw,
+      events: [raw.slice(0, 100)],
+    };
   }
   if (mode === "shadow") {
     setDirectorStatus("وضع الظل: اكتُشف " + moment.kind + " دون تغيير شاشة الطلبة.");
