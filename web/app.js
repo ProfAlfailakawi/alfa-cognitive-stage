@@ -175,7 +175,8 @@ function renderPresenter() {
             <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
-          <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (لـAPI فقط)" />
+          <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (للذاكرة والتصويت وAPI)" />
+          <button type="button" id="director-memory-sync">مزامنة المشاهد المعتمدة محلياً</button>
           <p class="meta" id="director-status" aria-live="polite">المايك متوقف. لا توجد طلبات API.</p>
           <p class="meta" id="director-last"></p>
           <div id="director-proposal" class="director-proposal" hidden>
@@ -335,6 +336,47 @@ function showDirectorProposal(proposal, reason) {
   if (description) description.textContent = reason;
   if (panel) panel.hidden = false;
 }
+function directorAdminToken() {
+  return document.getElementById("director-admin-token")?.value.trim() ||
+    sessionStorage.getItem("alfa-admin-token") || "";
+}
+async function saveApprovedSceneServer(proposal) {
+  if (!proposal?.utterance || !proposal?.spec) return;
+  const token = directorAdminToken();
+  if (!token) return; // Browser cache still works; no paid API request is involved.
+  try {
+    const response = await fetch("/api/memory/" + encodeURIComponent(state.bundle), {
+      method: "POST",
+      headers: { "X-Admin-Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify({ slide: state.index, utterance: proposal.utterance, spec: proposal.spec }),
+    });
+    if (!response.ok) {
+      setDirectorStatus("المشهد معروض ومحفوظ بالمتصفح، لكن لم يُحفظ في مكتبة الخادم.");
+    }
+  } catch {
+    setDirectorStatus("المشهد محفوظ بالمتصفح فقط؛ اتصال الذاكرة المحلية غير متاح.");
+  }
+}
+async function syncApprovedScenes() {
+  const token = directorAdminToken();
+  if (!token) { setDirectorStatus("مزامنة الذاكرة تحتاج رمز المحاضر."); return; }
+  const button = document.getElementById("director-memory-sync");
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch("/api/memory/" + encodeURIComponent(state.bundle),
+      { headers: { "X-Admin-Token": token } });
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error || "تعذر فتح ذاكرة المحاضرة");
+    let recovered = 0;
+    for (const item of data.scenes || []) {
+      if (rememberScene({ bundle: state.bundle, slide: item.slide, utterance: item.utterance,
+        spec: item.spec })) recovered++;
+    }
+    setDirectorStatus("تمت مزامنة " + recovered + " مشهد معتمد من الذاكرة المحلية. بلا API.");
+  } catch (error) { setDirectorStatus(error.message); }
+  finally { if (button) button.disabled = false; }
+}
+
 function revealDirectorScene(proposal) {
   if (!proposal?.spec || proposal.slide !== state.index ||
       Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
@@ -342,9 +384,12 @@ function revealDirectorScene(proposal) {
     renderLayer(proposal.spec);
     send({ type: "infographic", spec: proposal.spec });
     directorRuntime.activeOverlay = true;
-    if (proposal.utterance) rememberScene({
-      bundle: state.bundle, slide: state.index, utterance: proposal.utterance, spec: proposal.spec
-    });
+    if (proposal.utterance) {
+      rememberScene({
+        bundle: state.bundle, slide: state.index, utterance: proposal.utterance, spec: proposal.spec
+      });
+      void saveApprovedSceneServer(proposal);
+    }
     clearDirectorProposal();
     setDirectorStatus("مشهد بصري — زر E للعودة الفورية");
     return true;
@@ -354,8 +399,7 @@ function revealDirectorScene(proposal) {
   }
 }
 async function requestDirectorAI(text, seq) {
-  const token = document.getElementById("director-admin-token")?.value.trim() ||
-    sessionStorage.getItem("alfa-admin-token") || "";
+  const token = directorAdminToken();
   if (!token) { setDirectorStatus("API يحتاج رمز المحاضر من شاشة Terminal."); return; }
   try {
     const current = state.slides[state.index - 1] || {};
@@ -472,6 +516,7 @@ function setupDirector() {
     if (pending && !revealDirectorScene(pending)) setDirectorStatus("المشهد انتهت صلاحيته أو يوجد فيديو نشط.");
   };
   document.getElementById("director-reject").onclick = () => { clearDirectorProposal(); setDirectorStatus("تم تجاهل الاقتراح."); };
+  document.getElementById("director-memory-sync").onclick = syncApprovedScenes;
   setDirectorStatus("مكتبة المشاهد المعتمدة لهذه المحاضرة: " +
     countSavedScenes(state.bundle) + " — الاستماع متوقف.");
   document.getElementById("director-test-run").onclick = () => receiveDirectorSpeech(
