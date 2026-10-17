@@ -11,7 +11,7 @@
     "test:vote": "node tests/vote.mjs",
     "test:infographic": "node tests/infographic.mjs",
     "test": "npm run test:build && npm run test:director && npm run test:speech && npm run test:director-ai && npm run test:usage && npm run test:memory && npm run test:preferences && npm run test:import && npm run test:layouts && npm run test:media-preflight && npm run test:scene-store && npm run test:security && npm run test:readiness && npm run test:poll-analytics && npm run test:vote-rounds && npm run test:infographic && npm run test:e2e && npm run test:vote",
-    "test:director": "node tests/director.mjs",
+    "test:director": "node tests/director.mjs && npm run test:spoken-steps",
     "test:director-ai": "node tests/director-ai.mjs",
     "test:vote-rounds": "node tests/vote-rounds.mjs",
     "test:memory": "node tests/memory.mjs",
@@ -25,6 +25,7 @@
     "test:media-preflight": "node tests/media-preflight.mjs && npm run test:video-sync",
     "test:preferences": "node tests/director-preferences.mjs",
     "test:usage": "node tests/director-usage.mjs",
-    "test:video-sync": "node tests/video-sync.mjs"
+    "test:video-sync": "node tests/video-sync.mjs",
+    "test:spoken-steps": "node tests/spoken-steps.mjs"
   }
 }
