@@ -104,7 +104,7 @@ jobs:
         run: npm run test:e2e-library
       - name: Word cloud, moderated questions, summaries and section comparison
         run: npm run test:e2e-engagement
-      - name: Voice path (scripted recogniser): engines, latency, offline, denied mic, video
+      - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
         run: npm run test:e2e-speech
       - name: Five-phone browser voting and persistence test
         run: npm run test:vote
