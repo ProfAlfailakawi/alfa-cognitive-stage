@@ -260,6 +260,24 @@ try {
     await audience.locator(".info-layer").count() === 0 &&
     (await presenter.textContent("#meta")).includes("7 من"));
 
+  // Natural ordered explanation uses a local 3-step SVG; no cloud prompts or research.
+  await presenter.selectOption("#director-mode", "safe");
+  await presenter.fill("#director-test-text",
+    "عندنا ثلاث خطوات: أول شي نحدد الهدف، ثاني شي نصمم النشاط، ثالث شي نقيس الأثر");
+  await presenter.click("#director-test-run");
+  check("spoken steps become a reviewable local scene",
+    await presenter.locator("#director-proposal").isVisible());
+  await presenter.click("#director-accept");
+  await audience.waitForSelector(".info-layer svg", { timeout: 6000 });
+  const proceduralScene = await audience.locator(".info-layer").textContent();
+  check("three spoken educational steps are preserved on student screen",
+    ["نحدد الهدف", "نصمم النشاط", "نقيس الاثر"].every((line) => proceduralScene.includes(line)));
+  await presenter.click("#home");
+  await audience.waitForTimeout(200);
+  check("emergency return removes local procedural scene safely",
+    await audience.locator(".info-layer").count() === 0 &&
+    (await presenter.textContent("#meta")).includes("7 من"));
+
   check("audience page has no JavaScript errors", audienceErrors.length === 0, audienceErrors.join(" | "));
 
   await presenter.screenshot({ path: join(root, "tests/presenter.png") });
