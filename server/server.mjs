@@ -206,6 +206,20 @@ async function handleApi(req, res, path) {
     requireAdmin(req);
     return sendJson(res, 200, { sessions: store.lectureHistory(code) });
   }
+  if (resource === "coursemap" && code && req.method === "GET") {
+    requireAdmin(req);
+    const lectures = library.snapshot().lectures.filter((l) => l.courseId === code).map((l) => {
+      const history = store.lectureHistory(l.bundle);
+      const merged = new Map();
+      for (const session of history) for (const r of session.slides) {
+        const m = merged.get(r.slide) || { slide: r.slide, got: 0, lost: 0, questions: 0 };
+        m.got += r.got; m.lost += r.lost; m.questions += r.questions;
+        merged.set(r.slide, m);
+      }
+      return { bundle: l.bundle, title: l.title, sessions: history.length, slides: [...merged.values()].sort((a, b) => a.slide - b.slide) };
+    });
+    return sendJson(res, 200, { lectures });
+  }
   if (resource === "bank") {
     requireAdmin(req);
     try {
