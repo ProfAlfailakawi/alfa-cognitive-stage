@@ -35,7 +35,10 @@ export function validateSpec(spec) {
     }
     return { type, title, lines: pairs };
   }
-  if (lines.length < 2 || lines.length > (type === "story" ? 4 : 6)) throw new Error("المشهد يحتاج من 2 إلى 6 عناصر (القصة حتى 4)");
+  if (type === "steps" && (lines.length < 2 || lines.length > 6))
+    throw new Error("الخطوات: من 2 إلى 6 خطوات");
+  if (type !== "steps" && (lines.length < 2 || lines.length > (type === "story" ? 4 : 6)))
+    throw new Error("المشهد يحتاج من 2 إلى 6 عناصر (القصة حتى 4)");
   return { type, title, lines };
 }
 
