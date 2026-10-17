@@ -31,7 +31,7 @@ export function studentSurfaceAllows(method, pathname) {
     if (STUDENT_FILES.has(pathname)) return true;
     if (/^\/fonts\/[A-Za-z0-9_.-]+\.woff2$/.test(pathname)) return true;
   }
-  const api = pathname.match(/^\/api\/sessions\/([A-Za-z0-9]{6})\/(state|vote|questions)$/);
+  const api = pathname.match(/^\/api\/sessions\/([A-Za-z0-9]{6})\/(state|vote|questions|words)$/);
   if (!api) return false;
   if (api[2] === "state") return method === "GET";
   return method === "POST";

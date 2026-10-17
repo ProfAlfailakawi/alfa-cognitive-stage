@@ -1083,7 +1083,18 @@ function renderPollScreen(data) {
   url.textContent = data.url;
   qrBlock.append(url);
   overlay.append(qrBlock);
-  if (data.active?.reveal && Array.isArray(data.active?.counts)) {
+  if (data.active?.reveal && data.active?.kind === "words" && Array.isArray(data.active.words)) {
+    const cloud = document.createElement("div");
+    cloud.className = "vote-wordcloud";
+    const max = Math.max(1, ...data.active.words.map((w) => Number(w.count) || 0));
+    for (const w of data.active.words.slice(0, 40)) {
+      const span = document.createElement("span");
+      span.textContent = String(w.word).slice(0, 24); // student text is only ever textContent
+      span.style.fontSize = (0.9 + 2.4 * ((Number(w.count) || 0) / max)).toFixed(2) + "em";
+      cloud.append(span);
+    }
+    overlay.append(cloud);
+  } else if (data.active?.reveal && Array.isArray(data.active?.counts)) {
     const counts = data.active.counts;
     const total = counts.reduce((a, b) => a + b, 0);
     const bars = document.createElement("div");

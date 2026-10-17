@@ -4,6 +4,7 @@ const percentage=(n,total)=>total?100*n/total:0;
 export function compareRounds(polls) {
   const groups=new Map();
   for (const p of (Array.isArray(polls)?polls:[])) {
+    if (p.kind==="words") continue; // clouds have no fixed options to compare
     const key=identity(p);
     if (!groups.has(key)) groups.set(key,[]);
     groups.get(key).push(p);
@@ -59,12 +60,17 @@ function escapeCsv(value){
   return '"'+s.replace(/"/g,'""')+'"';
 }
 export function exportAggregateCsv(polls) {
-  const rows=[["رمز الجولة","السؤال","الخيار","عدد الأصوات","إجمالي الجولة","النسبة المئوية"]];
+  const rows=[["رمز الجولة","السؤال","الخيار","عدد الأصوات","إجمالي الجولة","النسبة المئوية","هدف التعلم"]];
   for (const p of polls) {
     const total=p.total||0;
+    if (p.kind==="words") {
+      // Aggregate word counts only (hidden words are left out): no student text beyond single moderated words.
+      for (const w of (p.words||[]).filter(x=>!x.hidden)) rows.push([p.id,p.question,w.word,w.count,total,percentage(w.count,total).toFixed(1),p.objective||""]);
+      continue;
+    }
     p.options.forEach((option,i)=>rows.push([
       p.id,p.question,option,p.counts?.[i]||0,total,
-      percentage(p.counts?.[i]||0,total).toFixed(1)
+      percentage(p.counts?.[i]||0,total).toFixed(1),p.objective||""
     ]));
   }
   return "\ufeff"+rows.map(row=>row.map(escapeCsv).join(",")).join("\r\n");

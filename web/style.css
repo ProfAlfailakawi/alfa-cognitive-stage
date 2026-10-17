@@ -174,3 +174,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rehearsal-list .rehearsal-warn { color: var(--ember); }
 .rehearsal-list .rehearsal-fail { color: #b3261e; font-weight: 600; }
 .rehearsal-list .rehearsal-ok { color: #20683e; }
+
+/* Word cloud (audience screen) and lecturer word chips */
+.vote-wordcloud { display: flex; flex-wrap: wrap; gap: .3em 1em; justify-content: center; align-items: baseline; max-height: 55%; overflow: hidden; font-size: clamp(.8rem, 1.6vw, 1.6rem); color: #3e5c78; }
+.vote-wordcloud span:nth-child(3n) { color: #8f5a28; }
+.vote-wordcloud span:nth-child(5n) { color: #15161a; }

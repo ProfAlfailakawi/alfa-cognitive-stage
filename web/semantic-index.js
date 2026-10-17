@@ -12,7 +12,7 @@ import { normalizeArabic } from "./director-core.js";
 const BUCKETS = 4096;
 const STOP = new Set(("في من الى على عن ان انه انها هو هي هذا هذه هذي ذلك اللي الي ما لا مو شنو وش ليش كيف يعني زين طيب الحين اليوم بس " +
   "كان كانت يكون عند عندنا لو اذا بعد قبل مع او ثم يا الا كل بعض كذا جذي لكن هم احنا انتم انا نحن قال قلت ذكر ذكرت طلعت ظهر اظهرت اظهر " +
-  "بالمئه بالميه بالمايه بالمائه مئه ميه وايد كثير").split(/\s+/));
+  "بالمئه بالميه بالمايه بالمائه مئه ميه وايد كثير بين ممكن متى كم هل ياريت ماذا لماذا اين كيف").split(/\s+/));
 
 // Concept groups: a regex over normalized words -> canonical concept token.
 const CONCEPTS = [
@@ -57,6 +57,19 @@ export function numbersOf(text) {
   const n = normalizeArabic(text).toLowerCase()
     .replace(/(\d+(?:[.,]\d+)?)\s*(?:بالمئه|بالمائه|بالميه|بالمايه|في الميه|في المئه)/g, "$1%");
   return [...new Set([...n.matchAll(/\d+(?:[.,]\d+)?\s*%?/g)].map(([v]) => v.replace(/\s+/g, "").replace(",", ".")))].sort();
+}
+
+/** Content words (stem + original surface form) for topic summaries. */
+export function contentWords(text) {
+  const out = [];
+  for (const original of String(text || "").split(/[^\p{L}\p{N}%\u064b-\u065f]+/u)) {
+    const word = normalizeArabic(original).toLowerCase();
+    if (!word || NEGATION.has(word)) continue;
+    const s = stem(word);
+    if (/^\d+%?$/.test(word) || STOP.has(word) || STOP.has(s) || s.length < 3) continue;
+    out.push({ stem: s, word: original }); // `word` keeps the lecturer-readable spelling
+  }
+  return out;
 }
 
 /** Embed text -> { vec: Map<bucket, weight> (L2-normalised), slots, numbers, size } */
