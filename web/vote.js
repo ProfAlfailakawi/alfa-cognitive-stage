@@ -185,5 +185,14 @@ questionForm?.addEventListener("submit", async (event) => {
   }
 });
 
+// Understanding pulse: two anonymous buttons; the lecturer only ever sees the aggregate.
+for (const [id, state, thanks] of [["pulse-got", "got", "وصلت إشارتك: فاهم"], ["pulse-lost", "lost", "وصلت إشارتك: ضايع"]]) {
+  document.getElementById(id)?.addEventListener("click", async () => {
+    const message = document.getElementById("pulse-message");
+    try { await api("/pulse", { method: "POST", body: JSON.stringify({ state }) }); message.textContent = thanks; }
+    catch (err) { message.textContent = err.status === 409 ? "المحاضرة لم تبدأ بعد." : err.message; }
+  });
+}
+
 refresh();
 setInterval(() => refresh(false), POLL_MS);

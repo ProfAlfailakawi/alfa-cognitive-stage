@@ -166,7 +166,21 @@ function makeQuestionRow(item) {
       $("poll-msg").textContent = error.message;
     }
   });
-  row.append(question, button);
+  const keep = document.createElement("button");
+  keep.type = "button";
+  keep.textContent = "احتفظ به للبروفة";
+  keep.title = "يُحفظ نص السؤال فقط، دون أي هوية، لتتدرّب عليه قبل المحاضرة القادمة";
+  keep.addEventListener("click", async () => {
+    keep.disabled = true;
+    try {
+      const r = await call("POST", "/sessions/" + code + "/questions/" + item.id + "/keep", {});
+      keep.textContent = r.duplicate ? "محفوظ سابقاً" : "حُفظ للبروفة";
+    } catch (error) {
+      keep.disabled = false;
+      $("poll-msg").textContent = error.message;
+    }
+  });
+  row.append(question, keep, button);
   return row;
 }
 

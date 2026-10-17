@@ -170,7 +170,7 @@ try {
     (await adminPage.locator("#student-questions").textContent()).includes(questionText));
   check("question text is displayed safely, not executed as HTML",
     await adminPage.locator("#student-questions script, #student-questions img").count() === 0);
-  await adminPage.locator("#student-questions button").click();
+  await adminPage.locator("#student-questions button", { hasText: "إزالة السؤال" }).click();
   await adminPage.waitForSelector("#student-questions:has-text('لا توجد أسئلة')", { timeout: 7000 });
   check("lecturer can dismiss a question", (await (await admin(`/sessions/${code}/questions`)).json()).questions.length === 0);
   // Another student's question remains confidential and survives an intentional server restart.

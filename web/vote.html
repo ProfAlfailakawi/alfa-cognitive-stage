@@ -21,6 +21,13 @@
   <main class="vote" id="app">
     <p class="status" id="status">جارٍ الاتصال…</p>
   </main>
+  <section class="vote" aria-label="كيف تسير المحاضرة معك">
+    <div id="pulse" style="display:flex;gap:.6rem">
+      <button type="button" class="opt" id="pulse-got" style="flex:1;text-align:center">فاهم</button>
+      <button type="button" class="opt" id="pulse-lost" style="flex:1;text-align:center">ضايع</button>
+    </div>
+    <p class="status" id="pulse-message" role="status" aria-live="polite"></p>
+  </section>
   <section class="vote" aria-label="أسئلة مفتوحة للمحاضر">
     <details id="ask-lecturer">
       <summary>عندك سؤال للمحاضر؟</summary>
