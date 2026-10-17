@@ -44,7 +44,8 @@ try {
   const presenter=await context.newPage();
   const audience=await context.newPage();
   await presenter.goto(base + "/?bundle=" + id);
-  await presenter.locator("#director-test-run").waitFor();
+  await presenter.locator("#director-box").waitFor();
+  await presenter.locator("#director-box details summary").click();
   await audience.goto(base + "/?bundle=" + id + "#audience");
   await presenter.locator("#next").click();
   await audience.waitForFunction(()=>document.querySelector("#slide-img")?.getAttribute("src")?.endsWith("002.png"));
