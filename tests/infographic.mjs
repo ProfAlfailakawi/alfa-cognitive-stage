@@ -12,6 +12,7 @@ const throwsWith = (fn, text) => {
 
 const stat = renderInfographic({ type: "stat", title: "الألعاب التعليمية", lines: ["68%", "من المشاركين استفادوا"] });
 ok("stat card shows the number exactly as typed", stat.includes(">68%</text>"));
+ok("stat title is centred, so a long Arabic title is never clipped at the page edge in an RTL page", /<text x="480" y="110" text-anchor="middle"[^>]*>الألعاب التعليمية<\/text>/.test(stat));
 ok("stat card shows the label as typed", stat.includes("من المشاركين استفادوا"));
 ok("stat card has no invented source text", !/دراسة|باحث|سنة|عينة/.test(stat.replace("الألعاب التعليمية", "")));
 
