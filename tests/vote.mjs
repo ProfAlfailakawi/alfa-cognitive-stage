@@ -157,6 +157,13 @@ try {
   await adminPage.waitForSelector("#qr svg", { timeout: 8000 });
   check("lecturer console draws the QR code", true);
 
+  await adminPage.waitForSelector("#polls .poll-insight", { timeout: 8000 });
+  const hints = await adminPage.locator("#polls .poll-insight").allTextContents();
+  check("lecturer sees neutral, low-sample coaching without any new control",
+    hints.length === 2 && hints.every(t => t.includes("عدد المشاركات قليل")));
+  check("coaching never invents a correct answer", hints.every(t => !t.includes("الإجابة الصحيحة")));
+
+
   await adminPage.click("#student-questions-drawer summary");
   await adminPage.waitForSelector("#student-questions .poll");
   check("student question visible only in authenticated lecturer inbox",
