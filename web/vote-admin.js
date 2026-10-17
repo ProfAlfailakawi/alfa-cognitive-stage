@@ -137,3 +137,16 @@ if (adminToken) {
   $("token").value = adminToken;
   enter();
 }
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== location.origin || event.source !== window.parent) return;
+  const text = event.data?.alfaQuestionDraft;
+  if (typeof text !== "string" || !text.trim()) return;
+  const question = text.trim().slice(0, 200);
+  if (!$("q-text").value.trim()) $("q-text").value = question;
+  if (!$("q-opts").value.trim() && /^(هل |تتوقعون |تعتقدون )/.test(question)) {
+    // Opinion-only answers; no fabricated correct choice.
+    $("q-opts").value = "نعم\nلا\nغير متأكد";
+  }
+  $("poll-msg").textContent = "جهّز المخرج سؤالاً من حديثك. راجعه ثم أضفه وافتحه بنفسك.";
+});

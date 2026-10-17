@@ -21,7 +21,7 @@ let clockStart = Date.now();
 let slideGeneration = 0;
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
-  recent: [], cloudSeq: 0, activeOverlay: false, story: null,
+  recent: [], cloudSeq: 0, activeOverlay: false, story: null, questionDraft: null,
 };
 
 function send(message) {
@@ -205,6 +205,9 @@ function renderPresenter() {
     drawer.open = true;
     drawer.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  document.getElementById("vote-iframe").addEventListener("load", () => {
+    if (directorRuntime.questionDraft) postPollDraft(directorRuntime.questionDraft);
+  });
   document.getElementById("project-poll").onclick = () => {
     if (!pollScreen.url) {
       document.getElementById("project-poll").textContent = "سجّل دخولك وأنشئ جلسة أولاً";
@@ -492,6 +495,7 @@ function receiveDirectorSpeech(text) {
     } else showDirectorProposal(proposal, "إحصائية التقطت من حديث المحاضر — تأكد من الرقم.");
     return;
   }
+  if (moment.kind === "question") postPollDraft(raw);
   const names = { story: "بداية قصة أو استطراد", compare: "فرصة مقارنة تعليمية", question: "سؤال موجه للطلبة" };
   setDirectorStatus("التقطت " + (names[moment.kind] || moment.kind) + " — لم أعرض حقائق غير مؤكدة.");
   const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
@@ -569,6 +573,13 @@ function renderPollScreen(data) {
   }
   root.append(overlay);
 }
+function postPollDraft(question) {
+  directorRuntime.questionDraft = String(question || "").slice(0, 200);
+  const frame = document.getElementById("vote-iframe");
+  if (!frame?.contentWindow) return;
+  frame.contentWindow.postMessage({ alfaQuestionDraft: directorRuntime.questionDraft }, location.origin);
+}
+
 function receiveVoteAdminMessage(event) {
   if (role !== "presenter" || event.origin !== location.origin) return;
   const iframe = document.getElementById("vote-iframe");

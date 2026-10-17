@@ -115,6 +115,12 @@ try {
   await votingFrame.locator("#token").fill(ADMIN);
   await votingFrame.locator("#save-token").click();
   await votingFrame.locator("#qr svg").waitFor({ timeout: 10000 });
+  await presenter.fill("#director-test-text", "تتوقعون الألعاب التعليمية أفضل من غيرها؟");
+  await presenter.click("#director-test-run");
+  await votingFrame.locator("#q-text").waitFor({ timeout: 8000 });
+  await presenter.waitForTimeout(500);
+  check("spoken classroom question is prefilled without opening a poll",
+    (await votingFrame.locator("#q-text").inputValue()).includes("تتوقعون الألعاب التعليمية"));
   await presenter.waitForTimeout(450);
   await presenter.click("#project-poll");
   await audience.waitForSelector(".vote-projection .vote-qr svg", { timeout: 8000 });
