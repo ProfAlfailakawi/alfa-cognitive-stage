@@ -39,6 +39,17 @@ export function createSceneStore({ file = null } = {}) {
     verifyBundle(bundle);
     return (state.get(bundle) || []).map((item) => structuredClone(item));
   }
+  function listAll(limit = 150) {
+    // Only caller-authenticated routes may expose lecturer-approved utterances.
+    // Bounded scan and response; preserves separate lecture ownership.
+    const cap = Number.isInteger(limit) ? Math.max(1, Math.min(150, limit)) : 150;
+    return [...state.values()].flat()
+      .filter((item) => item && typeof item.bundle === "string" &&
+        Number.isInteger(item.slide) && typeof item.utterance === "string" &&
+        item.spec && typeof item.updatedAt === "string")
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+      .slice(0, cap).map((item) => structuredClone(item));
+  }
   function save(bundle, { slide, utterance, spec }) {
     verifyBundle(bundle);
     if (!Number.isInteger(slide) || slide < 1 || slide > 10000)
@@ -64,5 +75,5 @@ export function createSceneStore({ file = null } = {}) {
     persist();
     return { removed: old.length !== state.get(bundle).length };
   }
-  return { list, save, remove };
+  return { list, listAll, save, remove };
 }
