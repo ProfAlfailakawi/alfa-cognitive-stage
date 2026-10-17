@@ -258,7 +258,7 @@ try {
     await presenter.locator("#director-proposal").isHidden());
   await presenter.reload();
   await presenter.waitForSelector("#director-box");
-  for (let i = 0; i < 6; i++) await presenter.keyboard.press("ArrowRight");
+  await pressNextUntil(presenter, 7);
   await presenter.waitForFunction(() => document.querySelector("#meta")?.textContent?.includes("7 من"));
   await presenter.locator("#director-box details").evaluate((el) => { el.open = true; });
   await presenter.selectOption("#director-mode", "safe");
