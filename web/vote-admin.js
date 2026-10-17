@@ -1,4 +1,4 @@
-import { compareRounds, exportAggregateCsv } from "./poll-analytics.js";
+import { compareRounds, exportAggregateCsv, summarizePollDistribution } from "./poll-analytics.js";
 // Lecturer's voting console: create a session, add questions, open/close/reveal, see results.
 const $ = (id) => document.getElementById(id);
 const KEY = "alfa-admin-token";
@@ -77,10 +77,12 @@ function renderPolls(state) {
         <div class="bar"><span style="width:${pct}%"></span></div></div>`;
     }).join("");
     const state_ = p.status === "open" ? "مفتوح" : p.status === "closed" ? "مغلق" : "مسودة";
+    const insight = summarizePollDistribution(p);
     return `<div class="poll">
       <strong>${esc(p.question)}</strong>
       <div class="meta">${state_} — الإجابات: ${total}${p.allowChange ? " — يسمح بالتغيير" : ""}</div>
       ${rows}
+      ${insight ? `<p class="meta poll-insight">${esc(insight.text)}</p>` : ""}
       <div class="actions">
         ${p.status !== "open" ? `<button data-act="open" data-id="${p.id}" class="primary">فتح</button>` : `<button data-act="close" data-id="${p.id}">إغلاق</button>`}
         ${p.reveal ? `<button data-act="hide" data-id="${p.id}">إخفاء النتائج</button>` : `<button data-act="reveal" data-id="${p.id}">إظهار النتائج</button>`}
