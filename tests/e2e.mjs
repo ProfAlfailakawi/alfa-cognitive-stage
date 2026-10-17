@@ -116,6 +116,8 @@ try {
   await lateAudience.goto(`${base}/#audience`);
   await lateAudience.waitForSelector("video.clip", { timeout: 8000 });
   await lateAudience.waitForFunction(() =>
+    document.querySelector("#slide-img")?.getAttribute("src")?.endsWith("007.png"), null, { timeout: 6000 });
+  await lateAudience.waitForFunction(() =>
     document.querySelector("video.clip")?.currentTime > 0.7, null, { timeout: 6000 });
   const latePosition = await lateAudience.locator("video.clip").evaluate((v) => v.currentTime);
   const referencePosition = await presenter.locator("video.clip").evaluate((v) => v.currentTime);
