@@ -59,6 +59,8 @@ jobs:
           npm install --no-save playwright
           npx playwright install --with-deps chromium
           python -m pip install Pillow
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
           ffmpeg -version
       - name: Generate synthetic media lecture
         run: python tools/make_test_fixture.py
