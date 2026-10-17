@@ -100,12 +100,52 @@ function renderPolls(state) {
   });
 }
 
+async function refreshOpenQuestions() {
+  if (!code || !$("student-questions-drawer")?.open) return;
+  const inbox = $("student-questions");
+  try {
+    const { questions } = await call("GET", "/sessions/" + code + "/questions");
+    inbox.replaceChildren();
+    if (!questions?.length) {
+      const empty = document.createElement("p");
+      empty.className = "meta";
+      empty.textContent = "لا توجد أسئلة مفتوحة حالياً.";
+      inbox.append(empty);
+      return;
+    }
+    for (const item of questions) {
+      const row = document.createElement("div");
+      row.className = "poll";
+      const question = document.createElement("p");
+      question.textContent = item.text; // Never treat student text as HTML.
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "إزالة السؤال من القائمة";
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          await call("DELETE", "/sessions/" + code + "/questions/" + item.id);
+          await refreshOpenQuestions();
+        } catch (error) {
+          button.disabled = false;
+          $("poll-msg").textContent = error.message;
+        }
+      });
+      row.append(question, button);
+      inbox.append(row);
+    }
+  } catch (err) {
+    inbox.textContent = "تعذر تحميل أسئلة الطلبة: " + err.message;
+  }
+}
+
 async function refresh() {
   if (!code) return;
   try {
     const state = await call("GET", `/sessions/${code}/presenter`);
     renderPolls(state);
     publishPresenterState(state);
+    if ($("student-questions-drawer")?.open) void refreshOpenQuestions();
   } catch (err) {
     $("poll-msg").textContent = err.message;
   }
@@ -154,6 +194,8 @@ async function newSession() {
   sessionStorage.setItem(SESSION_KEY, code);
   await showSession();
 }
+
+$("student-questions-drawer")?.addEventListener("toggle", () => { if ($("student-questions-drawer").open) void refreshOpenQuestions(); });
 
 $("save-token").addEventListener("click", () => {
   adminToken = $("token").value.trim();
