@@ -50,6 +50,22 @@ export function validateDirectorProposal(data, source) {
 
 let lastCloudCall = 0;
 let calls = 0;
+let successfulCalls = 0;
+let failedCalls = 0;
+let callsWithoutUsage = 0;
+let inputTokens = 0;
+let outputTokens = 0;
+
+export function directorUsageStatus() {
+  const maxCalls = Math.max(0, Math.min(100, Number(process.env.DIRECTOR_MAX_CALLS ?? 24) || 0));
+  return {
+    available: Boolean(process.env.OPENAI_API_KEY),
+    maxCalls, callsUsed: calls, callsRemaining: Math.max(0, maxCalls - calls),
+    successfulCalls, failedCalls, callsWithoutUsage, inputTokens, outputTokens,
+    scope: "server-process", costUsd: null, // Actual pricing is provider/model specific.
+  };
+}
+
 
 export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
   if (!process.env.OPENAI_API_KEY) {
@@ -58,7 +74,7 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
   const transcript = String(utterance || "").trim().slice(0, 950);
   if (transcript.length < 12) { const error = new Error("المقطع قصير جداً"); error.status = 400; throw error; }
   const now = Date.now();
-  const maxCalls = Math.max(0, Math.min(100, Number(process.env.DIRECTOR_MAX_CALLS ?? 24)));
+  const maxCalls = directorUsageStatus().maxCalls;
   if (calls >= maxCalls || now - lastCloudCall < 12000) {
     const error = new Error("حد استهلاك المخرج؛ استخدم المشاهد المحلية"); error.status = 429; throw error;
   }
@@ -82,11 +98,23 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
       error.status = 502; throw error;
     }
     const output = await response.json();
+    if (output.usage && Number.isFinite(output.usage.input_tokens) && Number.isFinite(output.usage.output_tokens)) {
+      inputTokens += Math.max(0, Math.trunc(output.usage.input_tokens));
+      outputTokens += Math.max(0, Math.trunc(output.usage.output_tokens));
+    } else {
+      callsWithoutUsage++;
+    }
     const string = output.output?.flatMap((item) => item.content || [])
       .filter((item) => item.type === "output_text").map((item) => item.text).join("") || "";
     if (!string) { const error = new Error("لم يصل اقتراح قابل للعرض"); error.status = 502; throw error; }
-    return { proposal: validateDirectorProposal(JSON.parse(string), source),
-      usage: output.usage ? { inputTokens: output.usage.input_tokens || 0, outputTokens: output.usage.output_tokens || 0 } : null };
+    const proposal = validateDirectorProposal(JSON.parse(string), source);
+    successfulCalls++;
+    return { proposal, usage: output.usage ? {
+      inputTokens: output.usage.input_tokens || 0, outputTokens: output.usage.output_tokens || 0
+    } : null, totals: directorUsageStatus() };
+  } catch (error) {
+    failedCalls++;
+    throw error;
   } finally {
     clearTimeout(timeout);
   }

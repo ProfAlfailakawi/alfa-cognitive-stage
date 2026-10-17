@@ -50,6 +50,26 @@ try {
   await presenter.waitForSelector("#meta");
   check("presenter shows slide 1 of N", (await presenter.textContent("#meta")).includes(`1 من ${manifest.slideCount}`));
 
+  const unauthorizedUsage = await fetch(base + "/api/director/status");
+  check("cloud consumption summary is lecturer-authenticated", unauthorizedUsage.status === 401);
+  const authorizedUsage = await fetch(base + "/api/director/status", {
+    headers: { "X-Admin-Token": ADMIN }
+  });
+  const usageReport = await authorizedUsage.json();
+  check("cloud consumption summary starts with no calls and unknown USD cost",
+    authorizedUsage.status === 200 && usageReport.callsUsed === 0 &&
+    usageReport.inputTokens === 0 && usageReport.costUsd === null &&
+    usageReport.scope === "server-process");
+  await presenter.fill("#director-admin-token", ADMIN);
+  await presenter.check("#director-cloud");
+  await presenter.waitForFunction(() => document.querySelector("#director-usage")?.textContent
+    ?.includes("غير مجهزة"));
+  check("lecturer sees cloud availability in existing director panel",
+    (await presenter.locator("#director-usage").textContent()).includes("غير مجهزة"));
+  await presenter.uncheck("#director-cloud");
+  await presenter.locator("#director-cloud").evaluate((el) => el.blur()); // Release focus so slide hotkeys work.
+
+
   await audience.goto(`${base}/#audience`);
   await audience.waitForSelector("#slide-img");
   await presenter.bringToFront();
