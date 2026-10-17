@@ -36,7 +36,7 @@ const tokenFor = (n) => String(n).padStart(2, "0").repeat(16); // 32 hex chars, 
 
 let server = await startServer();
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME_PATH || "/opt/pw-browsers/chromium",
+  ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   args: ["--no-sandbox"],
 });
 
@@ -44,6 +44,7 @@ try {
   check("wrong admin token is refused", (await fetch(`${base}/api/admin/check`, { headers: { "X-Admin-Token": "nope" } })).status === 401);
   check("right admin token is accepted", (await admin("/admin/check")).status === 200);
   check("creating a session needs the admin token", (await fetch(`${base}/api/sessions`, { method: "POST" })).status === 401);
+  check("PPTX import requires lecturer token", (await fetch(`${base}/api/lectures/import`, { method: "POST" })).status === 401);
 
   const { code } = await (await admin("/sessions", "POST")).json();
   check("session code is 6 characters", /^[A-Z2-9]{6}$/.test(code), code);

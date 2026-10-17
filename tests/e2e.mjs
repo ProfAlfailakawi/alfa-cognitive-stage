@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const port = 4199;
+const ADMIN = "test-e2e-admin-0123456789abcdef";
 const base = `http://localhost:${port}`;
 const bundleId = JSON.parse(readFileSync(join(root, "bundles/current.json"), "utf8")).id;
 const manifest = JSON.parse(readFileSync(join(root, "bundles", bundleId, "manifest.json"), "utf8"));
@@ -18,13 +19,13 @@ const check = (name, ok, detail = "") => {
 };
 
 const server = spawn(process.execPath, [join(root, "server/server.mjs")], {
-  env: { ...process.env, PORT: String(port) },
+  env: { ...process.env, PORT: String(port), ADMIN_TOKEN: ADMIN },
   stdio: ["ignore", "pipe", "pipe"],
 });
 await new Promise((resolve) => server.stdout.once("data", resolve));
 
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME_PATH || "/opt/pw-browsers/chromium",
+  ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"],
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -108,6 +109,19 @@ try {
   await audience.waitForTimeout(400);
   check("emergency hides the infographic", (await audience.locator(".info-layer").count()) === 0);
 
+  // Voting is embedded in the presenter, and the presenter can project QR on demand.
+  await presenter.click("#open-vote");
+  const votingFrame = presenter.frameLocator("#vote-iframe");
+  await votingFrame.locator("#token").fill(ADMIN);
+  await votingFrame.locator("#save-token").click();
+  await votingFrame.locator("#qr svg").waitFor({ timeout: 10000 });
+  await presenter.waitForTimeout(450);
+  await presenter.click("#project-poll");
+  await audience.waitForSelector(".vote-projection .vote-qr svg", { timeout: 8000 });
+  check("presenter projects voting QR inside the audience stage", true);
+  await presenter.click("#hide-poll");
+  await audience.waitForTimeout(300);
+  check("presenter hides voting QR without changing the slide", await audience.locator(".vote-projection").count() === 0);
   check("audience page has no JavaScript errors", audienceErrors.length === 0, audienceErrors.join(" | "));
 
   await presenter.screenshot({ path: join(root, "tests/presenter.png") });
