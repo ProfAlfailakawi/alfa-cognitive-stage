@@ -88,6 +88,10 @@ try {
   });
   check("second vote from the same phone is refused", dup.status === 409, `status ${dup.status}`);
 
+  // Repeat-round creation is strictly an admin action.
+  const stolenRepeat = await fetch(`${base}/api/sessions/${code}/polls/${q1.poll.id}/repeat`, { method: "POST" });
+  check("unauthorized device cannot start a new round", stolenRepeat.status === 401, `status ${stolenRepeat.status}`);
+
   // Reveal results to phones; the phone sees counts and its own answer.
   await admin(`/sessions/${code}/polls/${q1.poll.id}/reveal`, "POST");
   await phones[0].page.waitForSelector("text=%", { timeout: 6000 });

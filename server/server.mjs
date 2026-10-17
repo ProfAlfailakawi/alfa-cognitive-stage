@@ -162,8 +162,8 @@ async function handleApi(req, res, path) {
     return sendJson(res, 201, { poll });
   }
   if (action === "polls" && pollId && req.method === "POST") {
-    if (verb === "repeat") return sendJson(res, 201, { poll: store.repeatPoll(upper, Number(pollId)) });
     requireAdmin(req);
+    if (verb === "repeat") return sendJson(res, 201, { poll: store.repeatPoll(upper, Number(pollId)) });
     const id = Number(pollId);
     if (verb === "open") return sendJson(res, 200, { poll: store.setStatus(upper, id, "open") });
     if (verb === "close") return sendJson(res, 200, { poll: store.setStatus(upper, id, "closed") });
