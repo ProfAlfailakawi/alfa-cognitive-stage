@@ -3,7 +3,7 @@
 // Both windows talk over BroadcastChannel (same browser, same origin).
 
 import { renderInfographic } from "./infographic.js";
-import { interpretSpeech, eligibleForCloud } from "./director-core.js";
+import { createDirectorBrain } from "./director-brain.js";
 import { createSpeechDirector } from "./speech-director.js";
 import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
 import { rememberRejectedProposal, wasProposalRejected, countRejectedProposals, clearRejectedProposals } from "./director-preferences.js";
@@ -31,10 +31,11 @@ let slideGeneration = 0;
 let autoStepTimer = null;
 let currentOverlay = null; // spec of the scene now on screen, for return snapshots
 const returnStack = createReturnStack();
+const brain = createDirectorBrain();
 const neighboringSlides = new Map();
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
-  recent: [], cloudSeq: 0, activeOverlay: false, story: null, questionDraft: null,
+  cloudSeq: 0, activeOverlay: false, questionDraft: null,
   mediaCheckAbort: null,
 };
 
@@ -232,7 +233,7 @@ function showSlide(index, step = 0) {
   if (role === "presenter") {
     directorRuntime.cloudSeq++;
     directorRuntime.pending = null;
-    directorRuntime.story = null;
+    brain.resetSlide();
   }
   const img = document.getElementById("slide-img");
   const generation = ++slideGeneration;
@@ -771,99 +772,82 @@ async function requestDirectorAI(text, seq) {
     if (seq === directorRuntime.cloudSeq) setDirectorStatus("الاتصال السحابي غير متاح؛ العرض مستمر.");
   }
 }
-function observeStorySpeech(utterance, mode) {
-  const story = directorRuntime.story;
-  if (!story || story.slide !== state.index || Date.now() - story.started > 75000) {
-    directorRuntime.story = null;
-    return;
-  }
-  const clean = String(utterance || "").trim();
-  if (!clean || clean.length < 15 || story.last === clean) return;
-  story.last = clean;
-  story.events.push(clean.slice(0, 100));
-  story.events = story.events.slice(0, 4);
-  if (story.events.length < 2) return;
-  const spec = { type: "story", title: "قصة يرويها المحاضر", lines: [...story.events] };
-  const proposal = { spec, utterance: story.events.join(" "), slide: state.index, at: Date.now() };
-  if (mode === "creative" && !videoEls.some((el) => !el.paused)) {
-    revealDirectorScene(proposal);
-  } else if (mode !== "shadow") {
-    showDirectorProposal(proposal, "قصة من حديثك كما نطقتها دون اختراع أحداث. راجع النص قبل إظهاره.");
-  }
+function directorContext() {
+  const slide = state.slides[state.index - 1] || {};
+  return { slide: { index: state.index, text: String(slide.text || ""), notes: String(slide.notes || "") },
+    overlay: currentOverlay, mode: document.getElementById("director-mode")?.value || "balanced",
+    mediaPlaying: videoEls.some((el) => !el.paused) };
 }
-
+function revealAndRecord(proposal) {
+  if (revealDirectorScene(proposal)) { brain.noteShown(state.index); return true; }
+  return false;
+}
+// All interpretation lives in director-brain.js; this function only applies its decision.
 function receiveDirectorSpeech(text) {
   const raw = String(text || "").trim();
   if (!raw) return;
   const last = document.getElementById("director-last");
   if (last) last.textContent = "سمعت: " + raw.slice(0, 160);
   directorRuntime.cloudSeq++;
-  directorRuntime.recent.push({ text: raw, at: Date.now() });
-  directorRuntime.recent = directorRuntime.recent.filter((r) => Date.now() - r.at < 25000).slice(-3);
-  const recent = directorRuntime.recent.map((r) => r.text).join(" ");
-  const moment = interpretSpeech(raw) || interpretSpeech(recent);
-  const mode = document.getElementById("director-mode")?.value || "balanced";
-  if (!moment) {
-    if (directorRuntime.story) {
-      observeStorySpeech(raw, mode);
-      return;
-    }
-    if (wasProposalRejected({ bundle: state.bundle, slide: state.index, utterance: raw })) return;
-    const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
-    if (saved && document.getElementById("director-mode")?.value !== "shadow") {
-      showDirectorProposal({ spec: saved.spec, utterance: raw },
-        "مشهد محفوظ سابقاً — بلا تكلفة API. أكد ظهوره أمام الطلبة.");
-    }
-    return;
+  const context = directorContext();
+  const decision = brain.observe(raw, context);
+  if (decision.topic.shifted) {
+    clearDirectorProposal();
+    setDirectorStatus("لاحظت تغيّر الموضوع؛ أغلقت الاقتراحات المعلقة.");
+  } else if (decision.topic.returnedTo) {
+    setDirectorStatus("عدتَ إلى موضوع سابق: " + decision.topic.returnedTo);
   }
-  const key = moment.kind + ":" + (moment.spec?.lines?.[0] || raw.slice(0, 35));
-  if (key === directorRuntime.lastKey && Date.now() - directorRuntime.lastAt < 15000) return;
-  directorRuntime.lastKey = key;
-  directorRuntime.lastAt = Date.now();
-  if (moment.kind === "return" || moment.kind === "return-level") {
-    directorRuntime.story = null;
+  if (decision.action === "return" || decision.action === "return-level") {
     directorRuntime.cloudSeq++;
     clearDirectorProposal();
     if (directorRuntime.activeOverlay || returnStack.active()) {
-      if (moment.kind === "return-level") backOneLevel(); else goMain();
+      if (decision.action === "return-level") backOneLevel(); else goMain();
     }
-    setDirectorStatus(moment.kind === "return-level"
+    setDirectorStatus(decision.action === "return-level"
       ? "رجعنا خطوة واحدة في الاستطراد." : "تم فهم العودة إلى الموضوع الأصلي.");
     return;
   }
-  // Avoid repeating a dismissed exact proposal on the same slide; skip paid AI too.
-  if (wasProposalRejected({ bundle: state.bundle, slide: state.index, utterance: raw })) {
-    setDirectorStatus("تم تجاوز اقتراح تجاهلته سابقاً على هذه الشريحة. يمكنك مسح التجاهلات.");
+  const rejected = wasProposalRejected({ bundle: state.bundle, slide: state.index, utterance: raw });
+  if (decision.retract) {
+    showDirectorProposal({ retract: true, spec: null, utterance: raw }, decision.reason);
     return;
   }
-  if (moment.kind === "story") {
-    directorRuntime.story = {
-      slide: state.index, started: Date.now(), last: raw,
-      events: [raw.slice(0, 100)],
-    };
-  }
-  if (mode === "shadow") {
-    setDirectorStatus("وضع الظل: اكتُشف " + moment.kind + " دون تغيير شاشة الطلبة.");
+  if (decision.spec && (decision.action === "auto" || decision.action === "propose")) {
+    if (rejected) {
+      setDirectorStatus("تم تجاوز اقتراح تجاهلته سابقاً على هذه الشريحة. يمكنك مسح التجاهلات.");
+      return;
+    }
+    const proposal = { spec: decision.spec, utterance: decision.utterance || raw, slide: state.index, at: Date.now() };
+    if (decision.action === "auto") {
+      if (!revealAndRecord(proposal)) showDirectorProposal(proposal, decision.reason || "راجع المشهد قبل إظهاره.");
+    } else {
+      showDirectorProposal(proposal, decision.reason || (decision.kind === "stat"
+        ? "إحصائية التقطت من حديث المحاضر — تأكد من الرقم."
+        : "اقتراح من حديثك كما نطقته؛ راجعه قبل إظهاره."));
+    }
     return;
   }
-  if (moment.spec) {
-    const proposal = { spec: moment.spec, utterance: raw, slide: state.index, at: Date.now() };
-    if (mode === "balanced" && moment.confidence >= 0.95 && !videoEls.some((el) => !el.paused)) {
-      revealDirectorScene(proposal);
-    } else showDirectorProposal(proposal, "إحصائية التقطت من حديث المحاضر — تأكد من الرقم.");
+  if (decision.action === "observe") {
+    setDirectorStatus("وضع الظل: اكتُشف " + decision.kind + " دون تغيير شاشة الطلبة.");
     return;
   }
-  if (moment.kind === "question") postPollDraft(raw);
-  const names = { story: "بداية قصة أو استطراد", compare: "فرصة مقارنة تعليمية", question: "سؤال موجه للطلبة" };
-  setDirectorStatus("التقطت " + (names[moment.kind] || moment.kind) + " — لم أعرض حقائق غير مؤكدة.");
+  // No local scene: explain what was noticed, then try memory, then (rarely) the optional cloud.
+  if (decision.kind === "question") postPollDraft(raw);
+  const names = { story: "بداية قصة أو استطراد", compare: "فرصة مقارنة تعليمية", question: "سؤال موجه للطلبة",
+    concept: "تعريف مفهوم", example: "مثال", timeline: "تسلسل زمني" };
+  const noticed = decision.opportunity || decision.kind;
+  if (noticed && names[noticed]) setDirectorStatus("التقطت " + names[noticed] + " — لم أعرض حقائق غير مؤكدة.");
+  if (rejected || context.mode === "shadow") return;
   const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
   if (saved) {
-    showDirectorProposal({ spec: saved.spec, utterance: raw }, "مشهد محفوظ — لا يحتاج API.");
+    showDirectorProposal({ spec: saved.spec, utterance: raw },
+      noticed ? "مشهد محفوظ — لا يحتاج API." : "مشهد محفوظ سابقاً — بلا تكلفة API. أكد ظهوره أمام الطلبة.");
     return;
   }
-  if (document.getElementById("director-cloud")?.checked && eligibleForCloud(moment, raw)) {
+  if (decision.cloudText && document.getElementById("director-cloud")?.checked) {
     const seq = ++directorRuntime.cloudSeq;
-    requestDirectorAI(raw, seq); // Explicitly enabled, billed API; never auto-displays response.
+    brain.noteCloudRequest();
+    requestDirectorAI(decision.cloudText, seq); // Explicitly enabled, billed API; never auto-displays response.
   }
 }
 function setupDirector() {
@@ -895,7 +879,8 @@ function setupDirector() {
   stop.onclick = () => speech.stop();
   document.getElementById("director-accept").onclick = () => {
     const pending = directorRuntime.pending;
-    if (pending && !revealDirectorScene(pending)) setDirectorStatus("المشهد انتهت صلاحيته أو يوجد فيديو نشط.");
+    if (pending?.retract) { clearDirectorProposal(); backOneLevel(); setDirectorStatus("أُخفي المشهد بعد تراجعك عن المعلومة."); return; }
+    if (pending && !revealAndRecord(pending)) setDirectorStatus("المشهد انتهت صلاحيته أو يوجد فيديو نشط.");
   };
   document.getElementById("director-reject").onclick = () => {
     const proposal = directorRuntime.pending;
