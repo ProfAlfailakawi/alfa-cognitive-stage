@@ -115,6 +115,7 @@ try {
   await votingFrame.locator("#token").fill(ADMIN);
   await votingFrame.locator("#save-token").click();
   await votingFrame.locator("#qr svg").waitFor({ timeout: 10000 });
+  await presenter.locator("#director-box details").evaluate((el) => { el.open = true; });
   await presenter.fill("#director-test-text", "تتوقعون الألعاب التعليمية أفضل من غيرها؟");
   await presenter.click("#director-test-run");
   await votingFrame.locator("#q-text").waitFor({ timeout: 8000 });
