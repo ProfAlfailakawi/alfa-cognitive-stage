@@ -93,7 +93,7 @@ async function refresh(force = false) {
       return setStatus("انتظر السؤال التالي…");
     }
     // Re-render whenever something the student sees changes: new question, answer, or results.
-    const key = JSON.stringify([active.pollId, active.answered, active.mine, Boolean(active.counts)]);
+    const key = JSON.stringify([active.pollId, active.answered, active.mine, active.counts || null]);
     if (force || key !== shownKey || !document.getElementById("options")) {
       shownKey = key;
       renderPoll(active);

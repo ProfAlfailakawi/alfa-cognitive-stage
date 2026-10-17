@@ -85,13 +85,14 @@ try {
   check("video plays on presenter", presenterTime > 0.5, `t=${presenterTime.toFixed(2)}`);
   check("video plays on audience in sync", audienceTime > 0.5, `t=${audienceTime.toFixed(2)}`);
 
-  // Emergency return: back to the main position, video stopped and removed.
+  // Emergency return: restore the current safe slide, not slide 1; pause its video.
   await presenter.keyboard.press("e");
   await presenter.waitForTimeout(600);
-  check("emergency returns presenter to slide 1", (await presenter.textContent("#meta")).includes(`1 من`));
+  check("emergency preserves presenter slide 7", (await presenter.textContent("#meta")).includes(`7 من`));
   await audience.waitForTimeout(400);
-  check("emergency returns audience to slide 1", (await audience.getAttribute("#slide-img", "src")).endsWith("001.png"));
-  check("emergency removes video", (await presenter.locator("video.clip").count()) === 0);
+  check("emergency preserves audience slide 7", (await audience.getAttribute("#slide-img", "src")).endsWith("007.png"));
+  const paused = await presenter.locator("video.clip").first().evaluate((v) => v.paused);
+  check("emergency pauses video without removing it", paused);
 
   // Infographic: lecturer sends a stat card, audience shows it, emergency hides it.
   await presenter.bringToFront();

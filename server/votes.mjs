@@ -77,6 +77,15 @@ export function createVoteStore({ file = null } = {}) {
     return p;
   }
 
+  function repeatPoll(code, id) {
+    const prior = poll(code, id);
+    const fresh = createPoll(code, {
+      question: prior.question, options: prior.options, allowChange: prior.allowChange,
+    });
+    setStatus(code, fresh.id, "open");
+    return fresh; // New ID / votes; previous results remain independently available.
+  }
+
   function setStatus(code, id, status) {
     const p = poll(code, id);
     if (status === "open") {
@@ -147,5 +156,5 @@ export function createVoteStore({ file = null } = {}) {
     return sessions.has(code);
   }
 
-  return { createSession, createPoll, setStatus, setReveal, vote, studentState, presenterState, hasSession };
+  return { createSession, createPoll, repeatPoll, setStatus, setReveal, vote, studentState, presenterState, hasSession };
 }

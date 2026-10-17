@@ -27,6 +27,13 @@ class ManifestTests(unittest.TestCase):
             self.assertEqual(len(slides), 2)
             self.assertEqual(slides[1].notes_slide.notes_text_frame.text, "ملاحظة الثانية")
 
+    def test_slide_text_extracts_shape_content(self):
+        deck = Presentation()
+        slide = deck.slides.add_slide(deck.slide_layouts[6])
+        shape = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1))
+        shape.text = "الألعاب التعليمية"
+        self.assertIn("الألعاب التعليمية", build_bundle.slide_text(slide))
+
     def test_video_source_is_recognised_by_extension(self):
         self.assertIn(".mov", build_bundle.VIDEO_EXTS)
         self.assertIn(".mp4", build_bundle.VIDEO_EXTS)

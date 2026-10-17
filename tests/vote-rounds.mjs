@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { createVoteStore, VoteError } from "../server/votes.mjs";
+const store = createVoteStore();
+const code = store.createSession();
+const first = store.createPoll(code, { question: "اختبار", options: ["نعم", "لا"] });
+store.setStatus(code, first.id, "open");
+const token = "a".repeat(32);
+store.vote(code, token, 0);
+const second = store.repeatPoll(code, first.id);
+assert.notEqual(second.id, first.id);
+assert.equal(store.presenterState(code).polls[0].total, 1);
+assert.equal(store.presenterState(code).polls[1].total, 0);
+assert.equal(store.studentState(code, token).active.answered, false);
+assert.equal(store.presenterState(code).polls[0].status, "closed");
+console.log("vote rounds: previous results preserved, new round starts clean");

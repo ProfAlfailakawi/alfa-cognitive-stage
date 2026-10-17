@@ -46,6 +46,7 @@ function renderPolls(state) {
       <div class="actions">
         ${p.status !== "open" ? `<button data-act="open" data-id="${p.id}" class="primary">فتح</button>` : `<button data-act="close" data-id="${p.id}">إغلاق</button>`}
         ${p.reveal ? `<button data-act="hide" data-id="${p.id}">إخفاء النتائج</button>` : `<button data-act="reveal" data-id="${p.id}">إظهار النتائج</button>`}
+        <button data-act="repeat" data-id="${p.id}">جولة جديدة (نتائج منفصلة)</button>
       </div>
     </div>`;
   }).join("") || `<p class="meta">لا توجد أسئلة بعد.</p>`;
@@ -90,7 +91,12 @@ async function newSession() {
   const { code: fresh } = await call("POST", "/sessions");
   code = fresh;
   $("session-line").textContent = `رمز الجلسة: ${code}`;
-  drawQr(`${location.origin}/vote.html?s=${code}`);
+  const net = await fetch("/api/network").then((r) => r.json()).catch(() => ({}));
+  const base = net.publicUrl || location.origin;
+  drawQr(base + "/vote.html?s=" + encodeURIComponent(code));
+  if (!net.publicUrl && ["localhost", "127.0.0.1"].includes(location.hostname)) {
+    $("poll-msg").textContent = "تنبيه: رابط localhost لا يعمل على هاتف آخر. استخدم PUBLIC_URL أو عنوان شبكة الماك.";
+  }
   await refresh();
 }
 
