@@ -4,6 +4,7 @@
 // This is NOT neural language understanding: it is explicit Kuwaiti/Gulf/MSA patterns plus
 // context (rolling window, topic tracking, slide grounding, pacing). Measured by tests/director-corpus.mjs.
 import { interpretSpeech, normalizeArabic } from "./director-core.js";
+import { detectWhatIf, hasHypotheticalPercent } from "./what-if.js";
 
 const WINDOW_MS = 60000;
 const MAX_WINDOW = 8;
@@ -278,6 +279,10 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
         reason: "تصحيح الرقم: يحتاج موافقتك قبل استبدال المشهد الظاهر" };
     }
 
+    // Unsupported numerical hypotheticals remain quiet; no invented fact or paid API.
+    const whatIf = detectWhatIf(spoken);
+    if (hasHypotheticalPercent(spoken) && !whatIf) return status(d, "افتراض رقمي غير مكتمل؛ لا مشهد ولا استدعاء سحابي");
+
     // 3. Story already in progress: accumulate what was actually said.
     if (story && (story.slide !== slideIndex || t - story.started > STORY_MS)) story = null;
     if (story && !moment) {
@@ -294,7 +299,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
     }
 
     // 4. Local structure detectors without an API.
-    let found = moment;
+    let found = whatIf ? { kind: "whatif", confidence: 0.9, spec: whatIf, utterance: raw } : moment;
     if (!found || (found.kind === "compare" && !found.spec)) {
       const timeline = detectTimeline(spoken);
       if (timeline) found = { kind: "timeline", confidence: 0.9, spec: timeline, utterance: raw };

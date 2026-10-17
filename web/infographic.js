@@ -18,11 +18,19 @@ const ICONS = {
 };
 
 export function validateSpec(spec) {
-  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity"].includes(spec?.type) ? spec.type : null;
+  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity", "whatif"].includes(spec?.type) ? spec.type : null;
   if (!type) throw new Error("نوع الإنفوجرافيك غير معروف");
   const title = String(spec.title ?? "").trim().slice(0, 120); // Renderers escape at the HTML boundary.
   const lines = (Array.isArray(spec.lines) ? spec.lines : [])
     .map((l) => String(l ?? "").trim().slice(0, 120)).filter(Boolean);
+  if (type === "whatif") {
+    const values = lines.map((value) => Number(value.slice(0, -1).replace(",", ".")));
+    if (lines.length !== 2 || lines.some((value) => !/^\d{1,3}(?:[.,]\d+)?%$/.test(value)) ||
+        values.some((value) => !Number.isFinite(value) || value < 0 || value > 100) || values[0] === values[1]) {
+      throw new Error("الافتراض يحتاج نسبتين صريحتين مختلفتين بين 0% و100%");
+    }
+    return { type, title, lines: lines.map((value) => value.replace(",", ".")) };
+  }
   if (type === "stat") {
     if (lines.length < 1 || lines.length > 2) throw new Error("البطاقة الإحصائية تحتاج رقماً ووصفاً فقط");
     if (!/^[\d.,%+\-٠-٩ ]+$/.test(lines[0]) && lines[0].length > 12) throw new Error("الرقم يجب أن يكون قصيراً");

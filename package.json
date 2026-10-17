@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/server.mjs",
-    "test:e2e": "node tests/e2e.mjs",
+    "test:e2e": "node tests/e2e.mjs && node tests/e2e-what-if.mjs",
     "test:build": "python3 -m unittest discover -s tools -p 'test_*.py'",
     "test:vote": "node tests/vote.mjs",
     "test:infographic": "node tests/infographic.mjs",
@@ -16,7 +16,7 @@
     "test:vote-rounds": "node tests/vote-rounds.mjs",
     "test:memory": "node tests/memory.mjs && node tests/semantic-memory.mjs",
     "test:import": "node tests/import.mjs",
-    "test:layouts": "node tests/layouts.mjs && node tests/scenes-new.mjs",
+    "test:layouts": "node tests/layouts.mjs && node tests/scenes-new.mjs && node tests/what-if.mjs",
     "test:scene-store": "node tests/scene-store.mjs",
     "test:security": "node tests/security.mjs && node tests/remote-surface.mjs && node tests/hardening.mjs",
     "test:readiness": "node tests/readiness.mjs",

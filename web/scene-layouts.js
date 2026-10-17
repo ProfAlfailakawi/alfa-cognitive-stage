@@ -27,6 +27,22 @@ function base(title,inside) {
   label(title,480,75,{size:34,color:C.blue,limit:42,rows:2})+inside+'</svg>';
 }
 export function renderStructuredScene(type,title,lines) {
+ if(type==="whatif") {
+  // Two lecturer-stated percentages: a visual comparison, never a prediction.
+  const captions=["الوضع المذكور","الافتراض"];
+  const cards=lines.map((value,i)=>{
+   const x=i===0?90:500;
+   const n=Number(value.slice(0,-1));
+   const fill=i===0?C.blue:C.gold;
+   const width=(290*n/100).toFixed(1);
+   return '<rect x="'+x+'" y="133" width="370" height="284" rx="22" fill="'+C.white+'" stroke="'+C.edge+'"/>'+
+    label(captions[i],x+185,188,{size:25,color:fill,rows:1})+
+    label(value,x+185,275,{size:62,color:C.ink,limit:12,rows:1})+
+    '<rect x="'+(x+40)+'" y="325" width="290" height="28" rx="9" fill="'+C.bg+'"/>'+
+    '<rect x="'+(x+40)+'" y="325" width="'+width+'" height="28" rx="9" fill="'+fill+'"/>';
+  }).join("");
+  return base(title,cards+label("افتراض بصري فقط — ليست نتيجة متوقعة",480,478,{size:21,color:C.mute,limit:45,rows:1}));
+ }
  if(type==="concept") {
   const nodes=lines.map((v,i)=>{
    const x=195+(i%3)*285,y=208+Math.floor(i/3)*175;
