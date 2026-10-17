@@ -10,7 +10,8 @@
     "test:build": "python3 -m unittest discover -s tools -p 'test_*.py'",
     "test:vote": "node tests/vote.mjs",
     "test:infographic": "node tests/infographic.mjs",
-    "test": "npm run test:build && npm run test:director && npm run test:infographic && npm run test:e2e && npm run test:vote",
-    "test:director": "node tests/director.mjs"
+    "test": "npm run test:build && npm run test:director && npm run test:director-ai && npm run test:infographic && npm run test:e2e && npm run test:vote",
+    "test:director": "node tests/director.mjs",
+    "test:director-ai": "node tests/director-ai.mjs"
   }
 }

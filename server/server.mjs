@@ -3,11 +3,14 @@
 import { createServer } from "node:http";
 import { createReadStream, promises as fs } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { loadEnvFile } from "node:process";
+import { analyzeWithAI } from "./director-ai.mjs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
+try { loadEnvFile(join(root, ".env")); } catch (err) { if (err.code !== "ENOENT") throw err; }
 const webRoot = join(root, "web");
 const bundlesRoot = join(root, "bundles");
 const port = Number(process.env.PORT || 4173);
@@ -108,6 +111,16 @@ function voterToken(req) {
 async function handleApi(req, res, path) {
   const parts = path.split("/").filter(Boolean); // api, sessions, CODE, ...
   const [, resource, code, action, pollId, verb] = parts;
+  if (resource === "director" && code === "status" && req.method === "GET") {
+    requireAdmin(req);
+    return sendJson(res, 200, { available: Boolean(process.env.OPENAI_API_KEY),
+      maxCalls: Math.max(0, Math.min(100, Number(process.env.DIRECTOR_MAX_CALLS ?? 24))) });
+  }
+  if (resource === "director" && code === "analyze" && req.method === "POST") {
+    requireAdmin(req);
+    try { return sendJson(res, 200, await analyzeWithAI(await readBody(req))); }
+    catch (err) { return sendJson(res, err.status || 502, { error: err.message || "تعذر تحليل الكلام" }); }
+  }
   if (resource === "admin" && code === "check" && req.method === "GET") {
     requireAdmin(req);
     return sendJson(res, 200, { ok: true });
