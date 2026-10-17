@@ -44,11 +44,13 @@ export function createSceneStore({ file = null } = {}) {
     // Bounded scan and response; preserves separate lecture ownership.
     const cap = Number.isInteger(limit) ? Math.max(1, Math.min(150, limit)) : 150;
     return [...state.values()].flat()
-      .filter((item) => item && typeof item.bundle === "string" &&
+      .map((item, sequence) => ({ item, sequence }))
+      .filter(({ item }) => item && typeof item.bundle === "string" &&
         Number.isInteger(item.slide) && typeof item.utterance === "string" &&
         item.spec && typeof item.updatedAt === "string")
-      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-      .slice(0, cap).map((item) => structuredClone(item));
+      .sort((a, b) => String(b.item.updatedAt).localeCompare(String(a.item.updatedAt)) ||
+        b.sequence - a.sequence)
+      .slice(0, cap).map(({ item }) => structuredClone(item));
   }
   function save(bundle, { slide, utterance, spec }) {
     verifyBundle(bundle);
