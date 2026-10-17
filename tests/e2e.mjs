@@ -116,7 +116,7 @@ try {
   await lateAudience.goto(`${base}/#audience`);
   await lateAudience.waitForSelector("video.clip", { timeout: 8000 });
   await lateAudience.waitForFunction(() =>
-    document.querySelector("video.clip")?.currentTime > 0.7, { timeout: 6000 });
+    document.querySelector("video.clip")?.currentTime > 0.7, null, { timeout: 6000 });
   const latePosition = await lateAudience.locator("video.clip").evaluate((v) => v.currentTime);
   const referencePosition = await presenter.locator("video.clip").evaluate((v) => v.currentTime);
   check("late-joining audience restores current slide and live video position",
@@ -126,12 +126,12 @@ try {
 
   await presenter.bringToFront();
   await presenter.keyboard.press("v");
-  await audience.waitForFunction(() => document.querySelector("video.clip")?.paused, { timeout: 5000 });
-  await lateAudience.waitForFunction(() => document.querySelector("video.clip")?.paused, { timeout: 5000 });
+  await audience.waitForFunction(() => document.querySelector("video.clip")?.paused, null, { timeout: 5000 });
+  await lateAudience.waitForFunction(() => document.querySelector("video.clip")?.paused, null, { timeout: 5000 });
   check("pause reaches both audience windows", true);
   await presenter.locator("video.clip").evaluate((v) => { v.currentTime = 1.2; });
   await audience.waitForFunction(() => Math.abs(document.querySelector("video.clip")?.currentTime - 1.2) < 0.25,
-    { timeout: 5000 });
+    null, { timeout: 5000 });
   check("a presenter seek propagates at precise media position",
     Math.abs((await lateAudience.locator("video.clip").evaluate((v) => v.currentTime)) - 1.2) < 0.5);
   await presenter.keyboard.press("v");
@@ -139,7 +139,9 @@ try {
   await audience.waitForFunction(() => {
     const v = document.querySelector("video.clip");
     return v && !v.paused && v.currentTime > 1;
-  }, { timeout: 5000 });
+  }, null, { timeout: 5000 });
+  // Wait beyond the 1.5 s heartbeat to exercise drift correction, not just natural playback.
+  await presenter.waitForTimeout(1800);
   const repairedAudience = await audience.locator("video.clip").evaluate((v) => v.currentTime);
   const repairedPresenter = await presenter.locator("video.clip").evaluate((v) => v.currentTime);
   check("periodic media packets repair audience drift",
