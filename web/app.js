@@ -583,11 +583,18 @@ async function refreshDirectorUsage() {
     if (!response.ok) throw Error("status unavailable");
     const info = await response.json();
     if (!document.getElementById("director-cloud")?.checked) return;
+    const daily = info.daily;
+    if (info.available && daily && !daily.healthy) {
+      target.textContent = "تعذر قراءة سجل سقف API اليومي؛ أُوقفت الطلبات المدفوعة لحماية التكلفة.";
+      return;
+    }
     target.textContent = info.available
-      ? "السحابة: " + info.callsUsed + "/" + info.maxCalls + " طلب، " +
-        (info.inputTokens + info.outputTokens) + " توكن مُبلّغ عنه" +
-        (info.callsWithoutUsage ? " (" + info.callsWithoutUsage + " طلب بلا بيانات استخدام)" : "") +
-        " — لا يوجد حساب تكلفة بالدولار. يُصفّر العداد عند إعادة تشغيل الخادم."
+      ? "السحابة اليوم (UTC): " + daily.callsUsed + "/" + daily.maxCalls +
+        " طلب، " + (daily.inputTokens + daily.outputTokens) + " توكن مبلّغ عنه" +
+        (daily.unknownUsageCalls ? "، " + daily.unknownUsageCalls + " طلب بتوكنات غير معروفة" : "") +
+        (daily.unreportedCalls ? "، " + daily.unreportedCalls + " طلب لم تكتمل بياناته" : "") +
+        " — منذ التشغيل: " + info.callsUsed + "/" + info.maxCalls +
+        " طلب. الأسعار بالدولار غير محسوبة."
       : "السحابة غير مجهزة بمفتاح API؛ العرض المحلي مستمر.";
   } catch { target.textContent = "تعذر قراءة عداد API المحلي."; }
 }
