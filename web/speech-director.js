@@ -2,11 +2,12 @@
 // Diagnostics time browser interim-to-final events, NOT audio-onset-to-screen latency.
 export function createSpeechDirector({
   onUtterance, onStatus, onInterim, onDiagnostics,
+  Recognition = undefined, // injectable for rehearsal drills and tests
   now = () => Date.now(),
   setTimer = (fn, ms) => setTimeout(fn, ms),
   clearTimer = (id) => clearTimeout(id),
 }) {
-  const Ctor = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
+  const Ctor = Recognition !== undefined ? Recognition : (globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition);
   let recognition = null;
   let enabled = false;
   let mediaPlaying = false;

@@ -150,6 +150,20 @@ assert.equal(unwanted, 0, `${unwanted} unwanted intervention(s)`);
   assert.equal(say("في دراسة طلعت إن 68 بالمية من الطلبة استفادوا").cloudText, null, "a local statistic never uses the cloud");
 }
 
+{
+  // A statistic is never re-fired by the next unrelated sentence, but a split statistic still completes.
+  let t = 30_000_000;
+  const brain = createDirectorBrain({ now: () => t });
+  const say = (x) => { t += 9000; return brain.observe(x, { slide: { index: 6 }, mode: "balanced" }); };
+  assert.equal(say("في دراسة طلعت إن 68 بالمية من الطلبة استفادوا").action, "auto");
+  brain.noteShown(6);
+  t += 20000;
+  assert.equal(say("يلا نبدأ المحاضرة اليوم").action, "none", "no re-detection from the earlier sentence");
+  assert.equal(say("وبعدين نشوف التفاصيل").action, "none");
+  t += 60000;
+  assert.equal(say("الدراسة اللي تكلمنا عنها قبل شوي").action, "none");
+}
+
 // ---- helpers ----
 assert.equal(numeralizePercents("خمسة وسبعين بالمية"), "75 بالمية");
 assert.equal(numeralizePercents("تسعين في المية من الطلبة"), "90 في المية من الطلبة");

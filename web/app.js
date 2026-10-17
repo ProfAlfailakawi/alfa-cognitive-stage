@@ -9,10 +9,14 @@ import { rememberScene, recallScene, countSavedScenes, clearSceneMemory } from "
 import { fingerprint, rememberRejectedProposal, wasProposalRejected, countRejectedProposals, clearRejectedProposals } from "./director-preferences.js";
 import { mountImportPanel } from "./import-ui.js";
 import { summarizeLecture } from "./lecture-readiness.js";
-import { testLectureMedia } from "./media-preflight.js";
+import { testLectureMedia, probeMedia } from "./media-preflight.js";
 import { buildSteps, clampStep, imageFor, lastStep, nextPosition, prevPosition, autoDelay, fadeMs } from "./build-steps.js";
 import { recordDecision, tasteFor, summarizeTaste, clearTaste } from "./director-taste.js";
 import { createReturnStack } from "./return-stack.js";
+import { createSessionLog } from "./session-log.js";
+import { mountLibraryPanel } from "./library-ui.js";
+import { clockState, PLANNED_CHOICES } from "./lecture-clock.js";
+import { runRehearsal } from "./rehearsal.js";
 import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
 
 const app = document.getElementById("app");
@@ -33,6 +37,7 @@ let autoStepTimer = null;
 let currentOverlay = null; // spec of the scene now on screen, for return snapshots
 const returnStack = createReturnStack();
 const brain = createDirectorBrain();
+let sessionLog = { slide() {}, scene() {}, declined() {}, video() {}, digression() {}, current: () => null, clear() {}, end() {} };
 const neighboringSlides = new Map();
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
@@ -119,12 +124,14 @@ function placeVideo(slide) {
       };
       el.addEventListener("play", () => {
         if (videoEls[i] !== el) return;
+        sessionLog.video({ slide: state.index, clip: i, action: "play", at: el.currentTime });
         for (const other of videoEls) if (other !== el && !other.paused) other.pause();
         directorRuntime.speech?.setMediaPlaying(true);
         relay("play");
       });
       el.addEventListener("pause", () => {
         if (videoEls[i] !== el) return;
+        sessionLog.video({ slide: state.index, clip: i, action: "pause", at: el.currentTime });
         if (videoEls.every((item) => item.paused)) directorRuntime.speech?.setMediaPlaying(false);
         relay("pause");
       });
@@ -216,6 +223,7 @@ function setStep(step, { broadcast = true } = {}) {
   const target = clampStep(slide, step);
   if (!slide || !buildSteps(slide) || target === state.step) return;
   state.step = target;
+  if (role === "presenter") sessionLog.slide(state.index, target);
   const img = document.getElementById("slide-img");
   if (img) swapStepImage(img, slideImageUrl(slide, target), `الشريحة ${state.index}`, slideGeneration, fadeMs(slide, target));
   prefetchNeighbors(state.index);
@@ -231,6 +239,7 @@ function showSlide(index, step = 0) {
   state.index = index;
   state.step = clampStep(slide, step);
   clearTimeout(autoStepTimer);
+  if (role === "presenter") sessionLog.slide(index, state.step);
   if (role === "presenter") {
     directorRuntime.cloudSeq++;
     directorRuntime.pending = null;
@@ -266,7 +275,10 @@ function renderPresenter() {
       <div class="main">
         <div class="bar">
           <div class="meta" id="meta"></div>
-          <div class="meta" id="clock">00:00</div>
+          <div class="meta clock-box"><span id="clock">00:00</span>
+            <select id="planned-minutes" aria-label="مدة المحاضرة المخططة"></select>
+            <span id="clock-hint" class="clock-hint"></span></div>
+          <div class="clock-track" aria-hidden="true"><span id="clock-fill"></span></div>
         </div>
         <div class="stage-wrap">${stageHtml()}</div>
 
@@ -284,6 +296,7 @@ function renderPresenter() {
       <aside class="side">
         <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
         <div id="lecture-import-mount"></div>
+        <div id="library-mount"></div>
         <details class="readiness-drawer" id="readiness-drawer">
           <summary>جاهزية العرض وتوافق PowerPoint</summary>
           <div id="readiness-content" aria-live="polite"></div>
@@ -398,9 +411,27 @@ function renderPresenter() {
   showSlide(state.index);
   setupDirector();
   mountImportPanel(document.getElementById("lecture-import-mount"));
+  mountLibraryPanel(document.getElementById("library-mount"), {
+    getToken: directorAdminToken, getBundle: () => state.bundle, getManifest: () => state.manifest, sessionLog,
+    getPollCode: () => { try { return new URL(pollScreen.url).searchParams.get("s"); } catch { return null; } },
+    getUsage: async () => { const r = await fetch("/api/director/status", { headers: { "X-Admin-Token": directorAdminToken() } }); return r.ok ? r.json() : null; },
+    onOpen: (bundle) => { sessionLog.end(); location.search = "?bundle=" + bundle; },
+  });
   renderReadiness();
+  setupPlannedClock();
 }
 
+// Does an audience window answer? (same-browser BroadcastChannel round trip)
+function pingAudience() {
+  return new Promise((resolve) => {
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const probe = new BroadcastChannel("alfa-cognitive-stage");
+    const done = (value) => { clearTimeout(timer); probe.close(); resolve(value); };
+    const timer = setTimeout(() => done(false), 700);
+    probe.onmessage = (event) => { if (event.data?.type === "pong" && event.data.nonce === nonce) done(true); };
+    probe.postMessage({ type: "ping", nonce, bundle: state.bundle });
+  });
+}
 function renderReadiness() {
   const target = document.getElementById("readiness-content");
   if (!target || !state.manifest) return;
@@ -425,6 +456,51 @@ function renderReadiness() {
     : "لا توجد فيديوهات مضمنة في هذه المحاضرة.";
   mediaButton.disabled = summary.embeddedVideoCount === 0;
   target.append(mediaButton, mediaResults);
+  const rehearsalButton = document.createElement("button");
+  rehearsalButton.id = "rehearsal-run";
+  rehearsalButton.type = "button";
+  rehearsalButton.textContent = "بروفة قبل الدرس";
+  const rehearsalList = document.createElement("ol");
+  rehearsalList.className = "rehearsal-list";
+  rehearsalList.id = "rehearsal-results";
+  rehearsalList.setAttribute("aria-live", "polite");
+  target.append(rehearsalButton, rehearsalList);
+  rehearsalButton.onclick = async () => {
+    rehearsalButton.disabled = true;
+    rehearsalList.replaceChildren();
+    const mark = { ok: "✓ ", warn: "⚠ ", fail: "✗ " };
+    try {
+      const outcome = await runRehearsal({
+        manifest: state.manifest, slides: state.slides, bundle: state.bundle,
+        fetchImpl: (url, init) => fetch(url, init), testMedia: testLectureMedia,
+        nav: { onLine: navigator.onLine, hasRecognition: Boolean(directorRuntime.speech?.supported),
+          audioInputs: await navigator.mediaDevices?.enumerateDevices?.().then((d) => d.filter((x) => x.kind === "audioinput").length).catch(() => null) },
+        audienceOpen: pingAudience,
+        adminCheck: async () => {
+          const token = directorAdminToken();
+          if (!token) return null;
+          try { return (await fetch("/api/admin/check", { headers: { "X-Admin-Token": token } })).ok; } catch { return false; }
+        },
+        probeBroken: async () => {
+          const started = Date.now();
+          const result = await probeMedia({ sources: [{ type: "video/mp4", src: "/bundles/" + state.bundle + "/media/__rehearsal_missing__.mp4" }] }, { timeoutMs: 3000 });
+          return ["failed", "timeout"].includes(result.status) && Date.now() - started < 5000;
+        },
+        onProgress(result) {
+          const row = document.createElement("li");
+          row.className = "rehearsal-" + result.level;
+          row.textContent = mark[result.level] + result.text;
+          rehearsalList.append(row);
+        },
+      });
+      const headline = document.createElement("li");
+      headline.className = "rehearsal-" + outcome.level;
+      headline.textContent = outcome.level === "ok" ? "البروفة اكتملت بلا مشاكل." : outcome.level === "warn" ? "البروفة اكتملت مع تنبيهات؛ راجعها قبل الدخول." : "فشل في بند أو أكثر؛ أصلحه قبل الدخول.";
+      rehearsalList.prepend(headline);
+    } catch (error) {
+      rehearsalList.textContent = "تعذرت البروفة: " + error.message;
+    } finally { rehearsalButton.disabled = false; }
+  };
   mediaButton.onclick = async () => {
     if (directorRuntime.mediaCheckAbort) directorRuntime.mediaCheckAbort.abort();
     const controller = new AbortController();
@@ -522,6 +598,7 @@ function showInfographicFromForm() {
     beginDigression();
     renderLayer(spec);
     currentOverlay = spec;
+    sessionLog.scene({ slide: state.index, type: spec.type, title: spec.title, lines: spec.lines, source: "manual" });
     send({ type: "infographic", spec });
     directorRuntime.activeOverlay = true;
     msg.textContent = "معروض للطلبة. يُخفى تلقائياً عند تغيير الشريحة.";
@@ -575,7 +652,7 @@ function captureStageState() {
     overlay: currentOverlay, poll: pollScreen.visible };
 }
 // Call right before any scene/poll goes on screen so one "return" can restore everything.
-function beginDigression() { returnStack.enter(captureStageState); }
+function beginDigression() { returnStack.enter(captureStageState); sessionLog.digression("enter"); }
 
 function restoreStageState(snapshot) {
   if (!snapshot) return;
@@ -608,7 +685,7 @@ function goMain() {
   // Emergency/return: back to the exact lecture state captured when the digression began.
   noteQuickHide();
   const original = returnStack.home();
-  if (original) { restoreStageState(original); return; }
+  if (original) { sessionLog.digression("return"); restoreStageState(original); return; }
   // No digression recorded: stop clips, hide scenes, stay on the current slide and click state.
   for (const el of videoEls) el.pause();
   hideInfographic(true);
@@ -619,7 +696,7 @@ function goMain() {
 function backOneLevel() {
   noteQuickHide();
   const previous = returnStack.back();
-  if (previous) restoreStageState(previous); else goMain();
+  if (previous) { sessionLog.digression("back"); restoreStageState(previous); } else goMain();
 }
 
 function toggleVideo() {
@@ -706,13 +783,14 @@ async function syncApprovedScenes() {
   finally { if (button) button.disabled = false; }
 }
 
-function revealDirectorScene(proposal) {
+function revealDirectorScene(proposal, source = "approved") {
   if (!proposal?.spec || proposal.slide !== state.index ||
       Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
   try {
     beginDigression();
     renderLayer(proposal.spec);
     currentOverlay = proposal.spec;
+    sessionLog.scene({ slide: state.index, type: proposal.spec.type, title: proposal.spec.title, lines: proposal.spec.lines, source });
     send({ type: "infographic", spec: proposal.spec });
     directorRuntime.activeOverlay = true;
     if (proposal.utterance) {
@@ -789,7 +867,7 @@ function directorContext() {
     mediaPlaying: videoEls.some((el) => !el.paused) };
 }
 function revealAndRecord(proposal, { automatic = false } = {}) {
-  if (!revealDirectorScene(proposal)) return false;
+  if (!revealDirectorScene(proposal, automatic ? "auto" : proposal.fromMemory ? "memory" : "approved")) return false;
   brain.noteShown(state.index);
   directorRuntime.autoShown = automatic && proposal.spec
     ? { type: proposal.spec.type, at: Date.now(), fp: fingerprint(proposal.utterance) } : null;
@@ -878,7 +956,7 @@ function receiveDirectorSpeech(text) {
   if (rejected || context.mode === "shadow") return;
   const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
   if (saved) {
-    showDirectorProposal({ spec: saved.spec, utterance: raw },
+    showDirectorProposal({ spec: saved.spec, utterance: raw, fromMemory: true },
       noticed ? "مشهد محفوظ — لا يحتاج API." : "مشهد محفوظ سابقاً — بلا تكلفة API. أكد ظهوره أمام الطلبة.");
     return;
   }
@@ -928,6 +1006,7 @@ function setupDirector() {
       bundle: state.bundle, slide: proposal.slide, utterance: proposal.utterance
     });
     if (proposal?.spec) {
+      sessionLog.declined({ slide: proposal.slide, type: proposal.spec.type });
       recordDecision({ bundle: state.bundle, type: proposal.spec.type, approved: false,
         fingerprint: fingerprint(proposal.utterance) });
       refreshTasteLine();
@@ -1172,14 +1251,26 @@ function setupKeys() {
   });
 }
 
+function plannedKey() { return "alfa-planned-minutes:" + state.bundle; }
+function setupPlannedClock() {
+  const select = document.getElementById("planned-minutes");
+  if (!select) return;
+  for (const m of PLANNED_CHOICES) select.append(Object.assign(document.createElement("option"), {
+    value: String(m), textContent: m ? "مخطط " + m + " د" : "بلا وقت مخطط" }));
+  try { select.value = localStorage.getItem(plannedKey()) || "0"; } catch {}
+  select.onchange = () => { try { localStorage.setItem(plannedKey(), select.value); } catch {} };
+}
 function setupClock() {
   setInterval(() => {
     const el = document.getElementById("clock");
     if (!el) return;
-    const total = Math.floor((Date.now() - clockStart) / 1000);
-    const mm = String(Math.floor(total / 60)).padStart(2, "0");
-    const ss = String(total % 60).padStart(2, "0");
-    el.textContent = `${mm}:${ss}`;
+    const planned = Number(document.getElementById("planned-minutes")?.value || 0);
+    const info = clockState(Date.now() - clockStart, planned);
+    el.textContent = info.label;
+    const hint = document.getElementById("clock-hint");
+    if (hint) { hint.textContent = info.hint; hint.dataset.phase = info.phase; }
+    const fill = document.getElementById("clock-fill");
+    if (fill) { fill.style.width = Math.round(info.ratio * 100) + "%"; fill.dataset.phase = info.phase; }
   }, 1000);
 }
 
@@ -1194,6 +1285,10 @@ async function boot() {
       app.textContent = "لا توجد محاضرة مفتوحة بعد.";
     }
     return;
+  }
+  if (role === "presenter") {
+    sessionLog = createSessionLog({ bundle: state.bundle });
+    addEventListener("pagehide", () => sessionLog.end());
   }
   const manifest = await fetch(`/bundles/${state.bundle}/manifest.json`).then((r) => r.json());
   state.manifest = manifest;
@@ -1212,6 +1307,10 @@ async function boot() {
     if (role === "presenter" && message.type === "audience-media-issue" &&
         message.index === state.index && typeof message.issue === "string") {
       setDirectorStatus("شاشة الطلبة: " + message.issue.slice(0, 150));
+      return;
+    }
+    if (role === "audience" && message.type === "ping" && typeof message.nonce === "string" && /^[a-f0-9]{12}$/.test(message.nonce)) {
+      send({ type: "pong", nonce: message.nonce });
       return;
     }
     if (role === "audience") applyRemote(message);

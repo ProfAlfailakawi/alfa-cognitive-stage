@@ -29,6 +29,12 @@ jobs:
           node --check web/lecture-readiness.js
           node --check web/media-preflight.js
           node --check web/director-core.js
+          node --check web/session-log.js
+          node --check web/lecture-clock.js
+          node --check web/rehearsal.js
+          node --check web/library-ui.js
+          node --check server/library.mjs
+          node --check server/votes.mjs
           node --check web/semantic-index.js
           node --check web/director-taste.js
           node --check web/director-brain.js
@@ -50,6 +56,7 @@ jobs:
           npm run test:media-preflight
           npm run test:scene-store
           npm run test:security
+          npm run test:library
           npm run test:readiness
           npm run test:poll-analytics
       - uses: actions/setup-python@v5
@@ -89,6 +96,8 @@ jobs:
         run: npm run test:e2e-return
       - name: Memory controls and conservative preference learning
         run: npm run test:e2e-memory
+      - name: Course library, rehearsal, session summary and data controls
+        run: npm run test:e2e-library
       - name: Five-phone browser voting and persistence test
         run: npm run test:vote
 

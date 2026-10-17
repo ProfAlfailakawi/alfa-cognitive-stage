@@ -187,10 +187,16 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
     const slideIndex = ctx.slide?.index ?? 0;
     const mode = ctx.mode || "balanced";
     const slideDigits = new Set([...digitsOf(ctx.slide?.text || ""), ...digitsOf(ctx.slide?.notes || "")]);
-    window.push({ text: raw, at: t });
+    window.push({ text: raw, at: t, used: false });
     window = window.filter((w) => t - w.at < WINDOW_MS).slice(-MAX_WINDOW);
     const spoken = numeralizePercents(raw);
-    const recent = window.filter((w) => t - w.at < 25000).slice(-3).map((w) => numeralizePercents(w.text)).join(" ");
+    const spoken0 = spoken;
+    // Earlier sentences may complete a statistic ("في دراسة…" + "ونسبتهم ٦٨ بالمية"), but only when the new
+    // sentence itself carries a number, and never sentences that already produced a scene.
+    const carriesNumber = /\d|%|بالمي|بالمئ|في المي|في المئ/.test(normalizeArabic(spoken0));
+    const recent = carriesNumber
+      ? window.filter((w) => t - w.at < 25000 && !w.used).slice(-3).map((w) => numeralizePercents(w.text)).join(" ")
+      : "";
     const normalized = normalizeArabic(spoken);
 
     trackTopic(spoken, d);
@@ -210,7 +216,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
         reason: "تراجعت عن معلومة؛ هل أخفي المشهد الظاهر؟" };
     }
     const correcting = CORRECTION.test(normalized);
-    const withSpecial = direct || interpretSpeech(recent);
+    const withSpecial = direct || (recent ? interpretSpeech(recent) : null);
     const moment = withSpecial;
     const showing = ctx.overlay?.lines?.join(" ") || "";
     if (correcting && ctx.overlay && moment?.spec && digitsOf(showing).join() !== digitsOf(moment.spec.lines.join(" ")).join()) {
@@ -254,6 +260,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       story = { slide: slideIndex, started: t, last: raw, events: [raw.slice(0, 100)] };
     }
     d.kind = found.kind; d.confidence = found.confidence; d.spec = found.spec || null; d.utterance = found.utterance || raw;
+    if (d.spec) for (const w of window) w.used = true;
     if (found.kind === "question") d.reason = "سؤال موجه للطلبة";
 
     // 5. Redundancy: a statistic already printed on the slide adds nothing.
