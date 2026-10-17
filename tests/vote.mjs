@@ -93,6 +93,16 @@ try {
   await phones[0].page.waitForSelector("text=%", { timeout: 6000 });
   check("phones see results after reveal", (await phones[0].page.textContent("#options")).includes("%"));
 
+  // Security regression: repeating a poll is privileged; a student cannot open new rounds.
+  check("repeating a poll requires admin authentication",
+    (await fetch(`${base}/api/sessions/${code}/polls/${q1.poll.id}/repeat`, {
+      method: "POST", headers: device(phones[0].token),
+    })).status === 401);
+  check("repeating a poll rejects an invalid admin token",
+    (await fetch(`${base}/api/sessions/${code}/polls/${q1.poll.id}/repeat`, {
+      method: "POST", headers: { "X-Admin-Token": "wrong" },
+    })).status === 401);
+
   // Close, then a second question that allows changing the answer.
   await admin(`/sessions/${code}/polls/${q1.poll.id}/close`, "POST");
   const q2 = await (await admin(`/sessions/${code}/polls`, "POST", {
