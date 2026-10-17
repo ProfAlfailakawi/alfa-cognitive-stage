@@ -125,6 +125,8 @@ async function handleApi(req, res, path) {
   if (resource === "memory" && code) {
     requireAdmin(req);
     try {
+      if (code === "library" && req.method === "GET" && !action)
+        return sendJson(res, 200, { scenes: scenes.listAll() });
       if (req.method === "GET" && !action) return sendJson(res, 200, { scenes: scenes.list(code) });
       if (req.method === "POST" && !action) return sendJson(res, 201, { scene: scenes.save(code, await readBody(req)) });
       if (req.method === "DELETE" && action) return sendJson(res, 200, scenes.remove(code, action));
