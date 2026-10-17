@@ -13,6 +13,7 @@ const role = location.hash === "#audience" ? "audience" : "presenter";
 
 const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9 };
 let videoEl = null;
+let videoEls = [];
 let clockStart = Date.now();
 let slideGeneration = 0;
 const directorRuntime = {
@@ -35,48 +36,47 @@ function stageHtml() {
 }
 
 function placeVideo(slide) {
-  if (videoEl) {
-    videoEl.pause();
-    videoEl.remove();
-    videoEl = null;
-  }
-  const clip = slide.videos[0];
-  if (!clip) return;
+  for (const old of videoEls) { old.pause(); old.remove(); }
+  videoEls = [];
+  videoEl = null;
   const stage = document.getElementById("stage");
-  videoEl = document.createElement("video");
-  videoEl.className = "clip";
-  videoEl.preload = "auto";
-  videoEl.playsInline = true;
-  videoEl.controls = role === "presenter";
-  for (const [type, src] of [["video/mp4", clip.src], ["video/webm", clip.webm]]) {
-    if (!src) continue;
-    const source = document.createElement("source");
-    source.src = `/bundles/${state.bundle}/${src}`;
-    source.type = type;
-    videoEl.appendChild(source);
-  }
-  videoEl.style.left = `${clip.x * 100}%`;
-  videoEl.style.top = `${clip.y * 100}%`;
-  videoEl.style.width = `${clip.w * 100}%`;
-  videoEl.style.height = `${clip.h * 100}%`;
-  videoEl.style.objectFit = "contain";
-  stage.appendChild(videoEl);
-  videoEl.addEventListener("ended", () => {
-    if (role === "presenter") send({ type: "video", action: "ended", index: state.index });
+  if (!stage) return;
+  const clips = Array.isArray(slide.videos) ? slide.videos : [];
+  clips.forEach((clip, i) => {
+    const el = document.createElement("video");
+    el.className = "clip";
+    el.preload = "metadata";
+    el.playsInline = true;
+    el.controls = role === "presenter";
+    for (const [type, src] of [["video/mp4", clip.src], ["video/webm", clip.webm]]) {
+      if (!src) continue;
+      const source = document.createElement("source");
+      source.src = "/bundles/" + state.bundle + "/" + src;
+      source.type = type;
+      el.appendChild(source);
+    }
+    el.style.left = (clip.x * 100) + "%";
+    el.style.top = (clip.y * 100) + "%";
+    el.style.width = (clip.w * 100) + "%";
+    el.style.height = (clip.h * 100) + "%";
+    el.style.objectFit = "contain";
+    stage.appendChild(el);
+    videoEls.push(el);
+    if (role === "presenter") {
+      el.addEventListener("play", () => {
+        for (const other of videoEls) if (other !== el && !other.paused) other.pause();
+        directorRuntime.speech?.setMediaPlaying(true);
+        send({ type: "video", action: "play", clip: i, time: el.currentTime });
+      });
+      el.addEventListener("pause", () => {
+        if (videoEls.every((item) => item.paused)) directorRuntime.speech?.setMediaPlaying(false);
+        send({ type: "video", action: "pause", clip: i, time: el.currentTime });
+      });
+      el.addEventListener("seeked", () => send({ type: "video", action: "seek", clip: i, time: el.currentTime }));
+      el.addEventListener("ended", () => send({ type: "video", action: "ended", clip: i, index: state.index }));
+    }
   });
-  if (role === "presenter") {
-    // Use the element held by the closure: events can fire after videoEl was replaced.
-    const el = videoEl;
-    el.addEventListener("play", () => {
-    directorRuntime.speech?.setMediaPlaying(true);
-    send({ type: "video", action: "play", time: el.currentTime });
-  });
-    el.addEventListener("pause", () => {
-      directorRuntime.speech?.setMediaPlaying(false);
-      send({ type: "video", action: "pause", time: el.currentTime });
-    });
-    el.addEventListener("seeked", () => send({ type: "video", action: "seek", time: el.currentTime }));
-  }
+  videoEl = videoEls[0] || null;
 }
 
 function showSlide(index) {
@@ -214,7 +214,14 @@ async function fillLecturePicker() {
   const picker = document.getElementById("lecture-picker");
   const list = await fetch("/bundles/lectures.json").then((r) => r.json()).catch(() => []);
   if (!picker || !list.length) return;
-  picker.innerHTML = list.map((l) => `<option value="${l.id}" ${l.id === state.bundle ? "selected" : ""}>${l.title}</option>`).join("");
+  picker.replaceChildren();
+  for (const item of list) {
+    const option = document.createElement("option");
+    option.value = String(item.id);
+    option.textContent = String(item.title);
+    option.selected = item.id === state.bundle;
+    picker.appendChild(option);
+  }
   picker.onchange = () => {
     // Switching lectures reloads both windows on the chosen bundle; the audience tab must be reopened.
     location.search = `?bundle=${picker.value}`;
@@ -257,7 +264,7 @@ function go(index) {
 
 function goMain() {
   // Emergency: stop any playing clip, hide any infographic, and return to the main deck position at once.
-  if (videoEl) videoEl.pause();
+  for (const el of videoEls) el.pause();
   hideInfographic(true);
   showSlide(state.main);
   send({ type: "slide", index: state.main, main: state.main, emergency: true });
@@ -329,6 +336,7 @@ function receiveDirectorSpeech(text) {
   if (!raw) return;
   const last = document.getElementById("director-last");
   if (last) last.textContent = "سمعت: " + raw.slice(0, 160);
+  directorRuntime.cloudSeq++;
   directorRuntime.recent.push({ text: raw, at: Date.now() });
   directorRuntime.recent = directorRuntime.recent.filter((r) => Date.now() - r.at < 25000).slice(-3);
   const recent = directorRuntime.recent.map((r) => r.text).join(" ");
@@ -400,10 +408,16 @@ function applyRemote(message) {
     renderLayer(message.spec);
   }
   if (message.type === "infographic-hide") hideInfographic(false);
-  if (message.type === "video" && videoEl) {
-    if (message.action === "play") videoEl.play().catch(() => {});
-    if (message.action === "pause") videoEl.pause();
-    if (message.action === "seek") videoEl.currentTime = message.time;
+  if (message.type === "video") {
+    const target = videoEls[Number(message.clip) || 0];
+    if (!target) return;
+    if (message.action === "play") {
+      for (const el of videoEls) if (el !== target) el.pause();
+      if (Number.isFinite(message.time)) target.currentTime = message.time;
+      target.play().catch(() => {});
+    }
+    if (message.action === "pause") target.pause();
+    if (message.action === "seek" && Number.isFinite(message.time)) target.currentTime = message.time;
   }
 }
 
@@ -411,6 +425,7 @@ function setupKeys() {
   document.addEventListener("keydown", (event) => {
     if (role !== "presenter") return;
     const target = event.target;
+    if (target instanceof HTMLElement && target.closest("input,textarea,select,[contenteditable=true]")) return;
     if (target instanceof HTMLButtonElement) target.blur();
     switch (event.key) {
       case "ArrowRight":
