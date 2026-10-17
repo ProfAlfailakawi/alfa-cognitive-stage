@@ -106,7 +106,8 @@ try {
   check("cloud consumption summary starts with no calls and unknown USD cost",
     authorizedUsage.status === 200 && usageReport.callsUsed === 0 &&
     usageReport.inputTokens === 0 && usageReport.costUsd === null &&
-    usageReport.scope === "server-process");
+    usageReport.scope === "server-process" && usageReport.daily?.healthy === true &&
+    usageReport.daily.callsUsed === 0 && usageReport.daily.scope === "utc-day");
   await presenter.fill("#director-admin-token", ADMIN);
   await presenter.check("#director-cloud");
   await presenter.waitForFunction(() => document.querySelector("#director-usage")?.textContent
