@@ -1,0 +1,36 @@
+name: Core regression checks
+on:
+  push:
+  pull_request:
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JS syntax
+        run: |
+          node --check server/server.mjs
+          node --check server/director-ai.mjs
+          node --check web/app.js
+          node --check web/director-core.js
+          node --check web/speech-director.js
+          node --check web/vote-admin.js
+          node --check web/vote.js
+      - name: JS unit regression
+        run: |
+          npm run test:infographic
+          npm run test:director
+          npm run test:director-ai
+          npm run test:vote-rounds
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Bundle metadata test
+        run: |
+          python -m pip install python-pptx lxml Pillow
+          npm run test:build
