@@ -128,11 +128,13 @@ async function handleApi(req, res, path) {
       if (code === "library") {
         if (req.method === "GET" && !action)
           return sendJson(res, 200, { scenes: scenes.listAll() });
+        if (req.method === "DELETE" && !action) return sendJson(res, 200, scenes.clear(null));
         throw new SceneStoreError("مكتبة المشاهد العامة للقراءة فقط", 405);
       }
       if (req.method === "GET" && !action) return sendJson(res, 200, { scenes: scenes.list(code) });
       if (req.method === "POST" && !action) return sendJson(res, 201, { scene: scenes.save(code, await readBody(req)) });
       if (req.method === "DELETE" && action) return sendJson(res, 200, scenes.remove(code, action));
+      if (req.method === "DELETE" && !action) return sendJson(res, 200, scenes.clear(code));
     } catch (err) {
       if (err instanceof SceneStoreError) return sendJson(res, err.status, { error: err.message });
       throw err;

@@ -10,7 +10,7 @@ function storageOrNull(custom) {
   if (custom) return custom;
   try { return globalThis.localStorage || null; } catch { return null; }
 }
-function fingerprint(utterance) {
+export function fingerprint(utterance) {
   // An index fingerprint, NOT a cryptographic hash or anonymization guarantee.
   // Preserve digits and percent signs: revised statistics must not be suppressed.
   const phrase = normalizeArabic(String(utterance || "").slice(0, 950)).toLowerCase()

@@ -77,5 +77,13 @@ export function createSceneStore({ file = null } = {}) {
     persist();
     return { removed: old.length !== state.get(bundle).length };
   }
-  return { list, listAll, save, remove };
+  // Lecturer-controlled erasure: one lecture, or everything.
+  function clear(bundle) {
+    let removed = 0;
+    if (bundle === null) { for (const records of state.values()) removed += records.length; state.clear(); }
+    else { verifyBundle(bundle); removed = (state.get(bundle) || []).length; state.delete(bundle); }
+    persist();
+    return { removed };
+  }
+  return { list, listAll, save, remove, clear };
 }
