@@ -32,6 +32,7 @@ jobs:
           npm run test:director-ai
           npm run test:memory
           npm run test:library
+          npm run test:library-api
           npm run test:import
           npm run test:vote-rounds
       - uses: actions/setup-python@v5

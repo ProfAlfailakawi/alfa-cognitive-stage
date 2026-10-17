@@ -21,7 +21,7 @@ let slideGeneration = 0;
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
   recent: [], cloudSeq: 0, activeOverlay: false,
-  story: null, lastStoryVisual: 0,
+  story: null, lastStoryVisual: 0, lastScene: null,
 };
 
 function send(message) {
@@ -167,6 +167,10 @@ function renderPresenter() {
           <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (لـAPI فقط)" />
           <p class="meta" id="director-status" aria-live="polite">المايك متوقف. لا توجد طلبات API.</p>
           <p class="meta" id="director-last"></p>
+          <div class="director-actions">
+            <button type="button" id="director-save" hidden>حفظ المشهد الحالي في مكتبتي</button>
+            <button type="button" id="director-memory-sync">استرجاع المشاهد المحفوظة</button>
+          </div>
           <div id="director-proposal" class="director-proposal" hidden>
             <div id="director-reason"></div>
             <div class="director-actions">
@@ -281,6 +285,9 @@ function goMain() {
   // Emergency: stop any playing clip, hide any infographic, and return to the main deck position at once.
   for (const el of videoEls) el.pause();
   directorRuntime.story = null;
+  directorRuntime.lastScene = null;
+  const saveBtn = document.getElementById("director-save");
+  if (saveBtn) saveBtn.hidden = true;
   clearDirectorProposal();
   hideInfographic(true);
   // Preserve the current slide and its paused video state when already at the safe anchor.
@@ -319,6 +326,10 @@ function revealDirectorScene(proposal) {
     renderLayer(proposal.spec);
     send({ type: "infographic", spec: proposal.spec });
     directorRuntime.activeOverlay = true;
+    directorRuntime.lastScene = proposal.utterance ? { bundle:state.bundle, slide:state.index,
+      utterance: proposal.utterance, spec: proposal.spec } : null;
+    const saveBtn = document.getElementById("director-save");
+    if (saveBtn) saveBtn.hidden = !directorRuntime.lastScene;
     if (proposal.utterance) rememberScene({
       bundle: state.bundle, slide: state.index, utterance: proposal.utterance, spec: proposal.spec
     });
@@ -437,6 +448,60 @@ function receiveDirectorSpeech(text) {
     requestDirectorAI(raw, seq); // Explicitly enabled, billed API; never auto-displays response.
   }
 }
+
+function lecturerToken() {
+  return document.getElementById("director-admin-token")?.value.trim() ||
+    sessionStorage.getItem("alfa-admin-token") || "";
+}
+async function syncSavedScenes() {
+  const token = lecturerToken();
+  if (!token) {
+    setDirectorStatus("للمزامنة بين الشعب أدخل رمز المحاضر أولاً. المحفوظ محلياً يعمل دون اتصال.");
+    return;
+  }
+  try {
+    const check = await fetch("/api/admin/check", { headers: { "X-Admin-Token": token } });
+    if (!check.ok) throw new Error("رمز المحاضر غير صحيح.");
+    sessionStorage.setItem("alfa-admin-token", token);
+    const response = await fetch("/api/library/scenes/" + encodeURIComponent(state.bundle), {
+      headers: { "X-Admin-Token": token }
+    });
+    if (!response.ok) throw new Error("تعذر استرجاع المكتبة.");
+    const data = await response.json();
+    let count = 0;
+    for (const scene of data.scenes || []) {
+      if (rememberScene(scene)) count++;
+    }
+    setDirectorStatus("تم استرجاع " + count + " مشهد محفوظ لهذه المحاضرة دون API.");
+  } catch (err) {
+    setDirectorStatus(err.message || "فشل استرجاع المكتبة.");
+  }
+}
+async function saveSceneToLibrary() {
+  const scene = directorRuntime.lastScene;
+  if (!scene) return;
+  // A successful visual already has a local copy. Server sync is an explicit decision.
+  rememberScene(scene);
+  const token = lecturerToken();
+  if (!token) {
+    setDirectorStatus("المشهد محفوظ في هذا المتصفح. أدخل رمز المحاضر لمزامنته على الماك.");
+    return;
+  }
+  try {
+    const response = await fetch("/api/library/scenes", {
+      method: "POST",
+      headers: { "X-Admin-Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify(scene),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "تعذر حفظ المشهد على الخادم");
+    sessionStorage.setItem("alfa-admin-token", token);
+    setDirectorStatus("تم حفظ المشهد في مكتبة المحاضرة للشعب القادمة — بلا توليد جديد.");
+  } catch (err) {
+    setDirectorStatus("بقي المشهد محفوظاً في المتصفح فقط: " + err.message);
+  }
+}
+
 function setupDirector() {
   const speech = createSpeechDirector({ onUtterance: receiveDirectorSpeech, onStatus: setDirectorStatus });
   directorRuntime.speech = speech;
@@ -449,6 +514,9 @@ function setupDirector() {
     if (pending && !revealDirectorScene(pending)) setDirectorStatus("المشهد انتهت صلاحيته أو يوجد فيديو نشط.");
   };
   document.getElementById("director-reject").onclick = () => { clearDirectorProposal(); setDirectorStatus("تم تجاهل الاقتراح."); };
+  document.getElementById("director-save").onclick = () => saveSceneToLibrary();
+  document.getElementById("director-memory-sync").onclick = () => syncSavedScenes();
+  if (sessionStorage.getItem("alfa-admin-token")) syncSavedScenes();
   setDirectorStatus("مكتبة المشاهد المعتمدة لهذه المحاضرة: " +
     countSavedScenes(state.bundle) + " — الاستماع متوقف.");
   document.getElementById("director-test-run").onclick = () => receiveDirectorSpeech(
