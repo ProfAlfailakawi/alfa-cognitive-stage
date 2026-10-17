@@ -6,6 +6,19 @@ const spec = { type: "stat", title: "إحصائية", lines: ["68%", "من حد�
 assert.equal(rememberScene({bundle:"lecture1",slide:12,utterance:"في دراسة عن تحفيز الألعاب نسبة 68%",spec},storage),true);
 assert.equal(countSavedScenes("lecture1",storage),1);
 assert.equal(recallScene({bundle:"lecture1",slide:12,utterance:"في دراسة عن الدافعية للألعاب نسبة 68%"},storage)?.spec.lines[0],"68%");
+assert.equal(recallScene({bundle:"lecture1",slide:12,
+  utterance:"في دراسة عن تحفيز الألعاب نسبة 69%"},storage),null,
+  "A corrected 69% must never reuse an approved 68% scene, even on the same slide");
+assert.equal(recallScene({bundle:"lecture1",slide:12,
+  utterance:"في دراسة عن تحفيز الألعاب"},storage),null,
+  "A removed statistic cannot reuse a scene that contains the old percentage");
+assert.equal(recallScene({bundle:"lecture1",slide:13,
+  utterance:"في دراسة عن تحفيز الألعاب نسبة 69%"},storage),null,
+  "Nearby slides do not bypass the numeric guard");
+assert.equal(recallScene({bundle:"lecture1",slide:12,
+  utterance:"في دراسة عن تحفيز الألعاب نسبة ٦٨٪"},storage)?.spec.lines[0],"68%",
+  "Arabic-Indic digits and percentage symbol must normalize correctly");
+
 const across = recallScene({bundle:"lecture2",slide:2,utterance:"في دراسة عن تحفيز الألعاب نسبة 68%"},storage);
 assert.equal(across?.spec.lines[0],"68%");
 assert.equal(across?.reusedAcrossLecture,true);

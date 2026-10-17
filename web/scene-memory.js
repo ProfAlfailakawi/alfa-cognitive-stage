@@ -72,8 +72,15 @@ export function recallScene({ bundle, slide, utterance }, customStorage) {
   const query = wordSet(utterance);
   if (query.length < 2) return null;
   let best = null, max = 0;
+  const queryNumbers = JSON.stringify(numericTokens(utterance));
   for (const item of read(bundle, storage)) {
-    if (!item || !Array.isArray(item.terms) || !item.spec) continue;
+    if (!item || !Array.isArray(item.terms) || !item.spec ||
+        !Array.isArray(item.spec.lines)) continue;
+    // Numeric facts must match even within the same lecture and slide:
+    // similarity alone could reuse 68% when the lecturer corrected it to 69%.
+    const savedNumbers = JSON.stringify(numericTokens(
+      String(item.utterance || "") + " " + item.spec.lines.join(" ")));
+    if (savedNumbers !== queryNumbers) continue;
     const common = query.filter((word) => item.terms.includes(word)).length;
     const union = new Set([...query, ...item.terms]).size;
     const similarity = union ? common / union : 0;
@@ -86,7 +93,6 @@ export function recallScene({ bundle, slide, utterance }, customStorage) {
   // Cross-lecture reuse is stricter than same-lecture matching and always goes
   // through the presenter's existing confirmation proposal, never auto-display.
   if (query.length < 3) return null;
-  const queryNumbers = JSON.stringify(numericTokens(utterance));
   for (const item of readGlobal(storage)) {
     if (!item || item.bundle === bundle || !Array.isArray(item.terms) ||
         !Array.isArray(item.numbers) || !item.spec) continue;
