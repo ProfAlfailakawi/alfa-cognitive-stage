@@ -124,7 +124,7 @@ def probe_codecs(path: Path):
     return {s["codec_type"]: s["codec_name"] for s in streams}
 
 
-def prepare_video(src: Path, dst_dir: Path) -> str:
+def prepare_video(src: Path, dst_dir: Path) -> tuple[str, str | None]:
     """Copy a video into the bundle as an H.264/AAC MP4 that browsers play."""
     codecs = probe_codecs(src)
     dst = dst_dir / (src.stem + ".mp4")
@@ -247,7 +247,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
                 mp4_name, webm_name = video_cache[name]
                 videos.append({
                     "src": f"media/{mp4_name}",
-                    "webm": f"media/{webm_name}",
+                    "webm": f"media/{webm_name}" if webm_name else None,
                     "x": round(shape.left / slide_w, 6),
                     "y": round(shape.top / slide_h, 6),
                     "w": round(shape.width / slide_w, 6),

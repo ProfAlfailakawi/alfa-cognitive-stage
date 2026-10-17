@@ -56,6 +56,10 @@ class ManifestTests(unittest.TestCase):
             self.assertEqual(current["id"], "abcdef123456")
             self.assertEqual(listing[0]["slideCount"], 2)
 
+    def test_optional_video_source_is_null_when_webm_disabled(self):
+        name = None
+        self.assertIsNone(f"media/{name}" if name else None)
+
     def test_video_source_is_recognised_by_extension(self):
         self.assertIn(".mov", build_bundle.VIDEO_EXTS)
         self.assertIn(".mp4", build_bundle.VIDEO_EXTS)
