@@ -108,6 +108,16 @@ def render_slides(pptx: Path, out_dir: Path, width: int) -> int:
     return len(pages)
 
 
+def rerender(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
+    """Re-render only the slide images of an existing bundle (e.g. after installing fonts)."""
+    out_dir = bundles_root / sha256_file(pptx)[:12]
+    if not (out_dir / "manifest.json").exists():
+        raise SystemExit(f"no bundle to re-render in {out_dir}; run a normal build first")
+    shutil.rmtree(out_dir / "slides", ignore_errors=True)
+    render_slides(pptx, out_dir, width)
+    return out_dir
+
+
 def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     fingerprint = sha256_file(pptx)[:12]
     out_dir = bundles_root / fingerprint
@@ -185,8 +195,13 @@ def main(argv=None):
     parser.add_argument("pptx", type=Path)
     parser.add_argument("--bundles", type=Path, default=Path(__file__).resolve().parent.parent / "bundles")
     parser.add_argument("--width", type=int, default=1920)
+    parser.add_argument("--rerender", action="store_true",
+                        help="re-render slide images only, keep media and manifest")
     args = parser.parse_args(argv)
-    out = build(args.pptx, args.bundles, args.width)
+    if args.rerender:
+        out = rerender(args.pptx, args.bundles, args.width)
+    else:
+        out = build(args.pptx, args.bundles, args.width)
     print(out)
     return 0
 
