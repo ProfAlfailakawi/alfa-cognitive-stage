@@ -34,6 +34,28 @@ class ManifestTests(unittest.TestCase):
         shape.text = "الألعاب التعليمية"
         self.assertIn("الألعاب التعليمية", build_bundle.slide_text(slide))
 
+    def test_compatibility_manifest_detects_animation_and_chart(self):
+        deck = Presentation()
+        slide = deck.slides.add_slide(deck.slide_layouts[6])
+        self.assertFalse(build_bundle.slide_compatibility(slide)["animationsDetected"])
+        from pptx.oxml.xmlchemy import OxmlElement
+        slide._element.append(OxmlElement("p:timing"))
+        self.assertTrue(build_bundle.slide_compatibility(slide)["animationsDetected"])
+
+    def test_index_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            b = root / "abcdef123456"
+            b.mkdir()
+            (b / "manifest.json").write_text(json.dumps({
+                "id": "abcdef123456", "source": "تجربة.pptx",
+                "slideCount": 2, "problems": []}), encoding="utf-8")
+            build_bundle.write_indexes(root, "abcdef123456")
+            current = json.loads((root / "current.json").read_text(encoding="utf-8"))
+            listing = json.loads((root / "lectures.json").read_text(encoding="utf-8"))
+            self.assertEqual(current["id"], "abcdef123456")
+            self.assertEqual(listing[0]["slideCount"], 2)
+
     def test_video_source_is_recognised_by_extension(self):
         self.assertIn(".mov", build_bundle.VIDEO_EXTS)
         self.assertIn(".mp4", build_bundle.VIDEO_EXTS)
