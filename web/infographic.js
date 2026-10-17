@@ -20,7 +20,7 @@ const ICONS = {
 export function validateSpec(spec) {
   const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story"].includes(spec?.type) ? spec.type : null;
   if (!type) throw new Error("نوع الإنفوجرافيك غير معروف");
-  const title = esc(String(spec.title ?? "").trim().slice(0, 120));
+  const title = String(spec.title ?? "").trim().slice(0, 120); // Renderers escape at the HTML boundary.
   const lines = (Array.isArray(spec.lines) ? spec.lines : [])
     .map((l) => String(l ?? "").trim().slice(0, 120)).filter(Boolean);
   if (type === "stat") {
