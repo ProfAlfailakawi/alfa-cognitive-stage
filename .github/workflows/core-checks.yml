@@ -74,3 +74,26 @@ jobs:
         run: npm run test:e2e
       - name: Five-phone browser voting and persistence test
         run: npm run test:vote
+
+  import-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PowerPoint conversion tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libreoffice-impress poppler-utils ffmpeg
+          python -m pip install python-pptx lxml Pillow
+      - name: Generate and import real PowerPoint
+        run: |
+          python tools/make_test_pptx.py /tmp/alfa-ci-lecture.pptx
+          node tests/import-real.mjs
