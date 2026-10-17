@@ -1,0 +1,98 @@
+// Animated scenes in real Chromium: nothing clipped, motion present and calm, reduced-motion respected, text exact.
+import { chromium } from "playwright";
+import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const port = 4303, base = `http://localhost:${port}`;
+const shots = process.env.SCENE_SHOTS || "";
+if (shots) mkdirSync(shots, { recursive: true });
+const failures = [];
+const check = (name, ok, detail = "") => { console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  — " + detail : ""}`); if (!ok) failures.push(name); };
+const server = spawn(process.execPath, [join(root, "server/server.mjs")], { env: { ...process.env, PORT: String(port), ADMIN_TOKEN: "scenes-motion-test-token-0123456", VOTES_FILE: "/tmp/alfa-sm-v.json", SCENES_FILE: "/tmp/alfa-sm-s.json", QUESTION_BANK_FILE: "/tmp/alfa-sm-b.json", DIRECTOR_USAGE_FILE: "/tmp/alfa-sm-u.json" }, stdio: ["ignore", "pipe", "pipe"] });
+await new Promise((r) => server.stdout.once("data", r));
+const browser = await chromium.launch({ ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}), args: ["--no-sandbox"] });
+
+const LONG = "عنوان طويل جداً يشرح الفكرة الرئيسية لهذا المشهد بكلمات كثيرة حتى يتجاوز سطراً واحداً بكثير";
+const SPECS = [
+  ["stat-percent", { type: "stat", title: "الألعاب التعليمية", lines: ["68%", "من المشاركين استفادوا من التجربة"] }],
+  ["stat-100", { type: "stat", title: LONG, lines: ["100%", "كل الطلبة"] }],
+  ["stat-decimal", { type: "stat", title: "نسبة", lines: ["68.5%", "وصف"] }],
+  ["stat-plain", { type: "stat", title: "عدد", lines: ["12,500", "طالب وطالبة"] }],
+  ["stat-wide", { type: "stat", title: "x", lines: ["٣٤٥٬٦٧٨ ريال", "x"] }],
+  ["compare", { type: "compare", title: "الفرق بين النهجين", lines: ["هدف تعليمي | هدف ترفيهي", "تغذية راجعة فورية | تغذية متأخرة", "مشاركة نشطة | مشاهدة"] }],
+  ["compare5", { type: "compare", title: LONG, lines: ["أ طويلة جداً جداً جداً جداً | ب", "ج | د", "ه | و", "ز | ح", "ط | ي"] }],
+  ["steps3", { type: "steps", title: "خطوات", lines: ["اختر الهدف", "صمم النشاط", "قيّم الأثر"] }],
+  ["steps6", { type: "steps", title: LONG, lines: ["حدد الهدف التعليمي بدقة", "صمم النشاط المناسب", "جرّب مع مجموعة صغيرة", "اجمع الملاحظات", "عدّل التصميم", "طبّق على الجميع الآن"] }],
+  ["concept6", { type: "concept", title: "التعلم المباشر", lines: ["تحفيز المتعلم", "التغذية الراجعة", "المشاركة", "التطبيق العملي", "التقييم المستمر", "الدعم الاجتماعي"] }],
+  ["concept2", { type: "concept", title: "x", lines: ["أولاً", "ثانياً"] }],
+  ["flow6", { type: "flow", title: "تسلسل", lines: ["أول مرحلة", "ثاني مرحلة", "ثالث مرحلة", "رابع مرحلة", "خامس مرحلة", "سادس مرحلة طويلة نسبياً لاختبار الالتفاف"] }],
+  ["timeline6", { type: "timeline", title: "خط زمني", lines: ["2018 بداية المشروع", "2019 التجربة", "2020 التعلم عن بعد", "2021 التوسع", "2022 التقييم", "2023 النشر"] }],
+  ["timeline2", { type: "timeline", title: "x", lines: ["قبل", "بعد"] }],
+  ["story4", { type: "story", title: "قصة المحاضر", lines: ["شخص كان يلعب ألعاب الفيديو", "ثم تأثرت دراسته", "فقرر أن يغير الفكرة", "وصار يتعلم من اللعب"] }],
+  ["bars6", { type: "bars", title: "توزيع", lines: ["الجوال | 40%", "الكمبيوتر | 35%", "التابلت | 25%", "التلفاز | 10%", "الساعة الذكية | 5%", "أخرى بتسمية طويلة | 2%"] }],
+  ["cycle6", { type: "cycle", title: "دورة التعلم", lines: ["نخطط", "ننفذ", "نقيم", "نعدل", "نكرر", "نوثق"] }],
+  ["activity", { type: "activity", title: "نشاط", lines: ["ناقشوا مع زميلكم أهم فايدة للألعاب في التعلم ثم اكتبوا فكرة واحدة", "المدة: 3 دقائق"] }],
+];
+async function open(reducedMotion) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, reducedMotion: reducedMotion ? "reduce" : "no-preference" });
+  const page = await context.newPage();
+  page.on("pageerror", (e) => { console.log("pageerror: " + e); failures.push("pageerror"); });
+  await page.goto(`${base}/vote.html`);
+  return page;
+}
+const mount = (page, spec, key) => page.evaluate(async ([spec]) => {
+  const { renderInfographic } = await import("/infographic.js");
+  document.documentElement.dir = "rtl";
+  document.body.innerHTML = `<div id="stage" style="position:relative;width:1280px;height:720px"><div class="info-layer">${renderInfographic(spec)}</div></div>`;
+}, [spec]);
+try {
+  const page = await open(false);
+  for (const [key, spec] of SPECS) {
+    await mount(page, spec, key);
+    await page.waitForTimeout(40);
+    const early = await page.evaluate(() => {
+      const els = [...document.querySelectorAll('svg [class^="m-"]')];
+      return { count: els.length, hidden: els.filter((e) => Number(getComputedStyle(e).opacity) < 0.99).length, animated: els.filter((e) => getComputedStyle(e).animationName !== "none").length,
+        text: [...document.querySelectorAll("svg text")].map((t) => t.textContent).join("|") };
+    });
+    const squash = (t) => t.replace(/[\s…|]/g, "");
+    const exact = spec.lines.flatMap((l) => l.split("|").map((x) => x.trim())).every((piece) => squash(early.text).includes(squash(piece).slice(0, 5)));
+    check(`${key}: animates (not static) and starts hidden`, early.count > 0 && early.animated === early.count && early.hidden > 0, JSON.stringify({ n: early.count, hidden: early.hidden }));
+    check(`${key}: the real text is in the DOM from the first frame`, exact, early.text.slice(0, 80));
+    await page.waitForTimeout(2600);
+    const late = await page.evaluate(() => {
+      const bad = [];
+      for (const t of document.querySelectorAll("svg text")) {
+        const b = t.getBBox();
+        if (b.width > 0 && (b.x < 4 || b.y < 4 || b.x + b.width > 956 || b.y + b.height > 536)) bad.push(`${t.textContent.slice(0, 20)} [${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.width)}x${Math.round(b.height)}]`);
+      }
+      const shown = [...document.querySelectorAll('svg [class^="m-"]')].filter((e) => Number(getComputedStyle(e).opacity) < 0.99).length;
+      return { bad, shown };
+    });
+    check(`${key}: no text clipped by the frame`, late.bad.length === 0, late.bad.join(" ; "));
+    check(`${key}: everything is fully visible when the motion ends`, late.shown === 0, String(late.shown));
+    if (shots) await page.screenshot({ path: join(shots, key + ".png"), clip: { x: 0, y: 0, width: 1280, height: 720 } });
+  }
+  // ring: the arc is filled to exactly the stated percentage
+  await mount(page, SPECS[0][1]);
+  await page.waitForTimeout(1600);
+  check("the ring ends at exactly the stated percentage", await page.evaluate(() => getComputedStyle(document.querySelector(".m-ring")).strokeDasharray.replace(/px/g, "").split(/[ ,]+/)[0] === "68"));
+  // reduced motion
+  const calm = await open(true);
+  await mount(calm, SPECS[5][1]);
+  await calm.waitForTimeout(40);
+  const still = await calm.evaluate(() => ({ n: [...document.querySelectorAll('svg [class^="m-"]')].length, moving: [...document.querySelectorAll('svg [class^="m-"]')].filter((e) => getComputedStyle(e).animationName !== "none").length,
+    hidden: [...document.querySelectorAll('svg [class^="m-"]')].filter((e) => Number(getComputedStyle(e).opacity) < 0.99).length }));
+  check("with reduced-motion the scene is shown still and complete", still.n > 0 && still.moving === 0 && still.hidden === 0, JSON.stringify(still));
+} catch (error) {
+  console.log("FAIL  unexpected: " + (error.stack || error));
+  failures.push("unexpected");
+} finally {
+  await browser.close();
+  server.kill();
+}
+if (failures.length) { console.log("\nFAILED:", failures.length, "->", [...new Set(failures)].join("; ")); process.exit(1); }
+console.log("\nscenes motion e2e: all checks passed");

@@ -188,3 +188,21 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .trial-label[aria-pressed="true"] { border-color: var(--accent); background: var(--wash); }
 .guest-badge { position: fixed; inset-block-end: .6rem; inset-inline-start: .6rem; padding: .25rem .6rem; border-radius: 999px; background: var(--wash); border: 1px solid var(--hair); font-size: .8rem; color: var(--soft); z-index: 5; }
 .resume-banner[hidden], .guest-badge[hidden] { display: none; }
+
+/* ---- Scene motion: calm entrances, CSS only. Text is always the exact final text; nothing "counts up". ---- */
+.info-layer svg [class^="m-"] { transform-box: fill-box; transform-origin: center; animation-duration: .62s; animation-timing-function: cubic-bezier(.2,.7,.2,1); animation-fill-mode: both; animation-delay: calc(var(--i, 0) * 110ms + 80ms); }
+.info-layer svg .m-rise { animation-name: m-rise; }
+.info-layer svg .m-pop { animation-name: m-pop; }
+.info-layer svg .m-left { animation-name: m-left; }
+.info-layer svg .m-right { animation-name: m-right; }
+.info-layer svg .m-grow-r { animation-name: m-grow; transform-origin: right center; animation-duration: .8s; }
+.info-layer svg .m-draw { animation-name: m-draw; stroke-dasharray: 1; animation-duration: .8s; }
+.info-layer svg .m-ring { animation-name: m-ring; animation-duration: 1.1s; stroke-dasharray: var(--v) 100; transform: rotate(-90deg); } /* starts at 12 o'clock; the animation never touches transform */
+@keyframes m-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes m-pop { 0% { opacity: 0; transform: scale(.7); } 70% { opacity: 1; transform: scale(1.04); } 100% { opacity: 1; transform: none; } }
+@keyframes m-left { from { opacity: 0; transform: translateX(-36px); } to { opacity: 1; transform: none; } }
+@keyframes m-right { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: none; } }
+@keyframes m-grow { from { opacity: .4; transform: scaleX(0); } to { opacity: 1; transform: none; } }
+@keyframes m-draw { from { stroke-dashoffset: 1; opacity: 0; } 15% { opacity: 1; } to { stroke-dashoffset: 0; opacity: 1; } }
+@keyframes m-ring { from { stroke-dasharray: 0 100; } to { stroke-dasharray: var(--v) 100; } }
+@media (prefers-reduced-motion: reduce) { .info-layer svg [class^="m-"] { animation: none !important; } }

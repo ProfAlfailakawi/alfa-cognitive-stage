@@ -53,6 +53,7 @@ jobs:
           node --check web/rehearsal-audience.js
           node --check web/guest.js
           node --check web/voice-nav.js
+          node --check web/scene-kit.js
           node --check web/insight-ui.js
           node --check web/number-witness.js
           node --check web/lecture-coach.js
@@ -123,6 +124,8 @@ jobs:
         run: npm run test:e2e-insight
       - name: Resume after a crash, field trial with labelling, timed rehearsal, course map and guest mode
         run: npm run test:e2e-field
+      - name: Animated scenes - no clipping, calm motion, reduced-motion, exact text
+        run: npm run test:e2e-scenes
       - name: Spoken slide navigation - strict commands, video guard, undo
         run: npm run test:e2e-voicenav
       - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
