@@ -10,6 +10,7 @@ import json
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 from lxml import etree
@@ -18,7 +19,72 @@ from pptx.util import Emu
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+MAX_UNCOMPRESSED = 750 * 1024 * 1024
+MAX_ZIP_ENTRIES = 15000
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
+
+
+def validate_pptx_container(path: Path):
+    """Reject malformed, oversized or suspicious archives before parsing the presentation."""
+    if not zipfile.is_zipfile(path):
+        raise ValueError("ملف PowerPoint غير صالح")
+    with zipfile.ZipFile(path) as archive:
+        members = archive.infolist()
+        if len(members) > MAX_ZIP_ENTRIES:
+            raise ValueError("الملف يحتوي على عدد غير معقول من العناصر")
+        total = sum(item.file_size for item in members)
+        if total > MAX_UNCOMPRESSED:
+            raise ValueError("الحجم المضغوط للملف يتجاوز حد المعالجة الآمنة")
+        if "[Content_Types].xml" not in archive.namelist() or "ppt/presentation.xml" not in archive.namelist():
+            raise ValueError("الملف ليس عرض PowerPoint PPTX صالحاً")
+        for item in members:
+            if item.file_size > 100 * 1024 * 1024 and item.compress_size < item.file_size // 1000:
+                raise ValueError("يوجد عنصر مضغوط بشكل مريب داخل العرض")
+
+
+def animation_inventory(slide):
+    """PowerPoint effects are INVENTORIED, not preserved by the PNG renderer."""
+    timing = slide._element.findall(".//{%s}timing" % P_NS)
+    if not timing:
+        return {"hasAnimations": False, "animationElements": 0}
+    animation_tags = {"anim", "animClr", "animEffect", "animMotion",
+                      "animRot", "animScale", "cmd", "set"}
+    count = sum(1 for section in timing for el in section.iter()
+                if etree.QName(el).localname in animation_tags)
+    return {"hasAnimations": True, "animationElements": count}
+
+
+def atomic_json(path: Path, data):
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def register_bundle(bundle: Path, bundles_root: Path, display_name: str = ""):
+    """Register a completed lecture; never list partly rendered or failed imports."""
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if display_name:
+        manifest["source"] = Path(display_name).name[:180]
+        atomic_json(manifest_path, manifest)
+    lectures_file = bundles_root / "lectures.json"
+    try:
+        lectures = json.loads(lectures_file.read_text(encoding="utf-8"))
+        if not isinstance(lectures, list):
+            lectures = []
+    except (OSError, ValueError):
+        lectures = []
+    entry = {
+        "id": manifest["id"], "title": manifest.get("source", manifest["id"]),
+        "slideCount": manifest["slideCount"],
+        "warnings": sum(bool(s.get("hasAnimations")) for s in manifest["slides"]),
+    }
+    lectures = [item for item in lectures if isinstance(item, dict) and item.get("id") != entry["id"]]
+    lectures.append(entry)
+    atomic_json(lectures_file, lectures)
+    atomic_json(bundles_root / "current.json", {"id": manifest["id"]})
+    return entry
 
 
 def sha256_file(path: Path) -> str:
@@ -136,6 +202,7 @@ def rerender(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
 
 
 def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
+    validate_pptx_container(pptx)
     fingerprint = sha256_file(pptx)[:12]
     out_dir = bundles_root / fingerprint
     if (out_dir / "manifest.json").exists():
@@ -145,6 +212,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
         deck = Presentation(str(pptx))
         for entry, slide in zip(manifest["slides"], deck.slides):
             entry["text"] = slide_text(slide)
+            entry.update(animation_inventory(slide))
         manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"bundle already built, slide text refreshed: {out_dir}")
         return out_dir
@@ -195,6 +263,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
             "image": f"slides/{index:03d}.png",
             "notes": notes,
             "text": slide_text(slide),
+            **animation_inventory(slide),
             "videos": videos,
         })
 
@@ -220,6 +289,7 @@ def main(argv=None):
     parser.add_argument("pptx", type=Path)
     parser.add_argument("--bundles", type=Path, default=Path(__file__).resolve().parent.parent / "bundles")
     parser.add_argument("--width", type=int, default=1920)
+    parser.add_argument("--display-name", type=str, default="", help="original lecture filename")
     parser.add_argument("--rerender", action="store_true",
                         help="re-render slide images only, keep media and manifest")
     args = parser.parse_args(argv)
@@ -227,6 +297,8 @@ def main(argv=None):
         out = rerender(args.pptx, args.bundles, args.width)
     else:
         out = build(args.pptx, args.bundles, args.width)
+    if not args.rerender:
+        register_bundle(out, args.bundles, args.display_name or args.pptx.name)
     print(out)
     return 0
 
