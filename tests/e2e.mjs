@@ -201,6 +201,23 @@ try {
   await presenter.click("#hide-poll");
   await audience.waitForTimeout(300);
   check("presenter hides voting QR without changing the slide", await audience.locator(".vote-projection").count() === 0);
+  // Natural two-percentage classroom phrasing produces a bounded comparison without cloud API.
+  await presenter.selectOption("#director-mode", "safe");
+  await presenter.fill("#director-test-text", "ارتفعت النسبة من ٣٠٪ إلى ٧٠٪");
+  await presenter.click("#director-test-run");
+  check("explicit two-number change becomes a reviewable director proposal",
+    await presenter.locator("#director-proposal").isVisible());
+  await presenter.click("#director-accept");
+  await audience.waitForSelector(".info-layer svg", { timeout: 6000 });
+  const compareText = await audience.locator(".info-layer").textContent();
+  check("classroom comparison shows both spoken percentages",
+    compareText.includes("30%") && compareText.includes("70%") && !compareText.includes("50%"));
+  await presenter.click("#home");
+  await audience.waitForTimeout(300);
+  check("emergency return hides speech comparison without changing slide",
+    await audience.locator(".info-layer").count() === 0 &&
+    (await presenter.textContent("#meta")).includes("7 من"));
+
   check("audience page has no JavaScript errors", audienceErrors.length === 0, audienceErrors.join(" | "));
 
   await presenter.screenshot({ path: join(root, "tests/presenter.png") });
