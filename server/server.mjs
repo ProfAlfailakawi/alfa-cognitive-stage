@@ -8,6 +8,7 @@ import { loadEnvFile } from "node:process";
 import { analyzeWithAI } from "./director-ai.mjs";
 import { importLecture, prerequisitesStatus } from "./lecture-import.mjs";
 import { createSceneStore, SceneStoreError } from "./scene-store.mjs";
+import { allowedLectureClient } from "./security.mjs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
@@ -208,6 +209,11 @@ const server = createServer(async (req, res) => {
     const path = new URL(req.url, "http://x").pathname;
     if (path.startsWith("/api/")) return await handleApi(req, res, path);
     const isBundle = path.startsWith("/bundles/");
+    if (isBundle && !allowedLectureClient(req.socket.remoteAddress,
+        process.env.ALFA_ALLOW_REMOTE_SLIDES === "1")) {
+      res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+      return res.end("ملفات المحاضرة متاحة على جهاز المحاضر فقط");
+    }
     const file = isBundle
       ? safePath(bundlesRoot, path.slice("/bundles/".length))
       : safePath(webRoot, path === "/" ? "/index.html" : path);
