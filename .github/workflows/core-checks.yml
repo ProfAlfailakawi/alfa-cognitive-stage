@@ -19,6 +19,8 @@ jobs:
           node --check server/scene-store.mjs
           node --check server/security.mjs
           node --check server/director-ai.mjs
+          node --check server/director-cost.mjs
+          node --check server/director-quota.mjs
           node --check web/app.js
           node --check web/build-steps.js
           node --check web/return-stack.js

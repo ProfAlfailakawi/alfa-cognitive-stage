@@ -3,6 +3,8 @@
 import { validateSpec } from "../web/infographic.js";
 import { createDirectorQuota } from "./director-quota.mjs";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { priceFor, costOfUsage, worstCaseMicroUsd, dailyCapMicroUsd, microUsd } from "./director-cost.mjs";
 
 const PROMPT = [
   "أنت مخرج بصري تعليمي لمُحاضر جامعي كويتي. تفهم حديثه دون أن توجه الحديث للطلبة.",
@@ -73,14 +75,32 @@ function dailyCap() {
   return Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.floor(raw))) : 0;
 }
 
+const activeModel = () => process.env.OPENAI_MODEL || "gpt-4.1-mini";
+// Repeated identical analyses within a few hours cost nothing: in-memory only, never written to disk.
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000, CACHE_MAX = 50;
+const analysisCache = new Map();
+let cacheHits = 0;
+const cacheKey = (model, source) => createHash("sha256").update(model + "\0" + source).digest("hex");
+
 export function directorUsageStatus() {
   const maxCalls = Math.max(0, Math.min(100, Number(process.env.DIRECTOR_MAX_CALLS ?? 24) || 0));
+  const price = priceFor(activeModel());
+  const capMicros = dailyCapMicroUsd();
+  const daily = currentQuota().status(dailyCap(), capMicros);
   return {
     available: Boolean(process.env.OPENAI_API_KEY),
     maxCalls, callsUsed: calls, callsRemaining: Math.max(0, maxCalls - calls),
     successfulCalls, failedCalls, callsWithoutUsage, inputTokens, outputTokens,
-    scope: "server-process", daily: currentQuota().status(dailyCap()),
-    costUsd: null, // Actual pricing is provider/model specific.
+    scope: "server-process", daily, cacheHits,
+    model: activeModel(),
+    pricing: price ? { source: price.source, verifiedAt: price.verifiedAt,
+      inputPerMTok: price.inputPerMTok, cachedInputPerMTok: price.cachedInputPerMTok,
+      outputPerMTok: price.outputPerMTok } : null,
+    // An ESTIMATE from reported tokens x listed prices (unknown usage charged at its worst case).
+    // The provider's invoice is authoritative.
+    costUsd: price && daily.healthy ? daily.estimatedMicros / 1e6 : null,
+    costIsEstimate: true,
+    capUsd: capMicros / 1e6,
   };
 }
 
@@ -93,15 +113,32 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
   if (transcript.length < 12) { const error = new Error("المقطع قصير جداً"); error.status = 400; throw error; }
   const now = Date.now();
   const maxCalls = directorUsageStatus().maxCalls;
+  const model = activeModel();
+  const source0 = transcript + "\n" + String(slideText).slice(0, 1600) + "\n" + String(notes).slice(0, 500);
+  const key = cacheKey(model, source0);
+  const hit = analysisCache.get(key);
+  if (hit && now - hit.at < CACHE_TTL_MS) {
+    cacheHits++;
+    return { proposal: hit.proposal, usage: null, cached: true, totals: directorUsageStatus() };
+  }
   if (calls >= maxCalls || now - lastCloudCall < 12000) {
     const error = new Error("حد استهلاك المخرج؛ استخدم المشاهد المحلية"); error.status = 429; throw error;
   }
   // Reserve and persist a paid call before network I/O. A server restart cannot reset this cap.
   const quota = currentQuota();
-  const reservation = quota.reserve(dailyCap());
+  const price = priceFor(model);
+  const promptBytes = Buffer.byteLength(PROMPT + source0 + JSON.stringify(SCHEMA), "utf8");
+  const worst = worstCaseMicroUsd({ promptBytes, maxOutputTokens: 350 }, price);
+  let reservation;
+  try {
+    reservation = quota.reserve(dailyCap(), { capMicros: dailyCapMicroUsd(), worstMicros: worst });
+  } catch (error) {
+    if (worst === null && error.status === 503) error.message = "لا يوجد سعر موثوق للنموذج " + model + "؛ اضبط DIRECTOR_PRICE_INPUT_PER_MTOK وDIRECTOR_PRICE_OUTPUT_PER_MTOK أو استخدم نموذجاً مسعّراً.";
+    throw error;
+  }
   calls++;
   lastCloudCall = now;
-  const source = transcript + "\n" + String(slideText).slice(0, 1600) + "\n" + String(notes).slice(0, 500);
+  const source = source0;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   let accounted = false;
@@ -110,25 +147,27 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
       method: "POST", signal: controller.signal,
       headers: { Authorization: "Bearer " + process.env.OPENAI_API_KEY, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        model,
         instructions: PROMPT, input: source, store: false, max_output_tokens: 350,
         text: { format: { type: "json_schema", name: "alfa_director", strict: true, schema: SCHEMA } }
       }),
     });
     if (!response.ok) {
       const error = new Error("تعذر الحصول على استجابة من نموذج الذكاء الاصطناعي");
-      error.status = 502; throw error;
+      error.status = 502; error.providerRejected = true; throw error;
     }
     const output = await response.json();
     const usage = output.usage;
     if (usage && Number.isSafeInteger(usage.input_tokens) && usage.input_tokens >= 0 &&
         Number.isSafeInteger(usage.output_tokens) && usage.output_tokens >= 0) {
-      quota.report(reservation.day, { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens });
+      // If the cost cannot be computed from the usage object, the worst case stays charged.
+      quota.report(reservation.day, { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens },
+        { heldMicros: reservation.heldMicros, costMicros: costOfUsage(usage, price) });
       accounted = true;
       inputTokens += usage.input_tokens;
       outputTokens += usage.output_tokens;
     } else {
-      quota.report(reservation.day, null);
+      quota.report(reservation.day, null, { heldMicros: reservation.heldMicros, costMicros: null });
       accounted = true;
       callsWithoutUsage++;
     }
@@ -137,6 +176,8 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
     if (!string) { const error = new Error("لم يصل اقتراح قابل للعرض"); error.status = 502; throw error; }
     const proposal = validateDirectorProposal(JSON.parse(string), source);
     successfulCalls++;
+    analysisCache.set(key, { at: now, proposal });
+    if (analysisCache.size > CACHE_MAX) analysisCache.delete(analysisCache.keys().next().value);
     return { proposal, usage: output.usage ? {
       inputTokens: output.usage.input_tokens || 0, outputTokens: output.usage.output_tokens || 0
     } : null, totals: directorUsageStatus() };
@@ -144,7 +185,9 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
     failedCalls++;
     // If the provider did not return usage, disclose uncertainty rather than guessing tokens.
     if (!accounted) {
-      try { quota.report(reservation.day, null); callsWithoutUsage++; } catch {}
+      // A provider error response was not billed; a timeout or dropped connection might have been.
+      const costMicros = error.providerRejected ? 0 : null;
+      try { quota.report(reservation.day, null, { heldMicros: reservation.heldMicros, costMicros }); callsWithoutUsage++; } catch {}
     }
     throw error;
   } finally {

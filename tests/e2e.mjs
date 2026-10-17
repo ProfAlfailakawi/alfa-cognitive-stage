@@ -110,9 +110,10 @@ try {
     headers: { "X-Admin-Token": ADMIN }
   });
   const usageReport = await authorizedUsage.json();
-  check("cloud consumption summary starts with no calls and unknown USD cost",
+  check("cloud consumption summary starts with no calls and a zero estimated USD cost",
     authorizedUsage.status === 200 && usageReport.callsUsed === 0 &&
-    usageReport.inputTokens === 0 && usageReport.costUsd === null &&
+    usageReport.inputTokens === 0 && usageReport.costUsd === 0 && usageReport.costIsEstimate === true &&
+    usageReport.capUsd === 0.25 && usageReport.pricing?.verifiedAt &&
     usageReport.scope === "server-process" && usageReport.daily?.healthy === true &&
     usageReport.daily.callsUsed === 0 && usageReport.daily.scope === "utc-day");
   await presenter.fill("#director-admin-token", ADMIN);
