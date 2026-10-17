@@ -67,7 +67,10 @@ try {
   const playback=await page.locator("video.clip").evaluate(async (v)=>{
     v.muted=true;
     try {
-      await v.play();
+      await Promise.race([
+        v.play(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("video.play timed out")), 10000))
+      ]);
       if (v.readyState < 2) await Promise.race([
         new Promise((resolve)=>v.addEventListener("loadeddata",resolve,{once:true})),
         new Promise((resolve)=>v.addEventListener("error",resolve,{once:true})),
