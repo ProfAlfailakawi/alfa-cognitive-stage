@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { analyzeWithAI, directorUsageStatus } from "../server/director-ai.mjs";
 
 // No real network or paid key is used. Everything stays in this isolated Node process.
+const testDir = mkdtempSync(join(tmpdir(), "alfa-director-usage-"));
 const orig = { key: process.env.OPENAI_API_KEY, max: process.env.DIRECTOR_MAX_CALLS,
+  daily: process.env.DIRECTOR_DAILY_MAX_CALLS, file: process.env.DIRECTOR_USAGE_FILE,
   fetch: globalThis.fetch, now: Date.now };
 try {
   process.env.OPENAI_API_KEY = "fake-test-only";
   process.env.DIRECTOR_MAX_CALLS = "2";
+  process.env.DIRECTOR_DAILY_MAX_CALLS = "2";
+  process.env.DIRECTOR_USAGE_FILE = join(testDir, "daily.json");
   let now = 1800000000000;
   Date.now = () => now;
   let requests = 0;
@@ -25,14 +32,19 @@ try {
   };
   const input = { utterance: "نشرح فكرة اللعب التعليمي في هذه المحاضرة" };
   assert.equal(directorUsageStatus().callsUsed, 0);
+  assert.equal(directorUsageStatus().daily.callsUsed, 0);
   assert.equal((await analyzeWithAI(input)).proposal, null);
   assert.deepEqual([directorUsageStatus().callsUsed, directorUsageStatus().successfulCalls,
     directorUsageStatus().inputTokens, directorUsageStatus().outputTokens], [1, 1, 120, 25]);
+  assert.equal(directorUsageStatus().daily.callsUsed, 1);
+  assert.equal(directorUsageStatus().daily.inputTokens, 120);
   await assert.rejects(() => analyzeWithAI(input), err => err.status === 429);
   assert.equal(requests, 1, "Cooldown should block a second paid request");
   now += 13000;
   assert.equal((await analyzeWithAI(input)).proposal, null);
   assert.equal(directorUsageStatus().callsWithoutUsage, 1, "Unknown usage must be disclosed");
+  assert.equal(directorUsageStatus().daily.callsUsed, 2);
+  assert.equal(directorUsageStatus().daily.unknownUsageCalls, 1);
   assert.equal(directorUsageStatus().callsRemaining, 0);
   now += 13000;
   await assert.rejects(() => analyzeWithAI(input), err => err.status === 429);
@@ -45,4 +57,7 @@ try {
   Date.now = orig.now;
   if (orig.key === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = orig.key;
   if (orig.max === undefined) delete process.env.DIRECTOR_MAX_CALLS; else process.env.DIRECTOR_MAX_CALLS = orig.max;
+  if (orig.daily === undefined) delete process.env.DIRECTOR_DAILY_MAX_CALLS; else process.env.DIRECTOR_DAILY_MAX_CALLS = orig.daily;
+  if (orig.file === undefined) delete process.env.DIRECTOR_USAGE_FILE; else process.env.DIRECTOR_USAGE_FILE = orig.file;
+  rmSync(testDir, { recursive: true, force: true });
 }

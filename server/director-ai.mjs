@@ -1,6 +1,8 @@
 // Optional, billed cloud reasoning. Requires lecturer admin token at the route.
 // Only sends short transcript excerpts and relevant slide context. Never searches the web.
 import { validateSpec } from "../web/infographic.js";
+import { createDirectorQuota } from "./director-quota.mjs";
+import { fileURLToPath } from "node:url";
 
 const PROMPT = [
   "أنت مخرج بصري تعليمي لمُحاضر جامعي كويتي. تفهم حديثه دون أن توجه الحديث للطلبة.",
@@ -55,6 +57,21 @@ let failedCalls = 0;
 let callsWithoutUsage = 0;
 let inputTokens = 0;
 let outputTokens = 0;
+const DEFAULT_QUOTA_FILE = fileURLToPath(new URL("../data/director-api-usage.json", import.meta.url));
+let quotaFile = null, quotaStore = null;
+function currentQuota() {
+  // Lazy because server loads its .env AFTER ES module imports have evaluated.
+  const file = process.env.DIRECTOR_USAGE_FILE || DEFAULT_QUOTA_FILE;
+  if (!quotaStore || quotaFile !== file) {
+    quotaStore = createDirectorQuota({ file });
+    quotaFile = file;
+  }
+  return quotaStore;
+}
+function dailyCap() {
+  const raw = Number(process.env.DIRECTOR_DAILY_MAX_CALLS ?? process.env.DIRECTOR_MAX_CALLS ?? 24);
+  return Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.floor(raw))) : 0;
+}
 
 export function directorUsageStatus() {
   const maxCalls = Math.max(0, Math.min(100, Number(process.env.DIRECTOR_MAX_CALLS ?? 24) || 0));
@@ -62,7 +79,8 @@ export function directorUsageStatus() {
     available: Boolean(process.env.OPENAI_API_KEY),
     maxCalls, callsUsed: calls, callsRemaining: Math.max(0, maxCalls - calls),
     successfulCalls, failedCalls, callsWithoutUsage, inputTokens, outputTokens,
-    scope: "server-process", costUsd: null, // Actual pricing is provider/model specific.
+    scope: "server-process", daily: currentQuota().status(dailyCap()),
+    costUsd: null, // Actual pricing is provider/model specific.
   };
 }
 
@@ -78,11 +96,15 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
   if (calls >= maxCalls || now - lastCloudCall < 12000) {
     const error = new Error("حد استهلاك المخرج؛ استخدم المشاهد المحلية"); error.status = 429; throw error;
   }
+  // Reserve and persist a paid call before network I/O. A server restart cannot reset this cap.
+  const quota = currentQuota();
+  const reservation = quota.reserve(dailyCap());
   calls++;
   lastCloudCall = now;
   const source = transcript + "\n" + String(slideText).slice(0, 1600) + "\n" + String(notes).slice(0, 500);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
+  let accounted = false;
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST", signal: controller.signal,
@@ -98,10 +120,16 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
       error.status = 502; throw error;
     }
     const output = await response.json();
-    if (output.usage && Number.isFinite(output.usage.input_tokens) && Number.isFinite(output.usage.output_tokens)) {
-      inputTokens += Math.max(0, Math.trunc(output.usage.input_tokens));
-      outputTokens += Math.max(0, Math.trunc(output.usage.output_tokens));
+    const usage = output.usage;
+    if (usage && Number.isSafeInteger(usage.input_tokens) && usage.input_tokens >= 0 &&
+        Number.isSafeInteger(usage.output_tokens) && usage.output_tokens >= 0) {
+      quota.report(reservation.day, { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens });
+      accounted = true;
+      inputTokens += usage.input_tokens;
+      outputTokens += usage.output_tokens;
     } else {
+      quota.report(reservation.day, null);
+      accounted = true;
       callsWithoutUsage++;
     }
     const string = output.output?.flatMap((item) => item.content || [])
@@ -114,6 +142,10 @@ export async function analyzeWithAI({ utterance, slideText = "", notes = "" }) {
     } : null, totals: directorUsageStatus() };
   } catch (error) {
     failedCalls++;
+    // If the provider did not return usage, disclose uncertainty rather than guessing tokens.
+    if (!accounted) {
+      try { quota.report(reservation.day, null); callsWithoutUsage++; } catch {}
+    }
     throw error;
   } finally {
     clearTimeout(timeout);
