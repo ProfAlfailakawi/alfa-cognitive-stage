@@ -1,5 +1,5 @@
 // Browser microphone adapter. Voice is session-scoped; never records to disk.
-export function createSpeechDirector({ onUtterance, onStatus }) {
+export function createSpeechDirector({ onUtterance, onStatus, onInterim }) {
   const Ctor = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
   let recognition = null;
   let enabled = false;
@@ -8,6 +8,7 @@ export function createSpeechDirector({ onUtterance, onStatus }) {
   let restart = null;
   let lastFinal = "";
   let lastTime = 0;
+  let lastInterimTime = 0;
   const status = (message) => onStatus?.(message);
   function initialize() {
     if (!Ctor) { status("المتصفح لا يدعم التعرف الصوتي؛ استخدم Chrome أو الوضع النصي التجريبي."); return false; }
@@ -20,7 +21,14 @@ export function createSpeechDirector({ onUtterance, onStatus }) {
       if (!enabled || mediaPlaying) return;
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        if (!result.isFinal) continue;
+        if (!result.isFinal) {
+          const liveText = result[0]?.transcript?.trim();
+          if (liveText && Date.now() - lastInterimTime > 350) {
+            lastInterimTime = Date.now();
+            onInterim?.(liveText.slice(0, 180));
+          }
+          continue;
+        }
         const text = result[0]?.transcript?.trim();
         if (!text) continue;
         if (text === lastFinal && Date.now() - lastTime < 3500) continue;

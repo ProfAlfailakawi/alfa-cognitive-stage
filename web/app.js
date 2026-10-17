@@ -555,7 +555,14 @@ function receiveDirectorSpeech(text) {
   }
 }
 function setupDirector() {
-  const speech = createSpeechDirector({ onUtterance: receiveDirectorSpeech, onStatus: setDirectorStatus });
+  const speech = createSpeechDirector({
+    onUtterance: receiveDirectorSpeech,
+    onStatus: setDirectorStatus,
+    onInterim: (transcript) => {
+      const preview = document.getElementById("director-last");
+      if (preview) preview.textContent = "أسمع الآن: " + transcript;
+    }
+  });
   directorRuntime.speech = speech;
   const start = document.getElementById("director-start");
   const stop = document.getElementById("director-stop");
