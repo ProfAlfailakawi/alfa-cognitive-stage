@@ -5,7 +5,8 @@
 يلزم macOS، Google Chrome، Node.js 22، Python 3، LibreOffice، Poppler، FFmpeg ومكتبات Python. يمكن تثبيت المفقود بواسطة Homebrew:
 
 ```bash
-brew install node python libreoffice poppler ffmpeg
+brew install node python poppler ffmpeg
+brew install --cask libreoffice
 python3 -m pip install python-pptx lxml Pillow
 ```
 
