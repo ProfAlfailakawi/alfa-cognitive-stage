@@ -6,6 +6,7 @@ import { networkInterfaces } from "node:os";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnvFile } from "node:process";
 import { analyzeWithAI } from "./director-ai.mjs";
+import { importLecture } from "./importer.mjs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
@@ -18,6 +19,7 @@ const port = Number(process.env.PORT || 4173);
 const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
 const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });
 const MAX_BODY = 4096;
+let importingLecture = false;
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -119,6 +121,20 @@ async function handleApi(req, res, path) {
     const ip = (preferred || addresses[0])?.address || null;
     const publicUrl = process.env.PUBLIC_URL || (ip ? "http://" + ip + ":" + port : null);
     return sendJson(res, 200, { publicUrl });
+  }
+  if (resource === "lectures" && code === "import" && req.method === "POST") {
+    requireAdmin(req);
+    if (importingLecture) throw new VoteError("يوجد عرض آخر قيد التحويل؛ انتظر اكتماله", 409);
+    importingLecture = true;
+    try {
+      const result = await importLecture(req, {
+        root, bundlesRoot, filename: req.headers["x-alfa-filename"],
+      });
+      return sendJson(res, 201, result);
+    } catch (error) {
+      return sendJson(res, error.status || 500, { error: error.message,
+        detail: error.detail || undefined });
+    } finally { importingLecture = false; }
   }
   if (resource === "director" && code === "status" && req.method === "GET") {
     requireAdmin(req);
