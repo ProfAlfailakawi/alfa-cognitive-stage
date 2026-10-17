@@ -6,6 +6,7 @@ import { networkInterfaces } from "node:os";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnvFile } from "node:process";
 import { analyzeWithAI } from "./director-ai.mjs";
+import { importLecture, prerequisitesStatus } from "./lecture-import.mjs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
@@ -112,6 +113,22 @@ function voterToken(req) {
 async function handleApi(req, res, path) {
   const parts = path.split("/").filter(Boolean); // api, sessions, CODE, ...
   const [, resource, code, action, pollId, verb] = parts;
+  if (resource === "lectures" && code === "prerequisites" && req.method === "GET") {
+    requireAdmin(req);
+    return sendJson(res, 200, await prerequisitesStatus());
+  }
+  if (resource === "lectures" && code === "import" && req.method === "POST") {
+    requireAdmin(req);
+    try {
+      const lecture = await importLecture(req, { root, bundlesRoot });
+      return sendJson(res, 201, { ok: true, lecture });
+    } catch (err) {
+      // Upload errors are private to the lecturer; never expose command paths.
+      console.error("PPTX import:", err);
+      return sendJson(res, err.status || 500, { error:
+        err.status ? err.message : "فشل تحويل الملف؛ راجع Terminal للتحقق من LibreOffice والوسائط" });
+    }
+  }
   if (resource === "network" && req.method === "GET") {
     const addresses = Object.values(networkInterfaces()).flat().filter(Boolean)
       .filter((x) => x.family === "IPv4" && !x.internal);

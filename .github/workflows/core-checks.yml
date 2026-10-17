@@ -15,6 +15,7 @@ jobs:
       - name: JS syntax
         run: |
           node --check server/server.mjs
+          node --check server/lecture-import.mjs
           node --check server/director-ai.mjs
           node --check web/app.js
           node --check web/director-core.js
@@ -28,6 +29,7 @@ jobs:
           npm run test:director-ai
           npm run test:memory
           npm run test:vote-rounds
+          npm run test:import
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
