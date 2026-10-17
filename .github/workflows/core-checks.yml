@@ -19,6 +19,7 @@ jobs:
           node --check server/director-ai.mjs
           node --check web/app.js
           node --check web/director-core.js
+          node --check web/storyboard.js
           node --check web/speech-director.js
           node --check web/vote-admin.js
           node --check web/vote.js
@@ -26,6 +27,7 @@ jobs:
         run: |
           npm run test:infographic
           npm run test:director
+          npm run test:story
           npm run test:director-ai
           npm run test:memory
           npm run test:import

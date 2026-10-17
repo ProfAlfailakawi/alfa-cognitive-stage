@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import { createStorySession, advanceStorySession, storySceneSpec } from "../web/storyboard.js";
+import { renderInfographic } from "../web/infographic.js";
+const opening = createStorySession("بقولكم قصة عن شخص كان يلعب كل يوم", 1000);
+assert.equal(opening.lines.length, 1);
+const next = advanceStorySession(opening, "وبعد فترة تأثرت دراسته", 4000);
+assert.equal(storySceneSpec(next).type, "story");
+assert.equal(next.lines[1], "وبعد فترة تأثرت دراسته");
+assert.equal(advanceStorySession(next, "وبعد فترة تأثرت دراسته", 6000).lines.length, 2);
+assert.equal(advanceStorySession(next, "أكمل هنا التفاصيل", 124001), null);
+const image = renderInfographic(storySceneSpec(next));
+assert.ok(image.includes("المشهد 2"));
+assert.ok(image.includes("تتابع بصري من حديث المحاضر"));
+assert.ok(!image.includes("نهاية القصة"));
+assert.ok(renderInfographic({type:"story",title:"قصة",lines:["<script>alert(1)</script>"]}).includes("&lt;script&gt;"));
+assert.throws(() => renderInfographic({type:"story",title:"قصة",lines:[]}));
+console.log("offline storyboard: all checks passed");

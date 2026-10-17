@@ -17,7 +17,7 @@ const ICONS = {
 };
 
 export function validateSpec(spec) {
-  const type = ["stat", "compare", "steps"].includes(spec?.type) ? spec.type : null;
+  const type = ["stat", "compare", "steps", "story"].includes(spec?.type) ? spec.type : null;
   if (!type) throw new Error("نوع الإنفوجرافيك غير معروف");
   const title = esc(String(spec.title ?? "").trim().slice(0, 120));
   const lines = (Array.isArray(spec.lines) ? spec.lines : [])
@@ -25,6 +25,10 @@ export function validateSpec(spec) {
   if (type === "stat") {
     if (lines.length < 1 || lines.length > 2) throw new Error("البطاقة الإحصائية تحتاج رقماً ووصفاً فقط");
     if (!/^[\d.,%+\-٠-٩ ]+$/.test(lines[0]) && lines[0].length > 12) throw new Error("الرقم يجب أن يكون قصيراً");
+    return { type, title, lines };
+  }
+  if (type === "story") {
+    if (lines.length < 1 || lines.length > 4) throw new Error("القصة تحتاج مشهداً إلى أربعة مشاهد فقط");
     return { type, title, lines };
   }
   if (type === "compare") {
@@ -87,8 +91,45 @@ function stepsSvg(spec) {
   </svg>`;
 }
 
+
+const STORY_SYMBOLS = [
+  { match: /(لعب|العاب|لعبة|قيم|game)/i, icon: "users" },
+  { match: /(وقت|ساع|ليله|ليل|يوم|انتظار)/i, icon: "clock" },
+  { match: /(دراس|جامع|مدرس|تعلم|تعليم)/i, icon: "book" },
+  { match: /(اكتشف|فهم|فكره|فكرة|تغير|تغيير|حل)/i, icon: "bulb" },
+];
+function storySvg(spec) {
+  const n = spec.lines.length;
+  const width = n === 1 ? 620 : (820 - (n - 1) * 22) / n;
+  const x0 = (960 - (width * n + (n - 1) * 22)) / 2;
+  const cards = spec.lines.map((line, i) => {
+    const x = x0 + i * (width + 22);
+    const symbol = STORY_SYMBOLS.find((item) => item.match.test(line))?.icon || "book";
+    const d = ICONS[symbol];
+    const label = line.length > 54 ? line.slice(0, 53) + "…" : line;
+    const cardHeight = 252;
+    return '<g>' +
+      '<rect x="' + x + '" y="172" width="' + width + '" height="' + cardHeight +
+      '" rx="20" fill="#ffffff" stroke="' + PALETTE.hair + '" stroke-width="2"/>' +
+      '<circle cx="' + (x + width / 2) + '" cy="236" r="38" fill="' + PALETTE.wash + '"/>' +
+      '<path d="' + d + '" transform="translate(' + (x + width / 2 - 13) + ' 223) scale(1.07)" fill="none" stroke="' +
+      PALETTE.accent + '" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<text x="' + (x + width / 2) + '" y="309" text-anchor="middle" fill="' + PALETTE.ember +
+      '" font-size="22" font-weight="700">المشهد ' + (i + 1) + '</text>' +
+      '<foreignObject x="' + (x + 15) + '" y="332" width="' + (width - 30) + '" height="76">' +
+      '<div xmlns="http://www.w3.org/1999/xhtml" dir="rtl" style="font-size:19px;line-height:1.65;text-align:center;overflow:hidden;color:#15161a;">' +
+      esc(label) + '</div></foreignObject></g>';
+  }).join("");
+  return '<svg viewBox="0 0 960 540" role="img" aria-label="' + esc(spec.title) + '">' +
+    '<rect width="960" height="540" fill="' + PALETTE.wash + '"/>' +
+    '<text x="480" y="92" text-anchor="middle" font-size="36" font-weight="700" fill="' +
+    PALETTE.accent + '">' + esc(spec.title) + '</text>' +
+    cards + '<text x="480" y="496" text-anchor="middle" font-size="20" fill="' + PALETTE.soft +
+    '">تتابع بصري من حديث المحاضر — دون أحداث إضافية</text></svg>';
+}
+
 export function renderInfographic(input) {
   const spec = validateSpec(input);
-  const svg = spec.type === "stat" ? statSvg(spec) : spec.type === "compare" ? compareSvg(spec) : stepsSvg(spec);
+  const svg = spec.type === "stat" ? statSvg(spec) : spec.type === "compare" ? compareSvg(spec) : spec.type === "story" ? storySvg(spec) : stepsSvg(spec);
   return svg;
 }
