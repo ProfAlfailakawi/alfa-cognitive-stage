@@ -57,7 +57,7 @@ function statSvg(spec) {
   const [number, label] = [spec.lines[0], spec.lines[1] || ""];
   return `<svg viewBox="0 0 960 540" role="img" aria-label="${esc(spec.title)}">
     <rect x="0" y="0" width="960" height="540" fill="${PALETTE.wash}"/>
-    <text x="80" y="110" font-size="34" font-weight="700" fill="${PALETTE.accent}">${esc(spec.title)}</text>
+    <text x="480" y="110" text-anchor="middle" font-size="34" font-weight="700" fill="${PALETTE.accent}">${esc(spec.title)}</text>
     <text x="480" y="330" text-anchor="middle" font-size="150" font-weight="800" fill="${PALETTE.ink}">${esc(number)}</text>
     <text x="480" y="410" text-anchor="middle" font-size="32" fill="${PALETTE.soft}">${esc(label)}</text>
     <circle cx="480" cy="470" r="6" fill="${PALETTE.ember}"/>
