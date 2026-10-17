@@ -123,6 +123,12 @@ try {
   await presenter.waitForTimeout(400);
   check("audience shows no buttons", (await audience.locator("button").count()) === 0);
 
+  check("voice diagnostics remain lecturer-only and hidden before microphone use",
+    await presenter.locator("#director-voice-health").count() === 1 &&
+    await presenter.locator("#director-voice-health").isHidden() &&
+    await audience.locator("#director-voice-health").count() === 0);
+
+
   for (let i = 0; i < 3; i++) await presenter.keyboard.press("ArrowRight");
   await presenter.waitForTimeout(500);
   check("keyboard moves presenter to slide 4", (await presenter.textContent("#meta")).includes("4 من"));
