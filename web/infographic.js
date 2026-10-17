@@ -1,17 +1,8 @@
 import { renderStructuredScene } from "./scene-layouts.js";
-import { C, E, label, labelMid, motion, drawLine, rtlX, frame, card } from "./scene-kit.js";
+import { C, E, label, labelMid, motion, item, drawLine, rtlX, frame, card } from "./scene-kit.js";
+import { pickIcon, iconSvg, shortLabel } from "./scene-icons.js";
 // Light, vector infographics built from a small spec. No images, no AI calls.
 // Every number and word comes from the lecturer's input; nothing is invented here.
-
-// Simple line icons (24px grid) so a step or a card has a clear visual anchor.
-const ICONS = {
-  check: "M5 12l4 4 10-10",
-  bulb: "M9 18h6M10 21h4M12 3a6 6 0 0 0-3 11c.6.5 1 1.3 1 2h4c0-.7.4-1.5 1-2a6 6 0 0 0-3-11z",
-  users: "M16 11a4 4 0 1 0-8 0M4 21a8 8 0 0 1 16 0",
-  book: "M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z",
-  clock: "M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-  chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",
-};
 
 export function validateSpec(spec) {
   const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity"].includes(spec?.type) ? spec.type : null;
@@ -72,29 +63,30 @@ function statSvg(spec) {
 }
 
 function compareSvg(spec) {
-  const n = spec.lines.length, rowH = n <= 3 ? 76 : 56, gap = 12, lines = n <= 3 ? 2 : 1, size = n <= 3 ? 24 : 22;
+  const n = spec.lines.length, rowH = n <= 3 ? 76 : 58, gap = 12;
   const head = motion("rise", 1, `<rect x="120" y="140" width="330" height="40" rx="20" fill="url(#sk-blue)"/><rect x="510" y="140" width="330" height="40" rx="20" fill="url(#sk-gold)"/>` +
     label("الأول", 285, 168, { size: 22, color: C.paper, limit: 10, rows: 1, weight: 700 }) + label("الثاني", 675, 168, { size: 22, color: C.paper, limit: 10, rows: 1, weight: 700 }));
-  const rows = spec.lines.map(([a, b], i) => {
-    const y = 198 + i * (rowH + gap);
-    return motion("right", i + 2, card(120, y, 330, rowH, { r: 14 }) + labelMid(a, 285, y + rowH / 2, { size, limit: 20, rows: lines, lh: 26 })) +
-      motion("left", i + 2, card(510, y, 330, rowH, { r: 14 }) + labelMid(b, 675, y + rowH / 2, { size, limit: 20, rows: lines, lh: 26 }));
-  }).join("");
+  const cell = (text, x0, i, color, dir) => {
+    const y = 198 + i * (rowH + gap), cx = x0 + 165, cy = y + rowH / 2;
+    return item(dir, i + 2, text, card(x0, y, 330, rowH, { r: 14 }) + iconSvg(pickIcon(text), x0 + 292, cy, 34, color) +
+      labelMid(shortLabel(text, 5), cx - 22, cy, { size: 24, limit: 17, rows: 2, lh: 26, weight: 700 }));
+  };
+  const rows = spec.lines.map(([a, b], i) => cell(a, 120, i, C.blue, "right") + cell(b, 510, i, C.gold, "left")).join("");
   return frame(spec.title, head + rows + motion("pop", 2, `<circle cx="480" cy="160" r="20" fill="${C.paper}" stroke="${C.edge}"/>` + label("×", 480, 168, { size: 22, color: C.mute, limit: 2, rows: 1 })));
 }
 
 function stepsSvg(spec) {
-  const icons = Object.keys(ICONS), n = spec.lines.length;
+  const n = spec.lines.length;
   const gap = 880 / n, xs = Array.from({ length: n }, (_, i) => rtlX(i, n, 40 + gap / 2, 920 - gap / 2));
-  const limit = Math.max(10, Math.floor(gap / 11));
+  const limit = Math.max(8, Math.floor(gap / 15));
   const items = spec.lines.map((text, i) => {
     const cx = xs[i];
-    return motion("pop", i + 1, `<circle cx="${cx}" cy="290" r="54" fill="${C.paper}" stroke="${C.edge}" stroke-width="2" filter="url(#sk-shadow)"/>` +
-      `<path d="${ICONS[icons[i % icons.length]]}" transform="translate(${cx - 12} 278)" fill="none" stroke="${C.blue}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>` +
-      `<circle cx="${cx + 40}" cy="246" r="17" fill="url(#sk-gold)"/>` + label(String(i + 1), cx + 40, 253, { size: 19, color: C.paper, limit: 3, rows: 1, weight: 700 })) +
-      motion("rise", i + 2, label(text, cx, 382, { size: 22, limit, rows: 3, lh: 28 }));
+    return item("pop", i + 1, text, `<circle cx="${cx}" cy="270" r="60" fill="${C.paper}" stroke="${C.edge}" stroke-width="2" filter="url(#sk-shadow)"/>` +
+      iconSvg(pickIcon(text), cx, 270, 62, C.blue) +
+      `<circle cx="${cx + 44}" cy="224" r="17" fill="url(#sk-gold)"/>` + label(String(i + 1), cx + 44, 231, { size: 19, color: C.paper, limit: 3, rows: 1, weight: 700 }) +
+      label(shortLabel(text, n > 4 ? 3 : 4), cx, 372, { size: n > 4 ? 22 : 26, limit, rows: 3, lh: 30, weight: 700 }));
   }).join("");
-  const rail = n > 1 ? drawLine(xs[0], 290, xs[n - 1], 290, { color: C.blue2, width: 4, i: 0 }) : "";
+  const rail = n > 1 ? drawLine(xs[0], 270, xs[n - 1], 270, { color: C.blue2, width: 4, i: 0 }) : "";
   return frame(spec.title, rail + items);
 }
 
