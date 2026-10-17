@@ -24,6 +24,7 @@ function deviceToken() {
 const token = deviceToken();
 let shownKey = null;
 let submitting = false;
+let wordMessage = ""; // survives the re-render that follows a submission
 
 async function api(path, options = {}) {
   const res = await fetch(`/api/sessions/${sessionCode}${path}`, {
@@ -64,6 +65,59 @@ function renderPoll(active) {
   });
 }
 
+// Word cloud: up to three single words; the lecturer reviews what appears.
+function renderWords(active) {
+  const heading = document.createElement("h1");
+  heading.className = "q"; heading.textContent = active.question;
+  const note = document.createElement("p");
+  note.className = "status"; note.id = "note";
+  const box = document.createElement("div");
+  box.className = "result"; box.id = "options";
+  if (active.remaining > 0) {
+    note.textContent = wordMessage || "اكتب كلمة واحدة في كل خانة (حتى " + active.remaining + ").";
+    const form = document.createElement("form");
+    form.id = "word-form"; form.style.display = "grid"; form.style.gap = ".5rem";
+    for (let i = 0; i < active.remaining; i++) {
+      const input = document.createElement("input");
+      input.type = "text"; input.maxLength = 24; input.autocomplete = "off"; input.className = "word-input";
+      input.setAttribute("aria-label", "الكلمة " + (i + 1));
+      input.style.cssText = "font:inherit;padding:.7rem;border-radius:12px;border:1px solid var(--hair)";
+      form.append(input);
+    }
+    const send = document.createElement("button");
+    send.type = "submit"; send.className = "primary opt"; send.textContent = "إرسال";
+    form.append(send);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (submitting) return;
+      const words = [...form.querySelectorAll("input")].map((x) => x.value.trim()).filter(Boolean);
+      if (!words.length) { note.textContent = "اكتب كلمة واحدة على الأقل."; return; }
+      submitting = true;
+      try {
+        const result = await api("/words", { method: "POST", body: JSON.stringify({ words }) });
+        wordMessage = result.rejected ? "وصلت " + result.accepted + " كلمة؛ لم تُقبل " + result.rejected + " (ممنوع الأرقام والروابط والإساءة)." : "";
+        note.textContent = wordMessage || "شكراً، وصلت كلماتك.";
+        await refresh(true);
+      } catch (err) { note.textContent = err.message; }
+      finally { submitting = false; }
+    });
+    box.append(form);
+  } else note.textContent = wordMessage || "وصلت كلماتك. انتظر السؤال التالي.";
+  app.replaceChildren(heading, note, box);
+  if (Array.isArray(active.words) && active.words.length) {
+    const max = Math.max(...active.words.map((w) => w.count));
+    const cloud = document.createElement("div");
+    cloud.style.cssText = "display:flex;flex-wrap:wrap;gap:.4rem .8rem;justify-content:center;align-items:baseline;margin-top:1rem";
+    for (const w of active.words) {
+      const span = document.createElement("span");
+      span.textContent = w.word;
+      span.style.fontSize = (0.95 + 1.6 * (w.count / max)).toFixed(2) + "rem";
+      cloud.append(span);
+    }
+    app.append(cloud);
+  }
+}
+
 function escapeText(value) {
   const node = document.createElement("span");
   node.textContent = String(value);
@@ -93,10 +147,13 @@ async function refresh(force = false) {
       return setStatus("انتظر السؤال التالي…");
     }
     // Re-render whenever something the student sees changes: new question, answer, or results.
-    const key = JSON.stringify([active.pollId, active.answered, active.mine, active.counts || null]);
+    const key = JSON.stringify([active.pollId, active.answered, active.mine, active.counts || null, active.remaining ?? null, active.words || null]);
+    // Do not rebuild a word form while the student is typing in it.
+    const typing = active.kind === "words" && document.activeElement?.classList?.contains("word-input");
+    if (typing && key !== shownKey && !force) return;
     if (force || key !== shownKey || !document.getElementById("options")) {
       shownKey = key;
-      renderPoll(active);
+      if (active.kind === "words") renderWords(active); else renderPoll(active);
     }
   } catch (err) {
     if (err.status === 404) return setStatus("هذه الجلسة غير موجودة.");

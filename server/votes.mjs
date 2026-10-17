@@ -3,6 +3,7 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { moderate, wordKey } from "../web/moderation.js";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 const MAX_OPTIONS = 6;
@@ -11,6 +12,8 @@ const MAX_VOTERS = 1000;
 const MAX_PENDING_QUESTIONS = 100;
 const OPEN_QUESTION_LIMIT = 280;
 const QUESTION_COOLDOWN_MS = 30000;
+const MAX_WORDS_PER_DEVICE = 3;
+const MAX_DISTINCT_WORDS = 200;
 
 export class VoteError extends Error {
   constructor(message, status = 400) {
@@ -29,7 +32,7 @@ export function createVoteStore({ file = null } = {}) {
     mkdirSync(dirname(file), { recursive: true });
     const data = Object.fromEntries([...sessions].map(([code, s]) => [code, {
       polls: s.polls, nextId: s.nextId, questions: s.questions, nextQuestionId: s.nextQuestionId,
-      createdAt: s.createdAt,
+      createdAt: s.createdAt, label: s.label || "",
     }]));
     const tmp = `${file}.tmp`;
     writeFileSync(tmp, JSON.stringify(data));
@@ -43,6 +46,7 @@ export function createVoteStore({ file = null } = {}) {
         Number.isInteger(q.id) && typeof q.text === "string").slice(-MAX_PENDING_QUESTIONS) : [];
       sessions.set(code, { polls: s.polls, nextId: s.nextId, lastVoteAt: new Map(),
         createdAt: Number.isFinite(s.createdAt) ? s.createdAt : Date.now(), // legacy sessions start their retention clock now
+        label: typeof s.label === "string" ? s.label.slice(0, 60) : "", wordDevices: new Map(),
         questions, nextQuestionId: Math.max(1, Number(s.nextQuestionId) || 1,
           ...questions.map(q => q.id + 1)), lastQuestionAt: new Map() });
     }
@@ -65,22 +69,25 @@ export function createVoteStore({ file = null } = {}) {
     do {
       code = Array.from({ length: 6 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join("");
     } while (sessions.has(code));
-    sessions.set(code, { polls: [], nextId: 1, lastVoteAt: new Map(), createdAt: Date.now(),
+    sessions.set(code, { polls: [], nextId: 1, lastVoteAt: new Map(), createdAt: Date.now(), label: "", wordDevices: new Map(),
       questions: [], nextQuestionId: 1, lastQuestionAt: new Map() });
     persist();
     return code;
   }
 
-  function createPoll(code, { question, options, allowChange = false }) {
+  function createPoll(code, { question, options, allowChange = false, kind = "choice", objective = "" }) {
     const q = clean(question, MAX_TEXT);
-    const opts = (Array.isArray(options) ? options : [])
-      .map((o) => clean(o, MAX_TEXT)).filter(Boolean);
     if (!q) throw new VoteError("نص السؤال مطلوب");
-    if (opts.length < 2 || opts.length > MAX_OPTIONS) throw new VoteError(`عدد الخيارات بين 2 و${MAX_OPTIONS}`);
+    const words = kind === "words";
+    if (kind !== "choice" && !words) throw new VoteError("نوع السؤال غير معروف");
+    const opts = words ? [] : (Array.isArray(options) ? options : []).map((o) => clean(o, MAX_TEXT)).filter(Boolean);
+    if (!words && (opts.length < 2 || opts.length > MAX_OPTIONS)) throw new VoteError(`عدد الخيارات بين 2 و${MAX_OPTIONS}`);
     const s = session(code);
     const p = {
       id: s.nextId++, question: q, options: opts, allowChange: Boolean(allowChange),
-      status: "draft", reveal: false, votes: {},
+      status: "draft", reveal: false, votes: {}, kind: words ? "words" : "choice",
+      objective: clean(objective, 150), // an explicit learning objective typed by the lecturer, never inferred
+      ...(words ? { words: {}, hidden: [] } : {}),
     };
     s.polls.push(p);
     persist();
@@ -91,6 +98,7 @@ export function createVoteStore({ file = null } = {}) {
     const prior = poll(code, id);
     const fresh = createPoll(code, {
       question: prior.question, options: prior.options, allowChange: prior.allowChange,
+      kind: prior.kind || "choice", objective: prior.objective || "",
     });
     setStatus(code, fresh.id, "open");
     return fresh; // New ID / votes; previous results remain independently available.
@@ -120,6 +128,7 @@ export function createVoteStore({ file = null } = {}) {
     if (typeof token !== "string" || !/^[a-f0-9]{24,64}$/.test(token)) throw new VoteError("رمز الجهاز غير صالح");
     const p = s.polls.find((x) => x.status === "open");
     if (!p) throw new VoteError("لا يوجد سؤال مفتوح الآن", 409);
+    if (p.kind === "words") throw new VoteError("هذا السؤال يقبل كلمات لا اختياراً", 409);
     if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= p.options.length) {
       throw new VoteError("اختيار غير صالح");
     }
@@ -135,18 +144,30 @@ export function createVoteStore({ file = null } = {}) {
   }
 
   function counts(p) {
+    if (p.kind === "words") return [];
     if (Array.isArray(p.archive)) return p.archive.slice(); // device tokens already dropped
     const c = p.options.map(() => 0);
     for (const v of Object.values(p.votes)) c[v] += 1;
     return c;
   }
-  const total = (p) => counts(p).reduce((a, b) => a + b, 0);
+  const total = (p) => (p.kind === "words" ? wordTotal(p) : counts(p).reduce((a, b) => a + b, 0));
+  const wordTotal = (p) => Object.values(p.words || {}).reduce((a, w) => a + w.count, 0);
+  const allWords = (p) => Object.entries(p.words || {}).map(([key, w]) => ({ key, word: w.word, count: w.count, hidden: p.hidden.includes(key) }))
+    .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word, "ar"));
+  const visibleWords = (p) => allWords(p).filter((w) => !w.hidden).map(({ word, count }) => ({ word, count }));
 
   // What a student may see: the open question and only their own answer.
   function studentState(code, token) {
     const s = session(code);
     const p = s.polls.find((x) => x.status === "open");
     if (!p) return { active: null };
+    if (p.kind === "words") {
+      const submitted = s.wordDevices.get(p.id + ":" + token) || 0;
+      const payload = { pollId: p.id, kind: "words", question: p.question, maxWords: MAX_WORDS_PER_DEVICE,
+        remaining: Math.max(0, MAX_WORDS_PER_DEVICE - submitted) };
+      if (p.reveal) payload.words = visibleWords(p).slice(0, 40);
+      return { active: payload };
+    }
     const mine = Object.prototype.hasOwnProperty.call(p.votes, token) ? p.votes[token] : null;
     const payload = { pollId: p.id, question: p.question, options: p.options, answered: mine !== null, mine, allowChange: p.allowChange };
     if (p.reveal) payload.counts = counts(p);
@@ -159,8 +180,10 @@ export function createVoteStore({ file = null } = {}) {
     return {
       code,
       polls: s.polls.map((p) => ({
-        id: p.id, question: p.question, options: p.options, status: p.status,
+        id: p.id, question: p.question, options: p.options, status: p.status, kind: p.kind || "choice",
+        objective: p.objective || "",
         reveal: p.reveal, allowChange: p.allowChange, total: total(p), counts: counts(p),
+        ...(p.kind === "words" ? { words: allWords(p), submissions: wordTotal(p) } : {}),
       })),
     };
   }
@@ -177,6 +200,9 @@ export function createVoteStore({ file = null } = {}) {
     }
     const message = clean(text, OPEN_QUESTION_LIMIT);
     if (message.length < 3) throw new VoteError("اكتب سؤالاً قصيراً وواضحاً");
+    const screening = moderate(message);
+    // Personal data is refused outright to protect the student; other flags only hide it for review.
+    if (screening.privacy) throw new VoteError("لا تكتب أرقام هواتف أو أرقاماً مدنية أو بريداً أو روابط في السؤال", 422);
     if (s.questions.length >= MAX_PENDING_QUESTIONS) {
       throw new VoteError("قائمة الأسئلة ممتلئة؛ راجع المحاضر", 429);
     }
@@ -185,15 +211,15 @@ export function createVoteStore({ file = null } = {}) {
       throw new VoteError("يمكن إرسال سؤال آخر بعد 30 ثانية", 429);
     }
     s.lastQuestionAt.set(token, now);
-    const item = { id: s.nextQuestionId++, text: message, createdAt: now };
+    const item = { id: s.nextQuestionId++, text: message, createdAt: now, flagged: !screening.ok };
     s.questions.push(item);
     persist();
     return { id: item.id };
   }
 
   function listQuestions(code) {
-    return session(code).questions.slice().reverse().map(({ id, text, createdAt }) => ({
-      id, text, createdAt
+    return session(code).questions.slice().reverse().map(({ id, text, createdAt, flagged }) => ({
+      id, text, createdAt, flagged: Boolean(flagged)
     }));
   }
 
@@ -209,6 +235,47 @@ export function createVoteStore({ file = null } = {}) {
 
   function hasSession(code) {
     return sessions.has(code);
+  }
+
+  // Word cloud: students send up to three single words; only aggregate counts are kept.
+  function submitWords(code, token, input) {
+    const s = session(code);
+    if (typeof token !== "string" || !/^[a-f0-9]{24,64}$/.test(token)) throw new VoteError("رمز الجهاز غير صالح");
+    const p = s.polls.find((x) => x.status === "open");
+    if (!p || p.kind !== "words") throw new VoteError("لا يوجد سؤال كلمات مفتوح الآن", 409);
+    const list = (Array.isArray(input) ? input : []).slice(0, MAX_WORDS_PER_DEVICE);
+    if (!list.length) throw new VoteError("اكتب كلمة واحدة على الأقل");
+    const key = p.id + ":" + token;
+    const used = s.wordDevices.get(key) || 0;
+    if (used + list.length > MAX_WORDS_PER_DEVICE) throw new VoteError("بلغت الحد الأقصى من الكلمات (3)", 409);
+    let accepted = 0, rejected = 0;
+    for (const entry of list) {
+      const display = clean(entry, 24);
+      const k = wordKey(display);
+      if (!k || !moderate(display).ok) { rejected++; continue; }
+      if (!p.words[k] && Object.keys(p.words).length >= MAX_DISTINCT_WORDS) { rejected++; continue; }
+      (p.words[k] ||= { word: display, count: 0 }).count++;
+      accepted++;
+    }
+    s.wordDevices.set(key, used + list.length);
+    persist();
+    return { accepted, rejected };
+  }
+  function hideWord(code, id, key, hidden = true) {
+    const p = poll(code, id);
+    if (p.kind !== "words" || typeof key !== "string" || !p.words[key]) throw new VoteError("الكلمة غير موجودة", 404);
+    p.hidden = hidden ? [...new Set([...p.hidden, key])] : p.hidden.filter((k) => k !== key);
+    persist();
+    return { ok: true };
+  }
+  function setLabel(code, label) {
+    session(code).label = clean(label, 60);
+    persist();
+    return { label: session(code).label };
+  }
+  function listSessions() {
+    return [...sessions].map(([code, s]) => ({ code, label: s.label || "", createdAt: s.createdAt,
+      polls: s.polls.length })).sort((a, b) => b.createdAt - a.createdAt);
   }
 
   // Privacy maintenance. Device tokens exist only to stop double voting while a poll is open:
@@ -245,5 +312,5 @@ export function createVoteStore({ file = null } = {}) {
 
   return { createSession, createPoll, repeatPoll, setStatus, setReveal, vote,
     studentState, presenterState, submitQuestion, listQuestions, dismissQuestion, hasSession,
-    maintain, deleteSession, deleteAll, summary };
+    maintain, deleteSession, deleteAll, summary, submitWords, hideWord, setLabel, listSessions };
 }

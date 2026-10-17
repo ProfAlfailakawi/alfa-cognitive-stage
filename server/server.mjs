@@ -236,6 +236,10 @@ async function handleApi(req, res, path) {
   }
   if (resource !== "sessions") throw new VoteError("غير موجود", 404);
 
+  if (!code && req.method === "GET") {
+    requireAdmin(req);
+    return sendJson(res, 200, { sessions: store.listSessions() });
+  }
   if (!code && req.method === "POST") {
     requireAdmin(req);
     return sendJson(res, 201, { code: store.createSession() });
@@ -244,6 +248,10 @@ async function handleApi(req, res, path) {
   const upper = code.toUpperCase();
   if (!store.hasSession(upper)) throw new VoteError("الجلسة غير موجودة", 404);
 
+  if (!action && req.method === "PUT") {
+    requireAdmin(req);
+    return sendJson(res, 200, store.setLabel(upper, (await readBody(req)).label));
+  }
   if (!action && req.method === "DELETE") {
     requireAdmin(req);
     return sendJson(res, 200, store.deleteSession(upper));
@@ -265,6 +273,10 @@ async function handleApi(req, res, path) {
   if (action === "state" && req.method === "GET") {
     return sendJson(res, 200, store.studentState(upper, voterToken(req)));
   }
+  if (action === "words" && req.method === "POST" && !pollId) {
+    const body = await readBody(req);
+    return sendJson(res, 200, { ok: true, ...store.submitWords(upper, voterToken(req), body.words) });
+  }
   if (action === "vote" && req.method === "POST") {
     const body = await readBody(req);
     const result = store.vote(upper, voterToken(req), body.option);
@@ -283,6 +295,8 @@ async function handleApi(req, res, path) {
     requireAdmin(req);
     if (verb === "repeat") return sendJson(res, 201, { poll: store.repeatPoll(upper, Number(pollId)) });
     const id = Number(pollId);
+    if (verb === "hide-word") return sendJson(res, 200, store.hideWord(upper, id, (await readBody(req)).key, true));
+    if (verb === "show-word") return sendJson(res, 200, store.hideWord(upper, id, (await readBody(req)).key, false));
     if (verb === "open") return sendJson(res, 200, { poll: store.setStatus(upper, id, "open") });
     if (verb === "close") return sendJson(res, 200, { poll: store.setStatus(upper, id, "closed") });
     if (verb === "reveal") return sendJson(res, 200, { poll: store.setReveal(upper, id, true) });
