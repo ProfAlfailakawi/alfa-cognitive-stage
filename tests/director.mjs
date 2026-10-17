@@ -15,4 +15,7 @@ assert.equal(interpretSpeech("نشرح المقدمة اليوم"), null);
 assert.equal(eligibleForCloud(stat, "في دراسة ذكرت أن ٦٨٪"), false);
 assert.equal(eligibleForCloud(interpretSpeech("بقولكم قصة مؤثرة عن شخص"), "بقولكم قصة مؤثرة عن شخص"), true);
 assert.equal(eligibleForCloud(interpretSpeech("زين نرجع لموضوعنا"), "زين نرجع لموضوعنا"), false);
+assert.equal(interpretSpeech("ذكرت الدراسة نسبة 68% عفواً أقصد 86%")?.spec?.lines[0],"86%");
+assert.equal(interpretSpeech("ارتفعت النسبة من 30% إلى 70%")?.kind,undefined);
+assert.equal(interpretSpeech("وصلت نسبة المشاركة إلى ٧٤ بالمية")?.spec?.lines[0],"74%");
 console.log("director-core: all checks passed");
