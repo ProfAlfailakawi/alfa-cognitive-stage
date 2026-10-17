@@ -549,6 +549,10 @@ function setupDirector() {
   };
   document.getElementById("director-reject").onclick = () => { clearDirectorProposal(); setDirectorStatus("تم تجاهل الاقتراح."); };
   document.getElementById("director-memory-sync").onclick = syncApprovedScenes;
+  document.getElementById("director-admin-token").addEventListener("change", () => {
+    if (directorAdminToken()) void syncApprovedScenes();
+  });
+  if (sessionStorage.getItem("alfa-admin-token")) void syncApprovedScenes();
   setDirectorStatus("مكتبة المشاهد المعتمدة لهذه المحاضرة: " +
     countSavedScenes(state.bundle) + " — الاستماع متوقف.");
   document.getElementById("director-test-run").onclick = () => receiveDirectorSpeech(
