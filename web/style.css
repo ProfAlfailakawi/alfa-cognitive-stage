@@ -136,3 +136,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vote-live-results p { margin:0; font-size:clamp(.7rem,1.3vw,1.3rem); }
 .vote-result-bar { width:100%; background:#d9e1e5; height:10px; border-radius:12px; overflow:hidden; margin-bottom:.7rem; }
 .vote-result-bar span { display:block; height:100%; background:#3e5c78; }
+
+/* Source-file compatibility is visible privately to the presenter. */
+.readiness-drawer { border:1px solid var(--hair); border-radius:12px; padding:.7rem; background:var(--wash); }
+.readiness-drawer summary { cursor:pointer; font-weight:600; }
+#readiness-content { color:var(--soft); font-size:.78rem; line-height:1.75; overflow-wrap:anywhere; }
+#readiness-content .readiness-warning { color:var(--ember); border-top:1px solid var(--hair); padding-top:.4rem; }

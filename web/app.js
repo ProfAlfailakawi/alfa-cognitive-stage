@@ -7,13 +7,14 @@ import { interpretSpeech, eligibleForCloud } from "./director-core.js";
 import { createSpeechDirector } from "./speech-director.js";
 import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
 import { mountImportPanel } from "./import-ui.js";
+import { summarizeLecture } from "./lecture-readiness.js";
 
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
 const role = location.hash === "#audience" ? "audience" : "presenter";
 
-const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9 };
+const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null };
 let videoEl = null;
 let videoEls = [];
 const pollScreen = { visible: false, url: "", active: null };
@@ -136,6 +137,10 @@ function renderPresenter() {
       <aside class="side">
         <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
         <div id="lecture-import-mount"></div>
+        <details class="readiness-drawer" id="readiness-drawer">
+          <summary>جاهزية العرض وتوافق PowerPoint</summary>
+          <div id="readiness-content" aria-live="polite"></div>
+        </details>
         <details id="voting-drawer" class="voting-drawer">
           <summary>التصويت الطلابي داخل الاستوديو</summary>
           <div class="director-actions">
@@ -234,6 +239,29 @@ function renderPresenter() {
   showSlide(state.index);
   setupDirector();
   mountImportPanel(document.getElementById("lecture-import-mount"));
+  renderReadiness();
+}
+
+function renderReadiness() {
+  const target = document.getElementById("readiness-content");
+  if (!target || !state.manifest) return;
+  const summary = summarizeLecture(state.manifest);
+  const info = document.createElement("p");
+  info.textContent = summary.slideCount + " شريحة، " + summary.embeddedVideoCount +
+    " فيديو مضمّن، " + summary.animatedSlides.length + " شريحة بها حركات أصلية.";
+  const verdict = document.createElement("p");
+  verdict.textContent = summary.summary;
+  target.replaceChildren(info, verdict);
+  for (const warning of summary.warnings) {
+    const p = document.createElement("p");
+    p.className = "readiness-warning";
+    p.textContent = (warning.slide ? "الشريحة " + warning.slide + ": " : "") + warning.problem;
+    target.append(p);
+  }
+  if (summary.animatedSlides.length) {
+    const head = document.getElementById("readiness-drawer");
+    if (head) head.open = true;
+  }
 }
 
 function renderPresenterPanels() {
@@ -691,6 +719,7 @@ async function boot() {
     return;
   }
   const manifest = await fetch(`/bundles/${state.bundle}/manifest.json`).then((r) => r.json());
+  state.manifest = manifest;
   state.slides = manifest.slides;
   state.count = manifest.slideCount;
   state.aspect = manifest.aspect;
