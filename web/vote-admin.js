@@ -2,8 +2,9 @@ import { compareRounds, exportAggregateCsv } from "./poll-analytics.js";
 // Lecturer's voting console: create a session, add questions, open/close/reveal, see results.
 const $ = (id) => document.getElementById(id);
 const KEY = "alfa-admin-token";
+const SESSION_KEY = "alfa-current-voting-session";
 let adminToken = sessionStorage.getItem(KEY) || "";
-let code = "";
+let code = sessionStorage.getItem(SESSION_KEY) || "";
 let refreshTimer = null;
 let latestPollState = null;
 
@@ -118,6 +119,16 @@ async function enter() {
     $("auth").hidden = true;
     $("panel").hidden = false;
     if (!code) await newSession();
+    else {
+      try {
+        await call("GET", "/sessions/" + code + "/presenter");
+        await showSession();
+      } catch {
+        code = "";
+        sessionStorage.removeItem(SESSION_KEY);
+        await newSession();
+      }
+    }
     clearInterval(refreshTimer);
     refreshTimer = setInterval(refresh, 2000);
   } catch (err) {
@@ -126,10 +137,9 @@ async function enter() {
   }
 }
 
-async function newSession() {
-  const { code: fresh } = await call("POST", "/sessions");
-  code = fresh;
-  $("session-line").textContent = `رمز الجلسة: ${code}`;
+async function showSession() {
+  if (!code) return;
+  $("session-line").textContent = "رمز الجلسة: " + code;
   const net = await fetch("/api/network").then((r) => r.json()).catch(() => ({}));
   const base = net.publicUrl || location.origin;
   drawQr(base + "/vote.html?s=" + encodeURIComponent(code));
@@ -137,6 +147,12 @@ async function newSession() {
     $("poll-msg").textContent = "تنبيه: رابط localhost لا يعمل على هاتف آخر. استخدم PUBLIC_URL أو عنوان شبكة الماك.";
   }
   await refresh();
+}
+async function newSession() {
+  const result = await call("POST", "/sessions");
+  code = result.code;
+  sessionStorage.setItem(SESSION_KEY, code);
+  await showSession();
 }
 
 $("save-token").addEventListener("click", () => {

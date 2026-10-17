@@ -118,6 +118,11 @@ try {
   await votingFrame.locator("#token").fill(ADMIN);
   await votingFrame.locator("#save-token").click();
   await votingFrame.locator("#qr svg").waitFor({ timeout: 10000 });
+  const sessionBefore = await votingFrame.locator("#session-line").textContent();
+  await votingFrame.locator("body").evaluate(() => location.reload());
+  await votingFrame.locator("#qr svg").waitFor({ timeout: 10000 });
+  const sessionAfter = await votingFrame.locator("#session-line").textContent();
+  check("voting console resumes the same session after reload", sessionBefore === sessionAfter);
   await presenter.locator("#director-box details").evaluate((el) => { el.open = true; });
   await presenter.fill("#director-test-text", "تتوقعون الألعاب التعليمية أفضل من غيرها؟");
   await presenter.click("#director-test-run");
