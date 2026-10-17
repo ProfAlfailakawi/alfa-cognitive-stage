@@ -2,6 +2,7 @@
 // HTTP Range requests are supported so video can seek.
 import { createServer } from "node:http";
 import { createReadStream, promises as fs } from "node:fs";
+import { networkInterfaces } from "node:os";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnvFile } from "node:process";
 import { analyzeWithAI } from "./director-ai.mjs";
@@ -66,7 +67,7 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function readBody(req) {
+function readBody(req, maxBody = MAX_BODY) {
   return new Promise((resolveBody, reject) => {
     let size = 0;
     const chunks = [];
@@ -74,7 +75,7 @@ function readBody(req) {
     req.on("data", (chunk) => {
       if (tooLarge) return;
       size += chunk.length;
-      if (size > MAX_BODY) {
+      if (size > maxBody) {
         tooLarge = true;
         chunks.length = 0;
         reject(new VoteError("الطلب كبير جداً", 413));
@@ -111,6 +112,14 @@ function voterToken(req) {
 async function handleApi(req, res, path) {
   const parts = path.split("/").filter(Boolean); // api, sessions, CODE, ...
   const [, resource, code, action, pollId, verb] = parts;
+  if (resource === "network" && req.method === "GET") {
+    const addresses = Object.values(networkInterfaces()).flat().filter(Boolean)
+      .filter((x) => x.family === "IPv4" && !x.internal);
+    const preferred = addresses.find((x) => /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(x.address));
+    const ip = (preferred || addresses[0])?.address || null;
+    const publicUrl = process.env.PUBLIC_URL || (ip ? "http://" + ip + ":" + port : null);
+    return sendJson(res, 200, { publicUrl });
+  }
   if (resource === "director" && code === "status" && req.method === "GET") {
     requireAdmin(req);
     return sendJson(res, 200, { available: Boolean(process.env.OPENAI_API_KEY),
@@ -118,7 +127,7 @@ async function handleApi(req, res, path) {
   }
   if (resource === "director" && code === "analyze" && req.method === "POST") {
     requireAdmin(req);
-    try { return sendJson(res, 200, await analyzeWithAI(await readBody(req))); }
+    try { return sendJson(res, 200, await analyzeWithAI(await readBody(req, 12000))); }
     catch (err) { return sendJson(res, err.status || 502, { error: err.message || "تعذر تحليل الكلام" }); }
   }
   if (resource === "admin" && code === "check" && req.method === "GET") {
@@ -153,6 +162,7 @@ async function handleApi(req, res, path) {
     return sendJson(res, 201, { poll });
   }
   if (action === "polls" && pollId && req.method === "POST") {
+    if (verb === "repeat") return sendJson(res, 201, { poll: store.repeatPoll(upper, Number(pollId)) });
     requireAdmin(req);
     const id = Number(pollId);
     if (verb === "open") return sendJson(res, 200, { poll: store.setStatus(upper, id, "open") });
