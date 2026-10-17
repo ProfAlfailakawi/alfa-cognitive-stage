@@ -5,3 +5,4 @@ bundles/
 *.mov
 *.webm
 tests/*.png
+__pycache__/
