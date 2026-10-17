@@ -7,6 +7,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnvFile } from "node:process";
 import { analyzeWithAI } from "./director-ai.mjs";
 import { importLecture } from "./importer.mjs";
+import { createSceneLibrary } from "./scene-library.mjs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
@@ -18,6 +19,7 @@ const bundlesRoot = join(root, "bundles");
 const port = Number(process.env.PORT || 4173);
 const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
 const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });
+const sceneLibrary = createSceneLibrary({file:process.env.SCENES_FILE || join(root, "data", "scenes.json")});
 const MAX_BODY = 4096;
 let importingLecture = false;
 
@@ -114,6 +116,17 @@ function voterToken(req) {
 async function handleApi(req, res, path) {
   const parts = path.split("/").filter(Boolean); // api, sessions, CODE, ...
   const [, resource, code, action, pollId, verb] = parts;
+  if (resource === "library" && code === "scenes") {
+    requireAdmin(req);
+    if (req.method === "GET" && action) return sendJson(res, 200, { scenes: sceneLibrary.list(action) });
+    if (req.method === "POST" && !action) {
+      const result = sceneLibrary.save(await readBody(req, 18000));
+      return sendJson(res, 201, { scene: result });
+    }
+    if (req.method === "DELETE" && action && pollId)
+      return sendJson(res, 200, { removed: sceneLibrary.remove(action, pollId) });
+    throw new VoteError("غير موجود", 404);
+  }
   if (resource === "network" && req.method === "GET") {
     const addresses = Object.values(networkInterfaces()).flat().filter(Boolean)
       .filter((x) => x.family === "IPv4" && !x.internal);

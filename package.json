@@ -10,12 +10,13 @@
     "test:build": "python3 -m unittest discover -s tools -p 'test_*.py'",
     "test:vote": "node tests/vote.mjs",
     "test:infographic": "node tests/infographic.mjs",
-    "test": "npm run test:build && npm run test:import && npm run test:director && npm run test:story && npm run test:director-ai && npm run test:memory && npm run test:vote-rounds && npm run test:infographic && npm run test:e2e && npm run test:vote",
+    "test": "npm run test:build && npm run test:import && npm run test:director && npm run test:story && npm run test:director-ai && npm run test:memory && npm run test:library && npm run test:vote-rounds && npm run test:infographic && npm run test:e2e && npm run test:vote",
     "test:director": "node tests/director.mjs",
     "test:director-ai": "node tests/director-ai.mjs",
     "test:vote-rounds": "node tests/vote-rounds.mjs",
     "test:memory": "node tests/memory.mjs",
     "test:import": "node tests/import.mjs",
-    "test:story": "node tests/story.mjs"
+    "test:story": "node tests/story.mjs",
+    "test:library": "node tests/library.mjs"
   }
 }
