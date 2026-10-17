@@ -5,12 +5,13 @@
 import { renderInfographic } from "./infographic.js";
 import { createDirectorBrain } from "./director-brain.js";
 import { createSpeechDirector } from "./speech-director.js";
-import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
-import { rememberRejectedProposal, wasProposalRejected, countRejectedProposals, clearRejectedProposals } from "./director-preferences.js";
+import { rememberScene, recallScene, countSavedScenes, clearSceneMemory } from "./scene-memory.js";
+import { fingerprint, rememberRejectedProposal, wasProposalRejected, countRejectedProposals, clearRejectedProposals } from "./director-preferences.js";
 import { mountImportPanel } from "./import-ui.js";
 import { summarizeLecture } from "./lecture-readiness.js";
 import { testLectureMedia } from "./media-preflight.js";
 import { buildSteps, clampStep, imageFor, lastStep, nextPosition, prevPosition, autoDelay, fadeMs } from "./build-steps.js";
+import { recordDecision, tasteFor, summarizeTaste, clearTaste } from "./director-taste.js";
 import { createReturnStack } from "./return-stack.js";
 import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
 
@@ -340,9 +341,15 @@ function renderPresenter() {
               <button type="button" id="director-reject">تجاهل</button>
             </div>
           </div>
-          <details><summary>اختبار نصّي دون المايك</summary>
+          <details><summary>أدوات متقدمة: اختبار نصّي وإدارة الذاكرة</summary>
             <input id="director-test-text" type="text" maxlength="950" placeholder="في دراسة ذكرت أن 68% من الطلبة..." />
             <button id="director-test-run" type="button">اختبر العبارة</button>
+            <p class="meta" id="director-taste" aria-live="polite"></p>
+            <div class="director-actions">
+              <button type="button" id="director-clear-taste">نسيان تفضيلات الأسلوب</button>
+              <button type="button" id="director-clear-scenes">مسح مشاهد هذه المحاضرة المحفوظة</button>
+              <button type="button" id="director-clear-all-scenes">مسح كل ذاكرة المشاهد</button>
+            </div>
           </details>
         </section>
         <div><div class="label">ملاحظات المحاضر</div></div>
@@ -599,6 +606,7 @@ function restoreStageState(snapshot) {
 
 function goMain() {
   // Emergency/return: back to the exact lecture state captured when the digression began.
+  noteQuickHide();
   const original = returnStack.home();
   if (original) { restoreStageState(original); return; }
   // No digression recorded: stop clips, hide scenes, stay on the current slide and click state.
@@ -609,6 +617,7 @@ function goMain() {
 }
 // One level back out of nested digressions (scene inside a scene).
 function backOneLevel() {
+  noteQuickHide();
   const previous = returnStack.back();
   if (previous) restoreStageState(previous); else goMain();
 }
@@ -779,9 +788,31 @@ function directorContext() {
     overlay: currentOverlay, mode: document.getElementById("director-mode")?.value || "balanced",
     mediaPlaying: videoEls.some((el) => !el.paused) };
 }
-function revealAndRecord(proposal) {
-  if (revealDirectorScene(proposal)) { brain.noteShown(state.index); return true; }
-  return false;
+function revealAndRecord(proposal, { automatic = false } = {}) {
+  if (!revealDirectorScene(proposal)) return false;
+  brain.noteShown(state.index);
+  directorRuntime.autoShown = automatic && proposal.spec
+    ? { type: proposal.spec.type, at: Date.now(), fp: fingerprint(proposal.utterance) } : null;
+  refreshTasteLine();
+  return true;
+}
+// Hiding an automatically shown scene within seconds is a (weak) sign it was unwanted.
+function noteQuickHide() {
+  const shown = directorRuntime.autoShown;
+  directorRuntime.autoShown = null;
+  if (shown && Date.now() - shown.at < 6000) {
+    recordDecision({ bundle: state.bundle, type: shown.type, approved: false, fingerprint: shown.fp || "", weight: 0.5 });
+    refreshTasteLine();
+  }
+}
+function refreshTasteLine() {
+  const el = document.getElementById("director-taste");
+  if (!el) return;
+  const names = { stat: "إحصائية", compare: "مقارنة", steps: "خطوات", story: "قصة", timeline: "خط زمني", concept: "مفاهيم", flow: "تسلسل" };
+  const rows = summarizeTaste(state.bundle).map((x) => (names[x.type] || x.type) + ": قبول " + x.approvals.toFixed(1) +
+    " / رفض " + x.rejections.toFixed(1) + (x.suppressed ? " (موقوف)" : x.quieter ? " (بموافقتك فقط)" : ""));
+  el.textContent = rows.length ? "تفضيلات متعلمة (تتلاشى بعد أسابيع): " + rows.join(" · ")
+    : "لا تفضيلات متعلمة بعد؛ الرفض المنفرد لا يغيّر السلوك.";
 }
 // All interpretation lives in director-brain.js; this function only applies its decision.
 function receiveDirectorSpeech(text) {
@@ -814,13 +845,19 @@ function receiveDirectorSpeech(text) {
     return;
   }
   if (decision.spec && (decision.action === "auto" || decision.action === "propose")) {
+    const taste = tasteFor({ bundle: state.bundle, type: decision.spec.type });
+    if (decision.action === "propose" && taste.suppressed && decision.kind !== "correction") {
+      setDirectorStatus("أخفيت اقتراحاً من هذا النمط لأنك رفضته مراراً. «نسيان تفضيلات الأسلوب» يعيده.");
+      return;
+    }
+    if (decision.action === "auto" && taste.quieter) decision.action = "propose";
     if (rejected) {
       setDirectorStatus("تم تجاوز اقتراح تجاهلته سابقاً على هذه الشريحة. يمكنك مسح التجاهلات.");
       return;
     }
     const proposal = { spec: decision.spec, utterance: decision.utterance || raw, slide: state.index, at: Date.now() };
     if (decision.action === "auto") {
-      if (!revealAndRecord(proposal)) showDirectorProposal(proposal, decision.reason || "راجع المشهد قبل إظهاره.");
+      if (!revealAndRecord(proposal, { automatic: true })) showDirectorProposal(proposal, decision.reason || "راجع المشهد قبل إظهاره.");
     } else {
       showDirectorProposal(proposal, decision.reason || (decision.kind === "stat"
         ? "إحصائية التقطت من حديث المحاضر — تأكد من الرقم."
@@ -882,12 +919,19 @@ function setupDirector() {
     const pending = directorRuntime.pending;
     if (pending?.retract) { clearDirectorProposal(); backOneLevel(); setDirectorStatus("أُخفي المشهد بعد تراجعك عن المعلومة."); return; }
     if (pending && !revealAndRecord(pending)) setDirectorStatus("المشهد انتهت صلاحيته أو يوجد فيديو نشط.");
+    else if (pending?.spec) { recordDecision({ bundle: state.bundle, type: pending.spec.type, approved: true,
+      fingerprint: fingerprint(pending.utterance) }); refreshTasteLine(); }
   };
   document.getElementById("director-reject").onclick = () => {
     const proposal = directorRuntime.pending;
     const saved = proposal && rememberRejectedProposal({
       bundle: state.bundle, slide: proposal.slide, utterance: proposal.utterance
     });
+    if (proposal?.spec) {
+      recordDecision({ bundle: state.bundle, type: proposal.spec.type, approved: false,
+        fingerprint: fingerprint(proposal.utterance) });
+      refreshTasteLine();
+    }
     directorRuntime.cloudSeq++; // Ignore any outdated paid analysis still in flight.
     clearDirectorProposal();
     setDirectorStatus(saved ? "تم تجاهل الاقتراح وتذكّر القرار محلياً لهذه الشريحة (14 يوماً)." : "تم تجاهل الاقتراح لهذه المرة.");
@@ -897,6 +941,30 @@ function setupDirector() {
     setDirectorStatus(cleared ? "تم مسح التجاهلات المحفوظة لهذه المحاضرة." : "تعذر مسح التجاهلات من المتصفح.");
   };
   document.getElementById("director-memory-sync").onclick = syncApprovedScenes;
+  document.getElementById("director-clear-taste").onclick = () => {
+    setDirectorStatus(clearTaste(null) ? "نُسيت تفضيلات الأسلوب المتعلمة." : "تعذر مسح التفضيلات.");
+    refreshTasteLine();
+  };
+  const eraseOnServer = async (path) => {
+    const token = directorAdminToken();
+    if (!token) return "المحلي فقط (لم يُدخل رمز المحاضر)";
+    try {
+      const r = await fetch(path, { method: "DELETE", headers: { "X-Admin-Token": token } });
+      return r.ok ? "والخادم" : "تعذر مسح نسخة الخادم";
+    } catch { return "تعذر الاتصال بالخادم"; }
+  };
+  document.getElementById("director-clear-scenes").onclick = async () => {
+    const local = clearSceneMemory(state.bundle);
+    const where = await eraseOnServer("/api/memory/" + encodeURIComponent(state.bundle));
+    setDirectorStatus((local ? "مُسحت مشاهد هذه المحاضرة من المتصفح " : "تعذر المسح المحلي ") + where + ".");
+  };
+  document.getElementById("director-clear-all-scenes").onclick = async () => {
+    if (!confirm("مسح كل المشاهد المعتمدة لكل المحاضرات؟")) return;
+    const local = clearSceneMemory(null);
+    const where = await eraseOnServer("/api/memory/library");
+    setDirectorStatus((local ? "مُسحت كل المشاهد من المتصفح " : "تعذر المسح المحلي ") + where + ".");
+  };
+  refreshTasteLine();
   document.getElementById("director-cloud").addEventListener("change", () => void refreshDirectorUsage());
   document.getElementById("director-admin-token").addEventListener("change", () => {
     if (directorAdminToken()) void syncApprovedScenes();

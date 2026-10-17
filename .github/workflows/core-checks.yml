@@ -29,6 +29,8 @@ jobs:
           node --check web/lecture-readiness.js
           node --check web/media-preflight.js
           node --check web/director-core.js
+          node --check web/semantic-index.js
+          node --check web/director-taste.js
           node --check web/director-brain.js
           node --check web/speech-director.js
           node --check web/vote-admin.js
@@ -85,6 +87,8 @@ jobs:
         run: npm run test:e2e
       - name: PowerPoint build steps and exact return after digressions
         run: npm run test:e2e-return
+      - name: Memory controls and conservative preference learning
+        run: npm run test:e2e-memory
       - name: Five-phone browser voting and persistence test
         run: npm run test:vote
 

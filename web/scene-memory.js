@@ -1,7 +1,9 @@
 // Local, no-API approved scene memory. Private to this browser profile and origin.
-// Not yet a full semantic/vector database or a multi-device synchronization mechanism.
+// Matching is semantic within a local lexicon (semantic-index.js) AND must pass numeric, population,
+// polarity and direction guards. Not a neural model and not a multi-device synchronization mechanism.
 import { normalizeArabic } from "./director-core.js";
 import { validateSpec } from "./infographic.js";
+import { embed, toSparse, fromSparse, compatible, numbersOf } from "./semantic-index.js";
 
 const PREFIX = "alfa-approved-scenes-v1:";
 const GLOBAL_KEY = "alfa-approved-scenes-cross-v1";
@@ -35,6 +37,11 @@ function numericTokens(text) {
   return [...new Set([...normalized.matchAll(/\d+(?:[.,]\d+)?\s*%?/g)]
     .map(([value]) => value.replace(/\s+/g, "").replace(",", ".")))].sort();
 }
+function opaqueId(text) { // Not security: just keeps readable words out of the cross-lecture index.
+  let h = 0xcbf29ce484222325n;
+  for (const ch of String(text)) { h ^= BigInt(ch.codePointAt(0)); h = (h * 0x100000001b3n) & 0xffffffffffffffffn; }
+  return h.toString(16).padStart(16, "0");
+}
 function readGlobal(storage) {
   try {
     const items = JSON.parse(storage.getItem(GLOBAL_KEY) || "[]");
@@ -49,60 +56,84 @@ export function rememberScene({ bundle, slide, utterance, spec }, customStorage)
   if (terms.length < 2) return false;
   const scenes = read(bundle, storage);
   const id = slide + ":" + terms.join("|");
+  const shown = embed(String(utterance));
+  const stored = { vec: toSparse(shown.vec), slots: shown.slots,
+    numbers: numbersOf(String(utterance) + " " + spec.lines.join(" ")) };
   const item = { id, slide, utterance: String(utterance).slice(0, 300),
-    terms, spec, storedAt: Date.now() };
+    terms, ...stored, spec, storedAt: Date.now() };
   const remaining = scenes.filter((x) => x.id !== id).slice(-49);
   try {
     storage.setItem(PREFIX + String(bundle), JSON.stringify([...remaining, item]));
     // A bounded, same-browser index: no network, embeddings, or extra raw transcript.
     // A failed index write never loses the lecture-specific saved scene.
     try {
-      const global = readGlobal(storage).filter((entry) => entry.id !== bundle + ":" + id);
-      const compact = { id: bundle + ":" + id, bundle, terms,
-        numbers: numericTokens(String(utterance) + " " + spec.lines.join(" ")),
-        spec, storedAt: item.storedAt };
+      const globalId = bundle + ":" + opaqueId(id);
+      const global = readGlobal(storage).filter((entry) => entry.id !== globalId);
+      const compact = { id: globalId, bundle, ...stored, spec, storedAt: item.storedAt };
       storage.setItem(GLOBAL_KEY, JSON.stringify([...global, compact].slice(-GLOBAL_LIMIT)));
     } catch {}
     return true;
   } catch { return false; }
 }
+const THRESHOLD = { sameSlide: 0.45, sameLecture: 0.6, crossLecture: 0.55 };
+function storedForm(item) {
+  const vec = fromSparse(item.vec);
+  if (vec && item.slots && Array.isArray(item.numbers)) return { vec, slots: item.slots, numbers: item.numbers };
+  // Scenes saved by older releases carry only text: rebuild locally when possible.
+  if (typeof item.utterance === "string" && item.utterance && Array.isArray(item.spec?.lines)) {
+    const shown = embed(item.utterance);
+    return { vec: shown.vec, slots: shown.slots,
+      numbers: numbersOf(item.utterance + " " + item.spec.lines.join(" ")) };
+  }
+  return null;
+}
 export function recallScene({ bundle, slide, utterance }, customStorage) {
   const storage = storageOrNull(customStorage);
   if (!storage || !bundle) return null;
-  const query = wordSet(utterance);
-  if (query.length < 2) return null;
+  const query = embed(String(utterance));
+  if (query.size < 2) return null;
   let best = null, max = 0;
-  const queryNumbers = JSON.stringify(numericTokens(utterance));
   for (const item of read(bundle, storage)) {
-    if (!item || !Array.isArray(item.terms) || !item.spec ||
-        !Array.isArray(item.spec.lines)) continue;
-    // Numeric facts must match even within the same lecture and slide:
-    // similarity alone could reuse 68% when the lecturer corrected it to 69%.
-    const savedNumbers = JSON.stringify(numericTokens(
-      String(item.utterance || "") + " " + item.spec.lines.join(" ")));
-    if (savedNumbers !== queryNumbers) continue;
-    const common = query.filter((word) => item.terms.includes(word)).length;
-    const union = new Set([...query, ...item.terms]).size;
-    const similarity = union ? common / union : 0;
-    const threshold = item.slide === slide ? 0.55 : 0.85;
-    if (common >= 2 && similarity >= threshold && similarity > max) {
-      try { validateSpec(item.spec); best = item; max = similarity; } catch {}
+    if (!item || !item.spec || !Array.isArray(item.spec.lines)) continue;
+    const stored = storedForm(item);
+    if (!stored) continue;
+    const verdict = compatible(query, stored, {
+      threshold: item.slide === slide ? THRESHOLD.sameSlide : THRESHOLD.sameLecture });
+    if (verdict.ok && verdict.similarity > max) {
+      try { validateSpec(item.spec); best = item; max = verdict.similarity; } catch {}
     }
   }
   if (best) return { spec: best.spec, utterance: best.utterance, similarity: max };
-  // Cross-lecture reuse is stricter than same-lecture matching and always goes
-  // through the presenter's existing confirmation proposal, never auto-display.
-  if (query.length < 3) return null;
+  // Cross-lecture reuse is stricter and always goes through the presenter's confirmation.
+  if (query.size < 3) return null;
   for (const item of readGlobal(storage)) {
-    if (!item || item.bundle === bundle || !Array.isArray(item.terms) ||
-        !Array.isArray(item.numbers) || !item.spec) continue;
-    const common = query.filter((word) => item.terms.includes(word)).length;
-    const similarity = common / new Set([...query, ...item.terms]).size;
-    if (common < 3 || similarity < 0.85 || similarity <= max ||
-        JSON.stringify(item.numbers) !== queryNumbers) continue;
-    try { validateSpec(item.spec); best = item; max = similarity; } catch {}
+    if (!item || item.bundle === bundle || !item.spec) continue;
+    const stored = storedForm(item);
+    if (!stored) continue;
+    const verdict = compatible(query, stored, { threshold: THRESHOLD.crossLecture });
+    if (verdict.ok && verdict.similarity > max) {
+      try { validateSpec(item.spec); best = item; max = verdict.similarity; } catch {}
+    }
   }
   return best ? { spec: best.spec, similarity: max, reusedAcrossLecture: true } : null;
+}
+export function clearSceneMemory(bundle, customStorage) {
+  const storage = storageOrNull(customStorage);
+  if (!storage) return false;
+  try {
+    if (bundle) {
+      storage.removeItem?.(PREFIX + String(bundle));
+      const rest = readGlobal(storage).filter((x) => x.bundle !== bundle);
+      storage.setItem(GLOBAL_KEY, JSON.stringify(rest));
+    } else {
+      for (let i = (storage.length || 0) - 1; i >= 0; i--) {
+        const key = storage.key?.(i);
+        if (key && key.startsWith(PREFIX)) storage.removeItem(key);
+      }
+      storage.removeItem?.(GLOBAL_KEY);
+    }
+    return true;
+  } catch { return false; }
 }
 export function countSavedScenes(bundle, customStorage) {
   const storage = storageOrNull(customStorage);
