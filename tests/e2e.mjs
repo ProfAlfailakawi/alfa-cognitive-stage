@@ -18,6 +18,13 @@ const check = (name, ok, detail = "") => {
   if (!ok) failures.push(name);
 };
 
+// Slide 3 of the fixture has three click builds, so "next" is pressed until the target slide shows.
+async function pressNextUntil(page, slide) {
+  for (let i = 0; i < 12 && !(await page.textContent("#meta")).includes(`${slide} من`); i++) {
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(120);
+  }
+}
 const server = spawn(process.execPath, [join(root, "server/server.mjs")], {
   env: { ...process.env, PORT: String(port), ADMIN_TOKEN: ADMIN },
   stdio: ["ignore", "pipe", "pipe"],
@@ -130,7 +137,7 @@ try {
     await audience.locator("#director-voice-health").count() === 0);
 
 
-  for (let i = 0; i < 3; i++) await presenter.keyboard.press("ArrowRight");
+  await pressNextUntil(presenter, 4);
   await presenter.waitForTimeout(500);
   check("keyboard moves presenter to slide 4", (await presenter.textContent("#meta")).includes("4 من"));
   await audience.waitForTimeout(400);
@@ -138,7 +145,7 @@ try {
   check("audience follows presenter to slide 4", audienceSrc.endsWith("004.png"), audienceSrc);
 
   // Slide 7 holds a video; move there.
-  for (let i = 0; i < 3; i++) await presenter.keyboard.press("ArrowRight");
+  await pressNextUntil(presenter, 7);
   await presenter.waitForTimeout(600);
   const pv = await presenter.locator("video.clip").count();
   check("presenter video appears on slide 7", pv === 1);

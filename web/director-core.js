@@ -12,6 +12,9 @@ export function interpretSpeech(utterance) {
   const raw = String(utterance || "").trim().slice(0, 950);
   if (!raw) return null;
   const text = normalizeArabic(raw);
+  if (/(?:نرجع|نعود)\s+(?:الى\s+|الي\s+)?(?:للي|اللي|لي)\s+قبل|(?:نرجع|نعود)\s+(?:الى\s+|الي\s+)?(?:لل|ال)?موضوع\s+(?:ال)?سابق/.test(text)) {
+    return { kind: "return-level", confidence: 0.9, utterance: raw };
+  }
   if (/(نرجع|نعود|نرد|خلونا نرجع|نكمل درسنا|نرجع لموضوع|نرجع للعرض)/.test(text)) {
     return { kind: "return", confidence: 0.96, utterance: raw };
   }
