@@ -146,6 +146,7 @@ try {
   await adminPage.goto(`${base}/vote-admin.html`);
 
   await adminPage.evaluate((session) => sessionStorage.setItem("alfa-current-voting-session", session), code);
+  await adminPage.reload(); // The console reads the resumed session only at module initialization.
 
   await adminPage.fill("#token", "wrong-token-value-here-000000");
   await adminPage.click("#save-token");
