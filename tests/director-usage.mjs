@@ -38,18 +38,28 @@ try {
     directorUsageStatus().inputTokens, directorUsageStatus().outputTokens], [1, 1, 120, 25]);
   assert.equal(directorUsageStatus().daily.callsUsed, 1);
   assert.equal(directorUsageStatus().daily.inputTokens, 120);
-  await assert.rejects(() => analyzeWithAI(input), err => err.status === 429);
+  const repeated = await analyzeWithAI(input);
+  assert.equal(repeated.cached, true, "An identical analysis is answered from the in-memory cache");
+  assert.equal(requests, 1, "A cached answer never reaches the provider");
+  assert.equal(directorUsageStatus().daily.callsUsed, 1, "A cached answer uses no quota");
+  const second = { utterance: "نشرح فكرة ثانية عن التحفيز في الصف" };
+  await assert.rejects(() => analyzeWithAI(second), err => err.status === 429);
   assert.equal(requests, 1, "Cooldown should block a second paid request");
   now += 13000;
-  assert.equal((await analyzeWithAI(input)).proposal, null);
+  assert.equal((await analyzeWithAI(second)).proposal, null);
   assert.equal(directorUsageStatus().callsWithoutUsage, 1, "Unknown usage must be disclosed");
   assert.equal(directorUsageStatus().daily.callsUsed, 2);
   assert.equal(directorUsageStatus().daily.unknownUsageCalls, 1);
   assert.equal(directorUsageStatus().callsRemaining, 0);
   now += 13000;
-  await assert.rejects(() => analyzeWithAI(input), err => err.status === 429);
+  await assert.rejects(() => analyzeWithAI({ utterance: "جملة ثالثة مختلفة عن الدافعية" }), err => err.status === 429);
   assert.equal(requests, 2);
-  assert.equal(directorUsageStatus().costUsd, null, "Never invent dollar amounts");
+  const status = directorUsageStatus();
+  assert.equal(status.costIsEstimate, true);
+  assert.equal(status.pricing.verifiedAt, "2026-10-17");
+  // 120 in x $0.40/M + 25 out x $1.60/M = 88 micro-USD for call 1; call 2 (unknown usage) is charged its worst case.
+  assert.ok(status.daily.spentMicros > 88, "unknown usage is charged conservatively, never as zero");
+  assert.equal(status.daily.heldMicros, 0, "all reservations are settled");
   assert.equal(directorUsageStatus().scope, "server-process");
   console.log("director API usage: call ceiling, cooldown, actual token totals, unknown-usage caveat passed");
 } finally {

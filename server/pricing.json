@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "currency": "USD",
+  "tier": "standard",
+  "verifiedAt": "2026-10-17",
+  "source": "https://developers.openai.com/api/docs/pricing",
+  "note": "Estimate only; the provider invoice is authoritative. Prices change: re-verify before relying on them, or override with DIRECTOR_PRICE_* environment variables.",
+  "models": {
+    "gpt-4.1-mini": { "inputPerMTok": 0.40, "cachedInputPerMTok": 0.10, "outputPerMTok": 1.60 }
+  }
+}

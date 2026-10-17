@@ -739,13 +739,14 @@ async function refreshDirectorUsage() {
       target.textContent = "تعذر قراءة سجل سقف API اليومي؛ أُوقفت الطلبات المدفوعة لحماية التكلفة.";
       return;
     }
+    const money = info.costUsd === null ? "لا سعر موثوق للنموذج؛ الطلبات المدفوعة موقوفة"
+      : "تقدير اليوم $" + info.costUsd.toFixed(4) + " من سقف $" + info.capUsd.toFixed(2) + " (تقدير لا فاتورة المزود)";
     target.textContent = info.available
       ? "السحابة اليوم (UTC): " + daily.callsUsed + "/" + daily.maxCalls +
         " طلب، " + (daily.inputTokens + daily.outputTokens) + " توكن مبلّغ عنه" +
-        (daily.unknownUsageCalls ? "، " + daily.unknownUsageCalls + " طلب بتوكنات غير معروفة" : "") +
+        (daily.unknownUsageCalls ? "، " + daily.unknownUsageCalls + " طلب بتوكنات غير معروفة (محتسبة بأسوأ حالة)" : "") +
         (daily.unreportedCalls ? "، " + daily.unreportedCalls + " طلب لم تكتمل بياناته" : "") +
-        " — منذ التشغيل: " + info.callsUsed + "/" + info.maxCalls +
-        " طلب. الأسعار بالدولار غير محسوبة."
+        " — " + money + (info.cacheHits ? " — " + info.cacheHits + " إجابة من الذاكرة بلا تكلفة" : "")
       : "السحابة غير مجهزة بمفتاح API؛ العرض المحلي مستمر.";
   } catch { target.textContent = "تعذر قراءة عداد API المحلي."; }
 }
