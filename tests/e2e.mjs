@@ -109,6 +109,48 @@ try {
   check("video plays on presenter", presenterTime > 0.5, `t=${presenterTime.toFixed(2)}`);
   check("video plays on audience in sync", audienceTime > 0.5, `t=${audienceTime.toFixed(2)}`);
 
+  // Open a new audience window *after* playback has started; its snapshot must
+  // include slide position and video time, without restarting other audience tabs.
+  const lateAudience = await context.newPage();
+  lateAudience.on("pageerror", (e) => audienceErrors.push("late audience: " + e));
+  await lateAudience.goto(`${base}/#audience`);
+  await lateAudience.waitForSelector("video.clip", { timeout: 8000 });
+  await lateAudience.waitForFunction(() =>
+    document.querySelector("#slide-img")?.getAttribute("src")?.endsWith("007.png"), null, { timeout: 6000 });
+  await lateAudience.waitForFunction(() =>
+    document.querySelector("video.clip")?.currentTime > 0.7, null, { timeout: 6000 });
+  const latePosition = await lateAudience.locator("video.clip").evaluate((v) => v.currentTime);
+  const referencePosition = await presenter.locator("video.clip").evaluate((v) => v.currentTime);
+  check("late-joining audience restores current slide and live video position",
+    (await lateAudience.getAttribute("#slide-img", "src")).endsWith("007.png") &&
+    Math.abs(latePosition - referencePosition) < 1.25,
+    `presenter=${referencePosition.toFixed(2)} late=${latePosition.toFixed(2)}`);
+
+  await presenter.bringToFront();
+  await presenter.keyboard.press("v");
+  await audience.waitForFunction(() => document.querySelector("video.clip")?.paused, null, { timeout: 5000 });
+  await lateAudience.waitForFunction(() => document.querySelector("video.clip")?.paused, null, { timeout: 5000 });
+  check("pause reaches both audience windows", true);
+  await presenter.locator("video.clip").evaluate((v) => { v.currentTime = 1.2; });
+  await audience.waitForFunction(() => Math.abs(document.querySelector("video.clip")?.currentTime - 1.2) < 0.25,
+    null, { timeout: 5000 });
+  check("a presenter seek propagates at precise media position",
+    Math.abs((await lateAudience.locator("video.clip").evaluate((v) => v.currentTime)) - 1.2) < 0.5);
+  await presenter.keyboard.press("v");
+  await audience.locator("video.clip").evaluate((v) => { v.currentTime = 0; });
+  await audience.waitForFunction(() => {
+    const v = document.querySelector("video.clip");
+    return v && !v.paused && v.currentTime > 1;
+  }, null, { timeout: 5000 });
+  // Wait beyond the 1.5 s heartbeat to exercise drift correction, not just natural playback.
+  await presenter.waitForTimeout(1800);
+  const repairedAudience = await audience.locator("video.clip").evaluate((v) => v.currentTime);
+  const repairedPresenter = await presenter.locator("video.clip").evaluate((v) => v.currentTime);
+  check("periodic media packets repair audience drift",
+    Math.abs(repairedAudience - repairedPresenter) < 1.15,
+    `presenter=${repairedPresenter.toFixed(2)} audience=${repairedAudience.toFixed(2)}`);
+  await lateAudience.close();
+
   // Emergency return: restore the current safe slide, not slide 1; pause its video.
   await presenter.keyboard.press("e");
   await presenter.waitForTimeout(600);

@@ -22,8 +22,9 @@
     "test:readiness": "node tests/readiness.mjs",
     "test:poll-analytics": "node tests/poll-analytics.mjs",
     "test:speech": "node tests/speech.mjs",
-    "test:media-preflight": "node tests/media-preflight.mjs",
+    "test:media-preflight": "node tests/media-preflight.mjs && npm run test:video-sync",
     "test:preferences": "node tests/director-preferences.mjs",
-    "test:usage": "node tests/director-usage.mjs"
+    "test:usage": "node tests/director-usage.mjs",
+    "test:video-sync": "node tests/video-sync.mjs"
   }
 }

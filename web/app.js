@@ -10,11 +10,15 @@ import { rememberRejectedProposal, wasProposalRejected, countRejectedProposals, 
 import { mountImportPanel } from "./import-ui.js";
 import { summarizeLecture } from "./lecture-readiness.js";
 import { testLectureMedia } from "./media-preflight.js";
+import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
 
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
 const role = location.hash === "#audience" ? "audience" : "presenter";
+const audienceRequestId = role === "audience"
+  ? Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("")
+  : null;
 
 const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null };
 let videoEl = null;
@@ -30,7 +34,33 @@ const directorRuntime = {
 };
 
 function send(message) {
-  channel.postMessage(message);
+  channel.postMessage({ ...message, bundle: state.bundle });
+}
+
+function currentVideoSnapshot() {
+  return videoEls.map((el) => ({ time: validMediaTime(el.currentTime) ? el.currentTime : 0,
+    playing: !el.paused && !el.ended }));
+}
+function broadcastSnapshot(requestId) {
+  if (typeof requestId !== "string" || !/^[a-f0-9]{16}$/.test(requestId)) return;
+  send({ type: "snapshot", requestId, index: state.index, main: state.main,
+    videos: currentVideoSnapshot() });
+}
+function adjustAudienceMediaTime(el, time, force = false) {
+  if (!el || !validMediaTime(time)) return;
+  const apply = () => {
+    if (!videoEls.includes(el)) return; // Ignore a previous slide that finished loading late.
+    if (force || needsMediaSeek(el.currentTime, time)) {
+      try { el.currentTime = time; } catch {} // A source may be unsupported in this browser.
+    }
+  };
+  if (el.readyState < 1) el.addEventListener("loadedmetadata", apply, { once: true });
+  else apply();
+}
+function playAudienceMedia(el) {
+  const attempt = el.play();
+  attempt?.catch?.(() => send({ type: "audience-media-issue", index: state.index,
+    issue: "تعذر التشغيل التلقائي للفيديو على شاشة الطلبة؛ اختبر إذن التشغيل والصوت." }));
 }
 
 function setAspect(aspect) {
@@ -74,17 +104,30 @@ function placeVideo(slide) {
     el.load();
     videoEls.push(el);
     if (role === "presenter") {
+      let lastProgressAt = 0;
+      const relay = (action) => {
+        if (videoEls[i] !== el) return; // Prevent delayed events from a replaced slide.
+        send({ type: "video", action, index: state.index, clip: i,
+          time: validMediaTime(el.currentTime) ? el.currentTime : 0 });
+      };
       el.addEventListener("play", () => {
+        if (videoEls[i] !== el) return;
         for (const other of videoEls) if (other !== el && !other.paused) other.pause();
         directorRuntime.speech?.setMediaPlaying(true);
-        send({ type: "video", action: "play", clip: i, time: el.currentTime });
+        relay("play");
       });
       el.addEventListener("pause", () => {
+        if (videoEls[i] !== el) return;
         if (videoEls.every((item) => item.paused)) directorRuntime.speech?.setMediaPlaying(false);
-        send({ type: "video", action: "pause", clip: i, time: el.currentTime });
+        relay("pause");
       });
-      el.addEventListener("seeked", () => send({ type: "video", action: "seek", clip: i, time: el.currentTime }));
-      el.addEventListener("ended", () => send({ type: "video", action: "ended", clip: i, index: state.index }));
+      el.addEventListener("seeked", () => relay("seek"));
+      el.addEventListener("ended", () => relay("ended"));
+      el.addEventListener("timeupdate", () => {
+        if (videoEls[i] !== el || el.paused || Date.now() - lastProgressAt < 1500) return;
+        lastProgressAt = Date.now();
+        relay("progress");
+      });
     }
   });
   videoEl = videoEls[0] || null;
@@ -769,9 +812,29 @@ function renderLayer(spec) {
 }
 
 function applyRemote(message) {
+  if (!sameLecture(message, state.bundle)) return;
   if (message.type === "slide") {
+    if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
     state.main = message.main;
     if (message.index !== state.index) showSlide(message.index);
+    return;
+  }
+  if (message.type === "snapshot") {
+    if (message.requestId !== audienceRequestId) return; // Do not disturb other audience tabs.
+    if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
+    state.main = message.main;
+    if (message.index !== state.index) showSlide(message.index);
+    if (!validSnapshot(message, state.bundle, videoEls.length)) return;
+    message.videos.forEach((item, i) => {
+      const el = videoEls[i];
+      if (!item.playing) el.pause();
+      adjustAudienceMediaTime(el, item.time, true);
+      if (item.playing) {
+        for (const other of videoEls) if (other !== el) other.pause();
+        playAudienceMedia(el);
+      }
+    });
+    return;
   }
   if (message.type === "infographic") {
     hideInfographic(false);
@@ -780,15 +843,21 @@ function applyRemote(message) {
   if (message.type === "infographic-hide") hideInfographic(false);
   if (message.type === "poll-projection") renderPollScreen(message.data);
   if (message.type === "video") {
-    const target = videoEls[Number(message.clip) || 0];
-    if (!target) return;
+    if (!validVideoPacket(message, state.bundle, state.index, videoEls.length)) return;
+    const target = videoEls[message.clip];
     if (message.action === "play") {
       for (const el of videoEls) if (el !== target) el.pause();
-      if (Number.isFinite(message.time)) target.currentTime = message.time;
-      target.play().catch(() => {});
+      adjustAudienceMediaTime(target, message.time);
+      playAudienceMedia(target);
     }
-    if (message.action === "pause") target.pause();
-    if (message.action === "seek" && Number.isFinite(message.time)) target.currentTime = message.time;
+    if (message.action === "pause" || message.action === "ended") {
+      target.pause();
+      adjustAudienceMediaTime(target, message.time, true);
+    }
+    if (message.action === "seek") adjustAudienceMediaTime(target, message.time, true);
+    if (message.action === "progress" && !target.paused && !target.seeking) {
+      adjustAudienceMediaTime(target, message.time);
+    }
   }
 }
 
@@ -857,27 +926,30 @@ async function boot() {
   state.count = manifest.slideCount;
   state.aspect = manifest.aspect;
 
-  if (role === "audience") {
-    renderAudience();
-    send({ type: "hello" });
-  } else {
-    renderPresenter();
-    window.addEventListener("message", receiveVoteAdminMessage);
-    setupKeys();
-    setupClock();
-    channel.postMessage({ type: "slide", index: state.index, main: state.main });
-  }
+  // Install listeners before the first hello to avoid missing a fast snapshot reply.
   channel.onmessage = (event) => {
     const message = event.data;
+    if (!sameLecture(message, state.bundle)) return;
     if (role === "presenter" && message.type === "hello") {
-      send({ type: "slide", index: state.index, main: state.main });
+      broadcastSnapshot(message.requestId); // Targeted late-join playback state.
+      return;
+    }
+    if (role === "presenter" && message.type === "audience-media-issue" &&
+        message.index === state.index && typeof message.issue === "string") {
+      setDirectorStatus("شاشة الطلبة: " + message.issue.slice(0, 150));
       return;
     }
     if (role === "audience") applyRemote(message);
   };
   if (role === "audience") {
-    // Audience tab mirrors whatever the presenter is showing.
-    channel.onmessage = (event) => applyRemote(event.data);
+    renderAudience();
+    send({ type: "hello", requestId: audienceRequestId });
+  } else {
+    renderPresenter();
+    window.addEventListener("message", receiveVoteAdminMessage);
+    setupKeys();
+    setupClock();
+    send({ type: "slide", index: state.index, main: state.main });
   }
 }
 
