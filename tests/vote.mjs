@@ -36,7 +36,7 @@ const tokenFor = (n) => String(n).padStart(2, "0").repeat(16); // 32 hex chars, 
 
 let server = await startServer();
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME_PATH || "/opt/pw-browsers/chromium",
+  executablePath: process.env.CHROME_PATH || chromium.executablePath(),
   args: ["--no-sandbox"],
 });
 

@@ -60,6 +60,5 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Check presenter, audience, scenes and voting on Chromium
         run: |
-          echo "CHROME_PATH=$(node -e "console.log(require('playwright').chromium.executablePath())")" >> "$GITHUB_ENV"
           npm run test:browser-smoke
           npm run test:vote

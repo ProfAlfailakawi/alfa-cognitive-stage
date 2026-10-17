@@ -24,7 +24,7 @@ const server = spawn(process.execPath, [join(root, "server/server.mjs")], {
 await new Promise((resolve) => server.stdout.once("data", resolve));
 
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME_PATH || "/opt/pw-browsers/chromium",
+  executablePath: process.env.CHROME_PATH || chromium.executablePath(),
   args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"],
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
