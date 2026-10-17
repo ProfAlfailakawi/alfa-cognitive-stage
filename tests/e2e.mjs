@@ -45,7 +45,7 @@ try {
 
   const slideResponse = await fetch(`${base}/bundles/${bundleId}/slides/001.png`);
   check("slide images are cached privately for faster navigation",
-    (slideResponse.headers.get("cache-control") || "").includes("private, max-age=86400"));
+    (slideResponse.headers.get("cache-control") || "").includes("private, max-age=600"));
   await presenter.goto(`${base}/#presenter`);
   await presenter.waitForSelector("#meta");
   check("presenter shows slide 1 of N", (await presenter.textContent("#meta")).includes(`1 من ${manifest.slideCount}`));
