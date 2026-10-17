@@ -21,6 +21,19 @@
   <main class="vote" id="app">
     <p class="status" id="status">جارٍ الاتصال…</p>
   </main>
+  <section class="vote" aria-label="أسئلة مفتوحة للمحاضر">
+    <details id="ask-lecturer">
+      <summary>عندك سؤال للمحاضر؟</summary>
+      <form id="question-form" style="display:grid;gap:.55rem;margin-top:.6rem">
+        <label for="question-text">سؤالك يُعرض للمحاضر فقط، دون اسم.</label>
+        <textarea id="question-text" maxlength="280" required rows="3"
+          placeholder="اكتب سؤالك دون أسماء أو بيانات شخصية"
+          style="width:100%;padding:.75rem;font:inherit;border-radius:12px;border:1px solid var(--hair)"></textarea>
+        <button class="primary" type="submit" id="question-submit">إرسال السؤال</button>
+        <p class="status" id="question-message" role="status" aria-live="polite"></p>
+      </form>
+    </details>
+  </section>
   <script src="vote.js" type="module"></script>
 </body>
 </html>

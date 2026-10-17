@@ -12,4 +12,19 @@ assert.equal(store.presenterState(code).polls[0].total, 1);
 assert.equal(store.presenterState(code).polls[1].total, 0);
 assert.equal(store.studentState(code, token).active.answered, false);
 assert.equal(store.presenterState(code).polls[0].status, "closed");
+// Student open questions never appear in public vote state.
+const q = store.submitQuestion(code, "b".repeat(32), "شلون نربط الألعاب التعليمية بالهدف؟");
+assert.equal(q.id, 1);
+assert.equal(store.listQuestions(code).length, 1);
+assert.equal(store.listQuestions(code)[0].text, "شلون نربط الألعاب التعليمية بالهدف؟");
+assert.equal(JSON.stringify(store.listQuestions(code)).includes("bbbb"), false);
+assert.equal(JSON.stringify(store.studentState(code, "c".repeat(32))).includes("نربط"), false);
+assert.throws(() => store.submitQuestion(code, "b".repeat(32), "سؤال آخر سريع"),
+  err => err.status === 429, "Rate limit open questions per device");
+assert.throws(() => store.submitQuestion(code, "invalid", "سؤال آخر"), /رمز الجهاز/);
+assert.throws(() => store.submitQuestion(code, "c".repeat(32), "x".repeat(281)), /طويل/);
+assert.throws(() => store.submitQuestion(code, "c".repeat(32), "  "), /قصير/);
+assert.deepEqual(store.dismissQuestion(code, q.id), { ok: true });
+assert.equal(store.listQuestions(code).length, 0);
+assert.throws(() => store.dismissQuestion(code, q.id), err => err.status === 404);
 console.log("vote rounds: previous results preserved, new round starts clean");

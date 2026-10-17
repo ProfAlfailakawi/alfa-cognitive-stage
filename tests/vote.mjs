@@ -70,6 +70,23 @@ try {
   for (const ph of phones) await ph.page.waitForSelector("button.opt", { timeout: 8000 });
   check("five phones see the open question", phones.length === 5);
 
+  check("student cannot browse the lecturer's question inbox",
+    (await fetch(`${base}/api/sessions/${code}/questions`)).status === 401);
+  await phones[0].page.click("#ask-lecturer summary");
+  const questionText = "هل نقدر نناقش <script>alert(1)</script> بالأمثلة؟";
+  await phones[0].page.fill("#question-text", questionText);
+  await phones[0].page.click("#question-submit");
+  await phones[0].page.waitForSelector("#question-message:has-text('وصل السؤال')", { timeout: 7000 });
+  const questionsResult = await (await admin(`/sessions/${code}/questions`)).json();
+  check("question reaches lecturer without student identity",
+    questionsResult.questions.length === 1 && questionsResult.questions[0].text === questionText &&
+    !JSON.stringify(questionsResult).includes(phones[0].token));
+  const unauthorizedDelete = await fetch(`${base}/api/sessions/${code}/questions/${questionsResult.questions[0].id}`, {
+    method: "DELETE"
+  });
+  check("student cannot remove moderated questions", unauthorizedDelete.status === 401);
+
+
   // Each phone chooses a different option (0, 1, 2, 0, 1).
   const picks = [0, 1, 2, 0, 1];
   for (let i = 0; i < 5; i++) {
@@ -127,6 +144,10 @@ try {
   const adminCtx = await browser.newContext();
   const adminPage = await adminCtx.newPage();
   await adminPage.goto(`${base}/vote-admin.html`);
+
+  await adminPage.evaluate((session) => sessionStorage.setItem("alfa-current-voting-session", session), code);
+  await adminPage.reload(); // The console reads the resumed session only at module initialization.
+
   await adminPage.fill("#token", "wrong-token-value-here-000000");
   await adminPage.click("#save-token");
   await adminPage.waitForSelector("#auth-msg:has-text('الرمز غير صحيح')", { timeout: 6000 });
@@ -135,6 +156,22 @@ try {
   await adminPage.click("#save-token");
   await adminPage.waitForSelector("#qr svg", { timeout: 8000 });
   check("lecturer console draws the QR code", true);
+
+  await adminPage.click("#student-questions-drawer summary");
+  await adminPage.waitForSelector("#student-questions .poll");
+  check("student question visible only in authenticated lecturer inbox",
+    (await adminPage.locator("#student-questions").textContent()).includes(questionText));
+  check("question text is displayed safely, not executed as HTML",
+    await adminPage.locator("#student-questions script, #student-questions img").count() === 0);
+  await adminPage.locator("#student-questions button").click();
+  await adminPage.waitForSelector("#student-questions:has-text('لا توجد أسئلة')", { timeout: 7000 });
+  check("lecturer can dismiss a question", (await (await admin(`/sessions/${code}/questions`)).json()).questions.length === 0);
+  // Another student's question remains confidential and survives an intentional server restart.
+  await phones[1].page.click("#ask-lecturer summary");
+  await phones[1].page.fill("#question-text", "ممكن تشرح المثال مرة ثانية؟");
+  await phones[1].page.click("#question-submit");
+  await phones[1].page.waitForSelector("#question-message:has-text('وصل السؤال')", { timeout: 7000 });
+
   await adminCtx.close();
 
   // Persistence: restart the server and keep the results.
@@ -143,6 +180,13 @@ try {
   const after = await (await admin(`/sessions/${code}/presenter`)).json();
   check("results survive a server restart", after.polls.length === 2 && after.polls[0].total === 5,
     `polls=${after.polls.length}`);
+
+  const reopened = await (await admin(`/sessions/${code}/questions`)).json();
+  check("moderated question inbox survives a restart without storing identity",
+    reopened.questions.length === 1 &&
+    reopened.questions[0].text === "ممكن تشرح المثال مرة ثانية؟" &&
+    !JSON.stringify(reopened).includes(phones[1].token));
+
 } catch (err) {
   failures.push("exception: " + err.message);
   console.error(err);

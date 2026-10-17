@@ -8,6 +8,9 @@ const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 const MAX_OPTIONS = 6;
 const MAX_TEXT = 200;
 const MAX_VOTERS = 1000;
+const MAX_PENDING_QUESTIONS = 100;
+const OPEN_QUESTION_LIMIT = 280;
+const QUESTION_COOLDOWN_MS = 30000;
 
 export class VoteError extends Error {
   constructor(message, status = 400) {
@@ -25,7 +28,7 @@ export function createVoteStore({ file = null } = {}) {
     if (!file) return;
     mkdirSync(dirname(file), { recursive: true });
     const data = Object.fromEntries([...sessions].map(([code, s]) => [code, {
-      polls: s.polls, nextId: s.nextId,
+      polls: s.polls, nextId: s.nextId, questions: s.questions, nextQuestionId: s.nextQuestionId,
     }]));
     const tmp = `${file}.tmp`;
     writeFileSync(tmp, JSON.stringify(data));
@@ -35,7 +38,11 @@ export function createVoteStore({ file = null } = {}) {
   if (file && existsSync(file)) {
     const data = JSON.parse(readFileSync(file, "utf8"));
     for (const [code, s] of Object.entries(data)) {
-      sessions.set(code, { polls: s.polls, nextId: s.nextId, lastVoteAt: new Map() });
+      const questions = Array.isArray(s.questions) ? s.questions.filter(q => q &&
+        Number.isInteger(q.id) && typeof q.text === "string").slice(-MAX_PENDING_QUESTIONS) : [];
+      sessions.set(code, { polls: s.polls, nextId: s.nextId, lastVoteAt: new Map(),
+        questions, nextQuestionId: Math.max(1, Number(s.nextQuestionId) || 1,
+          ...questions.map(q => q.id + 1)), lastQuestionAt: new Map() });
     }
   }
 
@@ -56,7 +63,8 @@ export function createVoteStore({ file = null } = {}) {
     do {
       code = Array.from({ length: 6 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join("");
     } while (sessions.has(code));
-    sessions.set(code, { polls: [], nextId: 1, lastVoteAt: new Map() });
+    sessions.set(code, { polls: [], nextId: 1, lastVoteAt: new Map(),
+      questions: [], nextQuestionId: 1, lastQuestionAt: new Map() });
     persist();
     return code;
   }
@@ -152,9 +160,52 @@ export function createVoteStore({ file = null } = {}) {
     };
   }
 
+  // Students can submit plain text, but only the authenticated lecturer can read it.
+  // No identity, phone token or IP is persisted with the question.
+  function submitQuestion(code, token, text) {
+    const s = session(code);
+    if (typeof token !== "string" || !/^[a-f0-9]{24,64}$/.test(token)) {
+      throw new VoteError("رمز الجهاز غير صالح");
+    }
+    if (typeof text !== "string" || text.length > OPEN_QUESTION_LIMIT) {
+      throw new VoteError("السؤال طويل جداً؛ الحد 280 حرفاً");
+    }
+    const message = clean(text, OPEN_QUESTION_LIMIT);
+    if (message.length < 3) throw new VoteError("اكتب سؤالاً قصيراً وواضحاً");
+    if (s.questions.length >= MAX_PENDING_QUESTIONS) {
+      throw new VoteError("قائمة الأسئلة ممتلئة؛ راجع المحاضر", 429);
+    }
+    const now = Date.now();
+    if (now - (s.lastQuestionAt.get(token) || 0) < QUESTION_COOLDOWN_MS) {
+      throw new VoteError("يمكن إرسال سؤال آخر بعد 30 ثانية", 429);
+    }
+    s.lastQuestionAt.set(token, now);
+    const item = { id: s.nextQuestionId++, text: message, createdAt: now };
+    s.questions.push(item);
+    persist();
+    return { id: item.id };
+  }
+
+  function listQuestions(code) {
+    return session(code).questions.slice().reverse().map(({ id, text, createdAt }) => ({
+      id, text, createdAt
+    }));
+  }
+
+  function dismissQuestion(code, id) {
+    const s = session(code);
+    if (!Number.isInteger(id) || id < 1 || !s.questions.some(q => q.id === id)) {
+      throw new VoteError("السؤال غير موجود", 404);
+    }
+    s.questions = s.questions.filter(q => q.id !== id);
+    persist();
+    return { ok: true };
+  }
+
   function hasSession(code) {
     return sessions.has(code);
   }
 
-  return { createSession, createPoll, repeatPoll, setStatus, setReveal, vote, studentState, presenterState, hasSession };
+  return { createSession, createPoll, repeatPoll, setStatus, setReveal, vote,
+    studentState, presenterState, submitQuestion, listQuestions, dismissQuestion, hasSession };
 }

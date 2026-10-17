@@ -104,5 +104,29 @@ async function refresh(force = false) {
   }
 }
 
+const questionForm = document.getElementById("question-form");
+questionForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (submitting || !sessionCode) return;
+  const textarea = document.getElementById("question-text");
+  const button = document.getElementById("question-submit");
+  const message = document.getElementById("question-message");
+  const text = textarea.value.trim();
+  if (text.length < 3 || text.length > 280) {
+    message.textContent = "السؤال يجب أن يكون بين 3 و280 حرفاً.";
+    return;
+  }
+  button.disabled = true;
+  try {
+    await api("/questions", { method: "POST", body: JSON.stringify({ text }) });
+    textarea.value = "";
+    message.textContent = "وصل السؤال للمحاضر للمراجعة. لا يظهر تلقائياً للطلبة.";
+  } catch (err) {
+    message.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
 refresh();
 setInterval(() => refresh(false), POLL_MS);

@@ -180,6 +180,20 @@ async function handleApi(req, res, path) {
   const upper = code.toUpperCase();
   if (!store.hasSession(upper)) throw new VoteError("الجلسة غير موجودة", 404);
 
+  if (action === "questions") {
+    if (req.method === "POST" && !pollId) {
+      const body = await readBody(req);
+      return sendJson(res, 201, { ok: true, ...store.submitQuestion(upper, voterToken(req), body.text) });
+    }
+    if (req.method === "GET" && !pollId) {
+      requireAdmin(req);
+      return sendJson(res, 200, { questions: store.listQuestions(upper) });
+    }
+    if (req.method === "DELETE" && pollId) {
+      requireAdmin(req);
+      return sendJson(res, 200, store.dismissQuestion(upper, Number(pollId)));
+    }
+  }
   if (action === "state" && req.method === "GET") {
     return sendJson(res, 200, store.studentState(upper, voterToken(req)));
   }
