@@ -852,9 +852,9 @@ function applyRemote(message) {
     }
     if (message.action === "pause" || message.action === "ended") {
       target.pause();
-      adjustAudienceMediaTime(target, message.time);
+      adjustAudienceMediaTime(target, message.time, true);
     }
-    if (message.action === "seek") adjustAudienceMediaTime(target, message.time);
+    if (message.action === "seek") adjustAudienceMediaTime(target, message.time, true);
     if (message.action === "progress" && !target.paused && !target.seeking) {
       adjustAudienceMediaTime(target, message.time);
     }
