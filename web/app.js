@@ -133,6 +133,7 @@ function renderPresenter() {
           <button id="open-vote">التصويت</button>
           <button id="toggle-info">إنفوجرافيك</button>
           <button id="import-lecture" type="button">إضافة PowerPoint</button>
+          <button id="lecture-preflight" type="button">فحص جاهزية المحاضرة</button>
           <select id="lecture-picker" aria-label="اختيار المحاضرة"></select>
         </div>
       </div>
@@ -195,6 +196,7 @@ function renderPresenter() {
   document.getElementById("playvid").onclick = () => toggleVideo();
   document.getElementById("open-vote").onclick = () => window.open("/vote-admin.html", "alfa-vote-admin");
   document.getElementById("import-lecture").onclick = () => openLectureImport();
+  document.getElementById("lecture-preflight").onclick = () => openLecturePreflight();
   document.getElementById("toggle-info").onclick = () => {
     const form = document.getElementById("info-form");
     form.hidden = !form.hidden;
@@ -603,6 +605,59 @@ function setupClock() {
   }, 1000);
 }
 
+
+
+async function openLecturePreflight() {
+  const token = lecturerToken();
+  if (!token) {
+    setDirectorStatus("أدخل رمز المحاضر لفتح تقرير جاهزية الفيديو والحركات.");
+    return;
+  }
+  let dialog = document.getElementById("alfa-preflight-dialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "alfa-preflight-dialog";
+    dialog.className = "import-dialog";
+    dialog.innerHTML = '<h2>فحص جاهزية المحاضرة</h2><div id="preflight-report" class="preflight-report"></div><button id="preflight-close" type="button">إغلاق</button>';
+    document.body.appendChild(dialog);
+    dialog.querySelector("#preflight-close").onclick = () => dialog.close();
+  }
+  const report = dialog.querySelector("#preflight-report");
+  report.replaceChildren();
+  report.textContent = "جارٍ فحص الوسائط وملفات العرض...";
+  dialog.showModal();
+  try {
+    const res = await fetch("/api/lectures/readiness/" + encodeURIComponent(state.bundle), {
+      headers: { "X-Admin-Token": token }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "تعذر تنفيذ الفحص");
+    const lines = [
+      "الشرائح: " + data.slideCount,
+      "الفيديوهات المضمنة: " + data.videoCount + " (تحتاج اختبار تشغيل وصوت على الماك)",
+      "شرائح فيها حركات PowerPoint غير منقولة: " + data.animationSlides.length,
+      "ملفات مفقودة: " + data.missingAssets.length,
+      "روابط/وسائط تحتاج مراجعة: " + data.problems.length,
+      "اتصال OpenAI مهيأ: " + (data.cloudConfigured ? "نعم (غير مختبر فعلياً)" : "لا"),
+      "أدوات الاستيراد غير الموجودة: " +
+        (data.dependencies.filter((d) => !d.installed).map((d) => d.name).join("، ") || "لا شيء ظاهر في PATH"),
+      "الحالة: " + (data.status === "blocked" ? "هناك ملفات مفقودة" :
+        data.status === "review" ? "يحتاج مراجعة يدوية" : "الملفات الأساسية موجودة"),
+    ];
+    if (data.animationSlides.length) lines.push("شرائح الحركة: " + data.animationSlides.join("، "));
+    lines.push(...data.missingAssets.slice(0, 8));
+    const list = document.createElement("ul");
+    for (const text of lines) {
+      const li = document.createElement("li");
+      li.textContent = text;
+      list.appendChild(li);
+    }
+    report.replaceChildren(list);
+    const note = document.createElement("p");
+    note.textContent = "هذا فحص ملفات، وليس إثباتاً لعمل حركة PowerPoint أو الصوت أو التصويت على أجهزة الطلبة.";
+    report.appendChild(note);
+  } catch (err) { report.textContent = err.message || "تعذر فحص المحاضرة"; }
+}
 
 function openLectureImport() {
   let dialog = document.getElementById("alfa-import-dialog");

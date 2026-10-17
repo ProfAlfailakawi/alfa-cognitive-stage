@@ -65,6 +65,12 @@ try {
   await audience.locator(".info-layer svg").waitFor();
   assert.match(await audience.locator(".info-layer").textContent(),/68%/);
 
+  await presenter.locator("#director-admin-token").fill("browser-test-secret");
+  await presenter.locator("#lecture-preflight").click();
+  await presenter.locator("#alfa-preflight-dialog[open]").waitFor();
+  assert.match(await presenter.locator("#preflight-report").textContent(), /شرائح فيها حركات PowerPoint غير منقولة: 1/);
+  await presenter.locator("#preflight-close").click();
+
   await presenter.locator("#import-lecture").click();
   await presenter.locator("#alfa-import-dialog[open]").waitFor();
   assert.equal(await presenter.locator("#import-file").getAttribute("accept"), ".pptx");
