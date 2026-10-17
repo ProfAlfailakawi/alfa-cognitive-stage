@@ -5,6 +5,7 @@
 import { renderInfographic } from "./infographic.js";
 import { interpretSpeech, eligibleForCloud } from "./director-core.js";
 import { createSpeechDirector } from "./speech-director.js";
+import { createStorySession, advanceStorySession, storySceneSpec } from "./storyboard.js";
 import { rememberScene, recallScene, countSavedScenes } from "./scene-memory.js";
 
 const app = document.getElementById("app");
@@ -20,6 +21,7 @@ let slideGeneration = 0;
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
   recent: [], cloudSeq: 0, activeOverlay: false,
+  story: null, lastStoryVisual: 0,
 };
 
 function send(message) {
@@ -87,6 +89,9 @@ function showSlide(index) {
   if (role === "presenter") {
     directorRuntime.cloudSeq++;
     directorRuntime.pending = null;
+    directorRuntime.story = null;
+    const proposal = document.getElementById("director-proposal");
+    if (proposal) proposal.hidden = true;
   }
   const img = document.getElementById("slide-img");
   const generation = ++slideGeneration;
@@ -275,6 +280,8 @@ function go(index) {
 function goMain() {
   // Emergency: stop any playing clip, hide any infographic, and return to the main deck position at once.
   for (const el of videoEls) el.pause();
+  directorRuntime.story = null;
+  clearDirectorProposal();
   hideInfographic(true);
   // Preserve the current slide and its paused video state when already at the safe anchor.
   if (state.index !== state.main) showSlide(state.main);
@@ -307,7 +314,7 @@ function showDirectorProposal(proposal, reason) {
 }
 function revealDirectorScene(proposal) {
   if (!proposal?.spec || proposal.slide !== state.index ||
-      Date.now() - proposal.at > 30000 || (videoEl && !videoEl.paused)) return false;
+      Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
   try {
     renderLayer(proposal.spec);
     send({ type: "infographic", spec: proposal.spec });
@@ -355,6 +362,33 @@ function receiveDirectorSpeech(text) {
   directorRuntime.recent = directorRuntime.recent.filter((r) => Date.now() - r.at < 25000).slice(-3);
   const recent = directorRuntime.recent.map((r) => r.text).join(" ");
   const moment = interpretSpeech(raw) || interpretSpeech(recent);
+  const mode = document.getElementById("director-mode")?.value || "balanced";
+  if (moment?.kind === "return") {
+    directorRuntime.story = null;
+    directorRuntime.cloudSeq++;
+    clearDirectorProposal();
+    if (directorRuntime.activeOverlay) goMain();
+    setDirectorStatus("تم فهم العودة إلى الموضوع الأصلي.");
+    return;
+  }
+  if (directorRuntime.story && !moment) {
+    const next = advanceStorySession(directorRuntime.story, raw);
+    if (!next) directorRuntime.story = null;
+    else {
+      directorRuntime.story = next;
+      if (mode === "shadow") { setDirectorStatus("وضع الظل: القصة تتقدم دون تغيير الشاشة."); return; }
+      if (mode === "balanced" && directorRuntime.activeOverlay &&
+          next.lines.length > 1 && Date.now() - directorRuntime.lastStoryVisual > 8000) {
+        const proposal = { spec: storySceneSpec(next), utterance: next.lines.join(" "),
+          slide: state.index, at: Date.now() };
+        if (revealDirectorScene(proposal)) directorRuntime.lastStoryVisual = Date.now();
+      } else if (mode === "safe" && next.lines.length > 1) {
+        showDirectorProposal({spec:storySceneSpec(next), utterance:next.lines.join(" ")},
+          "تطور القصة من كلامك، دون اختراع أحداث.");
+      }
+      return;
+    }
+  }
   if (!moment) {
     const saved = recallScene({ bundle: state.bundle, slide: state.index, utterance: raw });
     if (saved && document.getElementById("director-mode")?.value !== "shadow") {
@@ -367,12 +401,17 @@ function receiveDirectorSpeech(text) {
   if (key === directorRuntime.lastKey && Date.now() - directorRuntime.lastAt < 15000) return;
   directorRuntime.lastKey = key;
   directorRuntime.lastAt = Date.now();
-  const mode = document.getElementById("director-mode")?.value || "balanced";
-  if (moment.kind === "return") {
-    directorRuntime.cloudSeq++;
-    clearDirectorProposal();
-    if (directorRuntime.activeOverlay) goMain();
-    setDirectorStatus("تم فهم العودة إلى الموضوع الأصلي.");
+  if (moment.kind === "story") {
+    directorRuntime.story = createStorySession(raw);
+    const proposal = { spec: storySceneSpec(directorRuntime.story),
+      utterance: raw, slide: state.index, at: Date.now() };
+    if (mode === "shadow") {
+      setDirectorStatus("وضع الظل: بداية قصة، ولم يتغير عرض الطلبة.");
+      return;
+    }
+    if (mode === "balanced" && !videoEls.some((el) => !el.paused)) {
+      if (revealDirectorScene(proposal)) directorRuntime.lastStoryVisual = Date.now();
+    } else showDirectorProposal(proposal, "مشهد قصصي رمزي من حديثك — بدون توليد صور أو اختراع أحداث.");
     return;
   }
   if (mode === "shadow") {
