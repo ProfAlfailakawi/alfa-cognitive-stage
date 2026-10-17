@@ -1,0 +1,304 @@
+// Stateful, local-first director reasoning over what the lecturer says.
+// Sources of truth: the lecturer's words, the slide text and the notes. Nothing is searched,
+// nothing is invented: every scene line is quoted or derived from those inputs.
+// This is NOT neural language understanding: it is explicit Kuwaiti/Gulf/MSA patterns plus
+// context (rolling window, topic tracking, slide grounding, pacing). Measured by tests/director-corpus.mjs.
+import { interpretSpeech, normalizeArabic } from "./director-core.js";
+
+const WINDOW_MS = 60000;
+const MAX_WINDOW = 8;
+const STORY_MS = 75000;
+const GAP_MS = 15000;          // quiet period after any scene
+const CLOUD_GAP_MS = 45000;    // billed requests are rare by design
+const MAX_PER_SLIDE = 4;
+
+// ---- spoken Arabic numbers before a percent word: "خمسة وسبعين بالمية" -> 75 ----
+const UNITS = { صفر: 0, واحد: 1, احد: 1, اثنين: 2, اثنان: 2, اتنين: 2, ثلاثه: 3, ثلاث: 3, اربعه: 4, اربع: 4, خمسه: 5, خمس: 5,
+  سته: 6, ست: 6, سبعه: 7, سبع: 7, ثمانيه: 8, ثمان: 8, تسعه: 9, تسع: 9, عشره: 10, عشر: 10, حداشر: 11, احدعش: 11, اثنعش: 12, اطنعش: 12,
+  ثلطعش: 13, ثلثطعش: 13, اربعطعش: 14, خمسطعش: 15, ستطعش: 16, سبعطعش: 17, ثمنطعش: 18, تسعطعش: 19 };
+const TENS = { عشرين: 20, عشرون: 20, ثلاثين: 30, ثلاثون: 30, اربعين: 40, اربعون: 40, خمسين: 50, خمسون: 50,
+  ستين: 60, ستون: 60, سبعين: 70, سبعون: 70, ثمانين: 80, ثمانون: 80, تسعين: 90, تسعون: 90 };
+const HUNDRED = new Set(["ميه", "مئه", "مايه", "مائه", "ميت"]);
+const PERCENT_WORD = /^(?:بالمئه|بالميه|بالمايه|بالمائه|%|في)$/;
+
+function tokenValue(word) {
+  const w = word.replace(/^و/, "");
+  if (w in TENS) return TENS[w];
+  if (HUNDRED.has(w)) return 100;
+  if (w in UNITS) return UNITS[w];
+  return null;
+}
+/** Replace spoken numbers that directly precede a percent word with digits. Anything unclear stays as spoken. */
+export function numeralizePercents(raw) {
+  const words = String(raw || "").split(/(\s+)/);
+  const out = [];
+  for (let i = 0; i < words.length; i++) {
+    const token = normalizeArabic(words[i]);
+    if (!token || /^\s+$/.test(words[i]) || tokenValue(token) === null) { out.push(words[i]); continue; }
+    // Collect a number phrase: [unit] [و tens] or [tens] or hundred.
+    let j = i, total = 0, parts = 0, valid = true;
+    const used = [];
+    while (j < words.length) {
+      if (/^\s+$/.test(words[j])) { j++; continue; }
+      const t = normalizeArabic(words[j]);
+      const value = tokenValue(t);
+      if (value === null) break;
+      const isTens = t.replace(/^و/, "") in TENS;
+      const isHundred = HUNDRED.has(t.replace(/^و/, ""));
+      if (parts === 0) total = value;
+      else if (isTens && total < 10 && t.startsWith("و")) total = value + total; // خمسه وسبعين
+      else if (isTens && total >= 10) { valid = false; break; }
+      else { valid = false; break; }
+      parts++;
+      used.push(j);
+      j++;
+      if (isHundred) break;
+    }
+    let k = j;
+    while (k < words.length && /^\s+$/.test(words[k])) k++;
+    let marker = k < words.length ? normalizeArabic(words[k]) : "";
+    let markerEnd = k;
+    if (marker === "في" && k + 2 < words.length) {
+      const next = normalizeArabic(words[k + 2]);
+      if (/^(?:الميه|المئه|المايه|المائه)$/.test(next)) { marker = "%"; markerEnd = k + 2; }
+    }
+    if (valid && parts > 0 && total <= 100 && PERCENT_WORD.test(marker) && marker !== "في") {
+      out.push(String(total));
+      i = used[used.length - 1];
+      continue;
+    }
+    if (!valid) {
+      // An unclear compound is left entirely as spoken, never half-converted.
+      while (j < words.length && tokenValue(normalizeArabic(words[j])) !== null || (j < words.length && /^\s+$/.test(words[j]) && j + 1 < words.length && tokenValue(normalizeArabic(words[j + 1])) !== null)) j++;
+      for (let x = i; x < j; x++) out.push(words[x]);
+      i = j - 1;
+      continue;
+    }
+    out.push(words[i]);
+  }
+  return out.join("");
+}
+
+// ---- keywords for topic tracking and slide grounding ----
+const STOP = new Set(("في من الى على عن ان انه انها هو هي هذا هذه هذي ذلك اللي الي ما لا مو شنو وش ليش شلون كيف يعني زين طيب الحين " +
+  "اليوم بس هاي هالشي هذا كان كانت يكون تكون عند عندنا عندكم لو اذا بعد قبل مع او ثم يا الا كل بعض كذا جذي مره لكن بينما اما هم احنا انتم انا نحن " +
+  "يلا خلونا راح بنشوف نشوف شوفوا تذكرون فاهمين ماشي تمام والله اكيد صح").split(/\s+/));
+export function keywords(text) {
+  const normalized = normalizeArabic(text).toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, " ");
+  const set = new Set();
+  for (const word of normalized.split(" ")) {
+    let w = word;
+    if (w.startsWith("لل") && w.length > 4) w = w.slice(2);
+    else if (/^(?:ال|بال|وال|لل)/.test(w) && w.length > 4) w = w.replace(/^(?:بال|وال|ال)/, "");
+    if (w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w)) set.add(w);
+  }
+  return set;
+}
+function overlap(a, b) {
+  if (!a.size || !b.size) return 0;
+  let common = 0;
+  for (const w of a) if (b.has(w)) common++;
+  return common / Math.min(a.size, b.size);
+}
+function digitsOf(text) {
+  return [...normalizeArabic(text).matchAll(/\d+(?:[.,]\d+)?/g)].map((m) => m[0].replace(",", "."));
+}
+
+// ---- extra local detectors (explicit structure only) ----
+const CLAUSE_TRIM = /^[\s،,:؛.\-]+|[\s،,:؛.\-]+$/gu;
+function trimClause(text, max = 70) {
+  const t = text.replace(CLAUSE_TRIM, "");
+  return t.length > max ? t.slice(0, max - 1).replace(/\s+\S*$/, "") + "…" : t;
+}
+function detectContrast(raw) {
+  // "X بينما Y" / "أما X وأما Y": both sides must be real clauses spoken by the lecturer.
+  const text = raw.trim();
+  const m = text.match(/^(?:اما\s+)?(.{12,}?)\s+(?:بينما|في المقابل|بالمقابل|على العكس|اما)\s+(.{12,})$/u);
+  if (!m) return null;
+  const left = trimClause(m[1]), right = trimClause(m[2].replace(/^(?:ال)?/, ""));
+  if (left.split(/\s+/).length < 3 || right.split(/\s+/).length < 3) return null;
+  return { type: "compare", title: "مقارنة من حديث المحاضر", lines: [`${left} | ${right}`] };
+}
+const YEAR = /(?:^|[\s(])((?:19|20)\d{2})(?=$|[\s،,.):])/g;
+function detectTimeline(raw) {
+  const text = normalizeArabic(raw);
+  const hits = [...text.matchAll(YEAR)].map((m) => ({ year: m[1], at: m.index + m[0].indexOf(m[1]), end: m.index + m[0].length }));
+  if (hits.length < 2 || hits.length > 6) return null;
+  for (let i = 1; i < hits.length; i++) if (Number(hits[i].year) <= Number(hits[i - 1].year)) return null;
+  const lines = hits.map((h, i) => {
+    const stop = i + 1 < hits.length ? hits[i + 1].at : text.length;
+    const clause = text.slice(h.end, stop).replace(/^\s*(?:كان|كانت|صار|صارت)?\s*/, "")
+      .replace(/(?:^|\s)(?:في|وفي|سنه|عام|وسنه|وعام)\s*$/u, "").replace(CLAUSE_TRIM, "");
+    return clause.length >= 4 ? `${h.year} — ${trimClause(clause, 60)}` : null;
+  });
+  if (lines.some((l) => !l)) return null;
+  return { type: "timeline", title: "تسلسل زمني كما ذكره المحاضر", lines };
+}
+const SHIFT_MARKER = /(?:الحين نتكلم عن|الحين نتحدث عن|ننتقل الى|نروح لموضوع|موضوع ثاني|نغير الموضوع|نبدا موضوع|نتكلم الحين عن)/;
+const EXAMPLE = /(?:مثلا|على سبيل المثال|خلوني اعطيكم مثال|خذوا مثال|تخيلوا|تخيل|لو افترضنا|فرضا)/;
+const CONCEPT = /(?:المقصود ب|نقصد ب|نعني ب|تعريف|يعرف ب|مفهوم)/;
+const NARRATIVE = /(?:مره (?:واحد|وحده|كنت|كان)|صار لي موقف|تذكرون|قصه صارت|عندي حاله|خلوني احكي|كان في شخص|كان هناك شخص|بقولكم قصه|احكيلكم قصه|بعطيكم قصه)/;
+const CORRECTION = /(?:عفوا|اقصد|قصدي|التصحيح|اصحح|مو قصدي|بل الصحيح|لا غلطت|غلطت)/;
+const RETRACT = /(?:انسوا اللي قلت|انسوا هالمعلومه|مو صحيح اللي قلت|تراجع عن|المعلومه غلط|الرقم غلط|هذا غلط)/;
+
+export function createDirectorBrain({ now = () => Date.now() } = {}) {
+  let window = [];
+  let story = null;
+  let topic = new Set();
+  let topicStack = [];
+  let offTopicStreak = 0;
+  let lastShownAt = 0, lastCloudAt = 0, lastKey = "", lastKeyAt = 0;
+  const perSlide = new Map();
+
+  function status(decision, why) { decision.why.push(why); return decision; }
+  function blank(extra = {}) {
+    return { action: "none", kind: null, spec: null, reason: "", confidence: 0, why: [], topic: { shifted: false, returnedTo: null },
+      cloudText: null, opportunity: null, ...extra };
+  }
+  function trackTopic(text, d) {
+    const words = keywords(text);
+    if (words.size < 3) return;
+    if (!topic.size) { topic = words; return; }
+    const same = overlap(words, topic);
+    // An explicit announcement of a new subject is trusted at once.
+    if (SHIFT_MARKER.test(normalizeArabic(text)) && same < 0.5) {
+      topicStack.push(topic); if (topicStack.length > 5) topicStack.shift();
+      topic = words; offTopicStreak = 0; d.topic.shifted = true; story = null;
+      return;
+    }
+    if (same >= 0.2) { for (const w of words) topic.add(w); offTopicStreak = 0; if (topic.size > 40) topic = new Set([...topic].slice(-30)); return; }
+    const back = topicStack.findIndex((t) => overlap(words, t) >= 0.34);
+    offTopicStreak++;
+    if (back >= 0) {
+      topicStack.push(topic); topic = topicStack.splice(back, 1)[0]; offTopicStreak = 0;
+      d.topic.returnedTo = [...topic].slice(0, 3).join(" ");
+      story = null;
+    } else if (offTopicStreak >= (story ? 3 : 2)) {
+      topicStack.push(topic); if (topicStack.length > 5) topicStack.shift();
+      topic = words; offTopicStreak = 0; d.topic.shifted = true; story = null;
+    }
+  }
+
+  function observe(rawInput, ctx = {}) {
+    const raw = String(rawInput || "").trim().slice(0, 950);
+    const d = blank();
+    if (!raw) return d;
+    const t = now();
+    const slideIndex = ctx.slide?.index ?? 0;
+    const mode = ctx.mode || "balanced";
+    const slideDigits = new Set([...digitsOf(ctx.slide?.text || ""), ...digitsOf(ctx.slide?.notes || "")]);
+    window.push({ text: raw, at: t });
+    window = window.filter((w) => t - w.at < WINDOW_MS).slice(-MAX_WINDOW);
+    const spoken = numeralizePercents(raw);
+    const recent = window.filter((w) => t - w.at < 25000).slice(-3).map((w) => numeralizePercents(w.text)).join(" ");
+    const normalized = normalizeArabic(spoken);
+
+    trackTopic(spoken, d);
+    if (d.topic.shifted) { d.why.push("تغيّر الموضوع؛ أُغلقت القصة المفتوحة"); }
+
+    // 1. Returns are always honoured, even during video or quiet periods.
+    const direct = interpretSpeech(spoken);
+    if (direct?.kind === "return" || direct?.kind === "return-level") {
+      story = null;
+      return { ...d, action: direct.kind, kind: direct.kind, confidence: direct.confidence, reason: "عودة مطلوبة من المحاضر" };
+    }
+    if (ctx.mediaPlaying) return status(d, "الفيديو يعمل؛ الصمت أفضل");
+
+    // 2. Retractions and corrections are handled carefully: never auto-replace a visible scene.
+    if (RETRACT.test(normalized) && ctx.overlay) {
+      return { ...d, action: "propose", kind: "retract", spec: null, retract: true, confidence: 0.9,
+        reason: "تراجعت عن معلومة؛ هل أخفي المشهد الظاهر؟" };
+    }
+    const correcting = CORRECTION.test(normalized);
+    const withSpecial = direct || interpretSpeech(recent);
+    const moment = withSpecial;
+    const showing = ctx.overlay?.lines?.join(" ") || "";
+    if (correcting && ctx.overlay && moment?.spec && digitsOf(showing).join() !== digitsOf(moment.spec.lines.join(" ")).join()) {
+      return { ...d, action: "propose", kind: "correction", spec: moment.spec, confidence: 0.9, replace: true,
+        reason: "تصحيح الرقم: يحتاج موافقتك قبل استبدال المشهد الظاهر" };
+    }
+
+    // 3. Story already in progress: accumulate what was actually said.
+    if (story && (story.slide !== slideIndex || t - story.started > STORY_MS)) story = null;
+    if (story && !moment) {
+      const clean = raw.trim();
+      if (clean.length >= 15 && story.last !== clean) {
+        story.last = clean; story.events.push(clean.slice(0, 100)); story.events = story.events.slice(0, 4);
+        if (story.events.length >= 2) {
+          const spec = { type: "story", title: "قصة يرويها المحاضر", lines: [...story.events] };
+          return finalize({ ...d, kind: "story", spec, confidence: mode === "creative" ? 0.9 : 0.8,
+            reason: "قصة من حديثك كما نطقتها دون اختراع أحداث. راجع النص قبل إظهاره.", storyAuto: true, utterance: story.events.join(" ") });
+        }
+      }
+      return status(d, "قصة جارية؛ بانتظار المزيد");
+    }
+
+    // 4. Local structure detectors without an API.
+    let found = moment;
+    if (!found || (found.kind === "compare" && !found.spec)) {
+      const timeline = detectTimeline(spoken);
+      if (timeline) found = { kind: "timeline", confidence: 0.9, spec: timeline, utterance: raw };
+      else {
+        const contrast = detectContrast(spoken);
+        if (contrast) found = { kind: "compare", confidence: 0.86, spec: contrast, utterance: raw };
+      }
+    }
+    if (!found) {
+      if (NARRATIVE.test(normalized)) found = { kind: "story", confidence: 0.85, utterance: raw };
+      else if (CONCEPT.test(normalized)) found = { kind: "concept", confidence: 0.7, utterance: raw };
+      else if (EXAMPLE.test(normalized)) found = { kind: "example", confidence: 0.65, utterance: raw };
+    }
+    if (!found) return status(d, "لا فرصة بصرية واضحة");
+
+    if (found.kind === "story") {
+      story = { slide: slideIndex, started: t, last: raw, events: [raw.slice(0, 100)] };
+    }
+    d.kind = found.kind; d.confidence = found.confidence; d.spec = found.spec || null; d.utterance = found.utterance || raw;
+    if (found.kind === "question") d.reason = "سؤال موجه للطلبة";
+
+    // 5. Redundancy: a statistic already printed on the slide adds nothing.
+    if (d.spec && (d.kind === "stat" || d.kind === "compare") && slideDigits.size) {
+      const shown = digitsOf(d.spec.lines.join(" "));
+      if (shown.length && shown.every((n) => slideDigits.has(n))) return status({ ...d, action: "none", spec: null }, "الرقم ظاهر أصلاً في الشريحة");
+    }
+
+    // 6. Pacing and duplicates.
+    const key = d.kind + ":" + (d.spec?.lines?.[0] || raw.slice(0, 35));
+    if (key === lastKey && t - lastKeyAt < 15000) return status({ ...d, action: "none" }, "تكرار قريب");
+    lastKey = key; lastKeyAt = t;
+    return finalize(d);
+
+    function finalize(decision) {
+      decision.utterance = decision.utterance || raw;
+      if (!decision.spec) {
+        decision.action = "none";
+        decision.opportunity = decision.kind;
+        const wantsCloud = ["story", "compare", "concept", "example"].includes(decision.kind) &&
+          window.map((w) => w.text).join(" ").length >= 40 && t - lastCloudAt >= CLOUD_GAP_MS && !decision.topic.shifted;
+        if (wantsCloud) decision.cloudText = window.filter((w) => t - w.at < 25000).slice(-3).map((w) => w.text).join(" ").slice(0, 950);
+        return status(decision, "فرصة بدون بيانات كافية لبناء مشهد محلي");
+      }
+      if (mode === "shadow") return status({ ...decision, action: "observe" }, "وضع الظل");
+      const count = perSlide.get(slideIndex) || 0;
+      if (count >= MAX_PER_SLIDE) return status({ ...decision, action: "none" }, "بلغ الحد الأعلى لاقتراحات هذه الشريحة");
+      if (t - lastShownAt < GAP_MS && decision.kind !== "steps") return status({ ...decision, action: "none" }, "فترة هدوء بعد المشهد السابق");
+      const auto = (mode === "balanced" && decision.confidence >= 0.95 && ["stat", "steps"].includes(decision.kind) ||
+        mode === "balanced" && decision.confidence >= 0.95 && decision.kind === "compare" && decision.spec.lines.length === 1 && /^(?:من|كانت)/.test(decision.spec.lines[0]) ||
+        mode === "creative" && (decision.storyAuto && decision.kind === "story" || decision.confidence >= 0.95));
+      decision.action = auto ? "auto" : "propose";
+      return decision;
+    }
+  }
+
+  return {
+    observe,
+    noteShown(slideIndex) {
+      lastShownAt = now();
+      perSlide.set(slideIndex, (perSlide.get(slideIndex) || 0) + 1);
+    },
+    noteCloudRequest() { lastCloudAt = now(); },
+    resetSlide() { story = null; },
+    reset() { window = []; story = null; topic = new Set(); topicStack = []; perSlide.clear(); lastShownAt = 0; lastCloudAt = 0; },
+    snapshot: () => ({ window: window.length, topicWords: topic.size, topics: topicStack.length, storyOpen: Boolean(story) }),
+  };
+}

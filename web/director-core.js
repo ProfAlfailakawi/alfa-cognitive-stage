@@ -30,7 +30,7 @@ export function interpretSpeech(utterance) {
     const prefix = text.slice(Math.max(0, first.index - 32), first.index);
     const connector = text.slice(first.index + first[0].length, second.index);
     const fromTo = /(?:^|\s)من\s*$/.test(prefix) && /^\s*(?:الى|الي)\s*$/.test(connector);
-    const beforeAfter = /(?:^|\s)(?:قبل|كانت|كان)\s+(?:النسبه\s*|نسبه\s*)?$/.test(prefix) &&
+    const beforeAfter = /(?:^|\s)(?:قبل|كانت|كان)\s+(?:(?:ال)?نسبه(?:\s+[\p{L}]+){0,2}\s+)?$/u.test(prefix) &&
       /^\s*(?:وصارت|صارت|وبعد|بعد|ثم صارت|وبعدين صارت)\s*$/.test(connector);
     const left = Number(first[1].replace(",", "."));
     const right = Number(second[1].replace(",", "."));

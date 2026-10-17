@@ -27,6 +27,7 @@ jobs:
           node --check web/lecture-readiness.js
           node --check web/media-preflight.js
           node --check web/director-core.js
+          node --check web/director-brain.js
           node --check web/speech-director.js
           node --check web/vote-admin.js
           node --check web/poll-analytics.js
