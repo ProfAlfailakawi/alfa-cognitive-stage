@@ -2,6 +2,8 @@
 // The lecturer's window controls the deck. The audience window shows only the slide.
 // Both windows talk over BroadcastChannel (same browser, same origin).
 
+import { renderInfographic } from "./infographic.js";
+
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
@@ -96,6 +98,7 @@ function renderPresenter() {
           <div class="meta" id="clock">00:00</div>
         </div>
         <div class="stage-wrap">${stageHtml()}</div>
+
         <div class="controls">
           <button id="prev" aria-label="الشريحة السابقة">السابقة</button>
           <button class="primary" id="next" aria-label="الشريحة التالية">التالية</button>
@@ -103,10 +106,26 @@ function renderPresenter() {
           <button class="emergency" id="home" aria-label="عودة فورية إلى العرض الأصلي">عودة فورية (E)</button>
           <button id="open-audience">فتح نافذة الطلبة</button>
           <button id="open-vote">التصويت</button>
+          <button id="toggle-info">إنفوجرافيك</button>
+          <select id="lecture-picker" aria-label="اختيار المحاضرة"></select>
         </div>
       </div>
       <aside class="side">
         <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
+                <form class="info-form" id="info-form" hidden onsubmit="return false">
+          <select id="info-type" aria-label="نوع الإنفوجرافيك">
+            <option value="stat">بطاقة إحصائية</option>
+            <option value="compare">مقارنة (الأول | الثاني)</option>
+            <option value="steps">خطوات</option>
+          </select>
+          <input id="info-title" type="text" maxlength="120" placeholder="العنوان" />
+          <textarea id="info-lines" rows="3" placeholder="البطاقة: الرقم في السطر الأول ثم الوصف&#10;المقارنة: سطر لكل مقارنة&#10;الخطوات: خطوة في كل سطر"></textarea>
+          <div class="actions">
+            <button class="primary" id="info-show" type="button">عرض للطلبة</button>
+            <button id="info-hide" type="button">إخفاء</button>
+            <span class="meta" id="info-msg" aria-live="polite"></span>
+          </div>
+        </form>
         <div><div class="label">ملاحظات المحاضر</div></div>
         <div class="notes" id="notes"></div>
       </aside>
@@ -117,6 +136,13 @@ function renderPresenter() {
   document.getElementById("home").onclick = () => goMain();
   document.getElementById("playvid").onclick = () => toggleVideo();
   document.getElementById("open-vote").onclick = () => window.open("/vote-admin.html", "alfa-vote-admin");
+  document.getElementById("toggle-info").onclick = () => {
+    const form = document.getElementById("info-form");
+    form.hidden = !form.hidden;
+  };
+  document.getElementById("info-show").onclick = showInfographicFromForm;
+  fillLecturePicker();
+  document.getElementById("info-hide").onclick = () => hideInfographic(true);
   document.getElementById("open-audience").onclick = () =>
     window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
   showSlide(state.index);
@@ -137,15 +163,53 @@ function renderPresenterPanels() {
   }
 }
 
+async function fillLecturePicker() {
+  const picker = document.getElementById("lecture-picker");
+  const list = await fetch("/bundles/lectures.json").then((r) => r.json()).catch(() => []);
+  if (!picker || !list.length) return;
+  picker.innerHTML = list.map((l) => `<option value="${l.id}" ${l.id === state.bundle ? "selected" : ""}>${l.title}</option>`).join("");
+  picker.onchange = () => {
+    // Switching lectures reloads both windows on the chosen bundle; the audience tab must be reopened.
+    location.search = `?bundle=${picker.value}`;
+  };
+}
+
+function showInfographicFromForm() {
+  const msg = document.getElementById("info-msg");
+  try {
+    const spec = {
+      type: document.getElementById("info-type").value,
+      title: document.getElementById("info-title").value,
+      lines: document.getElementById("info-lines").value.split("\n"),
+    };
+    renderInfographic(spec); // validates before sending
+    send({ type: "infographic", spec });
+    msg.textContent = "معروض للطلبة. يُخفى تلقائياً عند تغيير الشريحة.";
+  } catch (err) {
+    msg.textContent = err.message;
+  }
+}
+
+function hideInfographic(notify) {
+  const msg = document.getElementById("info-msg");
+  if (msg) msg.textContent = "";
+  if (notify) send({ type: "infographic-hide" });
+  if (role === "audience") {
+    document.querySelectorAll(".info-layer").forEach((el) => el.remove());
+  }
+}
+
 function go(index) {
   if (index < 1 || index > state.count) return;
+  hideInfographic(true);
   showSlide(index);
   send({ type: "slide", index, main: state.main });
 }
 
 function goMain() {
-  // Emergency: stop any playing clip and return to the main deck position at once.
+  // Emergency: stop any playing clip, hide any infographic, and return to the main deck position at once.
   if (videoEl) videoEl.pause();
+  hideInfographic(true);
   showSlide(state.main);
   send({ type: "slide", index: state.main, main: state.main, emergency: true });
 }
@@ -161,6 +225,17 @@ function applyRemote(message) {
     state.main = message.main;
     if (message.index !== state.index) showSlide(message.index);
   }
+  if (message.type === "infographic") {
+    hideInfographic(false);
+    const stage = document.getElementById("stage");
+    if (stage) {
+      const layer = document.createElement("div");
+      layer.className = "info-layer";
+      layer.innerHTML = renderInfographic(message.spec);
+      stage.appendChild(layer);
+    }
+  }
+  if (message.type === "infographic-hide") hideInfographic(false);
   if (message.type === "video" && videoEl) {
     if (message.action === "play") videoEl.play().catch(() => {});
     if (message.action === "pause") videoEl.pause();

@@ -8,6 +8,8 @@
     "start": "node server/server.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "test:build": "python3 -m unittest discover -s tools -p 'test_*.py'",
-    "test:vote": "node tests/vote.mjs"
+    "test:vote": "node tests/vote.mjs",
+    "test:infographic": "node tests/infographic.mjs",
+    "test": "npm run test:build && npm run test:infographic && npm run test:e2e && npm run test:vote"
   }
 }

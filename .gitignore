@@ -7,3 +7,5 @@ bundles/
 tests/*.png
 __pycache__/
 data/
+.env
+.env.*

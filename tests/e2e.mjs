@@ -93,6 +93,20 @@ try {
   check("emergency returns audience to slide 1", (await audience.getAttribute("#slide-img", "src")).endsWith("001.png"));
   check("emergency removes video", (await presenter.locator("video.clip").count()) === 0);
 
+  // Infographic: lecturer sends a stat card, audience shows it, emergency hides it.
+  await presenter.bringToFront();
+  await presenter.click("#toggle-info");
+  await presenter.waitForFunction(() => !document.getElementById("info-form").hidden);
+  await presenter.selectOption("#info-type", "stat");
+  await presenter.fill("#info-title", "نسبة الاستفادة");
+  await presenter.fill("#info-lines", "68%\nمن المشاركين استفادوا");
+  await presenter.click("#info-show");
+  await audience.waitForSelector(".info-layer svg", { timeout: 6000 });
+  check("audience shows the infographic", (await audience.textContent(".info-layer")).includes("68%"));
+  await presenter.keyboard.press("e");
+  await audience.waitForTimeout(400);
+  check("emergency hides the infographic", (await audience.locator(".info-layer").count()) === 0);
+
   check("audience page has no JavaScript errors", audienceErrors.length === 0, audienceErrors.join(" | "));
 
   await presenter.screenshot({ path: join(root, "tests/presenter.png") });
