@@ -266,7 +266,8 @@ function goMain() {
   // Emergency: stop any playing clip, hide any infographic, and return to the main deck position at once.
   for (const el of videoEls) el.pause();
   hideInfographic(true);
-  showSlide(state.main);
+  // Preserve the current slide and its paused video state when already at the safe anchor.
+  if (state.index !== state.main) showSlide(state.main);
   send({ type: "slide", index: state.main, main: state.main, emergency: true });
 }
 
