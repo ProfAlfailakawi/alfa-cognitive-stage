@@ -47,7 +47,7 @@ export function summarizePollDistribution(poll) {
   // Only describe concentration; popularity never implies an objectively correct answer.
   if (largest >= 0.75) return { kind: "concentrated",
     text: "معظم الإجابات اتجهت إلى اختيار واحد. اسأل عن الأسباب أو مثال مضاد؛ الأغلبية لا تثبت صحة الاختيار." };
-  if (largest - runnerUp <= 0.15 && largest + runnerUp >= 0.65) return { kind: "divided",
+  if (sorted[0] - sorted[1] <= total * 0.15 && sorted[0] + sorted[1] >= total * 0.65) return { kind: "divided",
     text: "هناك تقارب بين أكثر اختيارين. اطلب توضيح مبررات كل رأي قبل إعادة طرح السؤال." };
   return { kind: "varied",
     text: "الإجابات موزّعة على بدائل مختلفة. ناقش الفروق بين البدائل ثم أعد السؤال إن كان ذلك مفيداً." };
