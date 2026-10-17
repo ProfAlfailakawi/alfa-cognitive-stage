@@ -43,7 +43,9 @@ export function mountFieldTools(mount, { getToken, getBundle, getSlides, goToSli
   offerResume();
 
   let rehearsal = null; // { steps, results, i, timer, started }
+  let renderSeq = 0;
   async function render() {
+    const mine = ++renderSeq;
     body.replaceChildren();
     // 1. Field trial
     body.append(el("h4", { textContent: "المحاضرة التجريبية المسجّلة" }));
@@ -86,6 +88,7 @@ export function mountFieldTools(mount, { getToken, getBundle, getSlides, goToSli
     body.append(el("h4", { textContent: "بروفة الجمهور الموقّتة" }));
     let bank = [];
     try { bank = (await call(`/api/bank/${getBundle()}`)).questions; } catch {}
+    if (mine !== renderSeq) return;
     const plan = planRehearsal(expectedQuestions(bank, getSlides()), { answerSec: Number(localStorageSafe("alfa-rehearsal-sec")) || undefined });
     const stage = el("div", { id: "rehearse-stage", className: "rehearse-stage", ariaLive: "polite" });
     body.append(el("p", { className: "meta", textContent: plan.length ? `${plan.length} سؤالاً حقيقياً سابقاً، موزعة على شرائحك.` : "لا أسئلة محفوظة بعد." }), stage);
@@ -99,7 +102,8 @@ export function mountFieldTools(mount, { getToken, getBundle, getSlides, goToSli
     // 3. Course map
     body.append(el("h4", { textContent: "خريطة المقرر" }));
     let library = null;
-    try { library = await call("/api/library"); } catch (e) { body.append(el("p", { className: "meta", textContent: e.message })); }
+    try { library = await call("/api/library"); } catch (e) { if (mine === renderSeq) body.append(el("p", { className: "meta", textContent: e.message })); }
+    if (mine !== renderSeq) return;
     if (library) {
       const pick = el("select", { id: "map-course", ariaLabel: "اختيار مقرر" }, el("option", { value: "", textContent: "اختر مقرراً…" }),
         ...library.courses.map((c) => el("option", { value: c.id, textContent: c.name + (c.term ? " — " + c.term : "") })));

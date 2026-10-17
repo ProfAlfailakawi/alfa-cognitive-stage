@@ -59,13 +59,16 @@ export function mountInsight(mount, { getToken, getBundle, getManifest, getSlide
   addEventListener("pagehide", () => clearInterval(timer));
 
   // ---- drawer content (rebuilt when opened) ----
+  let renderSeq = 0; // a stale render (drawer toggled quickly) must not append after a newer one started
   async function render() {
+    const mine = ++renderSeq;
     body.replaceChildren();
     const bundle = getBundle();
     const manifest = getManifest();
     // 1. Suggestion for the next session
     let history = [];
     try { history = (await call(`/api/coach/${bundle}`)).sessions; } catch (e) { say(e.message); }
+    if (mine !== renderSeq) return;
     const local = (sessionLog.all?.() || []).map((s) => summarizeSession(s, { manifest }));
     const suggestion = coachSuggestion(history, dwellBySlide(local));
     body.append(el("h4", { textContent: "اقتراح قبل المحاضرة القادمة" }));
@@ -110,6 +113,7 @@ export function mountInsight(mount, { getToken, getBundle, getManifest, getSlide
     body.append(el("h4", { textContent: "جمهور البروفة" }));
     let bank = [];
     try { bank = (await call(`/api/bank/${bundle}`)).questions; } catch {}
+    if (mine !== renderSeq) return;
     const expected = expectedQuestions(bank, getSlides());
     const slides = Object.keys(expected).map(Number).sort((a, b) => a - b);
     if (!slides.length) body.append(el("p", { className: "meta", id: "bank-none", textContent: "لا أسئلة محفوظة بعد؛ اضغط «احتفظ به للبروفة» على أسئلة الطلاب الحقيقية." }));
