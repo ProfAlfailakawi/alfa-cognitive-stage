@@ -10,6 +10,8 @@ import { rememberRejectedProposal, wasProposalRejected, countRejectedProposals, 
 import { mountImportPanel } from "./import-ui.js";
 import { summarizeLecture } from "./lecture-readiness.js";
 import { testLectureMedia } from "./media-preflight.js";
+import { buildSteps, clampStep, imageFor, lastStep, nextPosition, prevPosition, autoDelay, fadeMs } from "./build-steps.js";
+import { createReturnStack } from "./return-stack.js";
 import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
 
 const app = document.getElementById("app");
@@ -20,12 +22,15 @@ const audienceRequestId = role === "audience"
   ? Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("")
   : null;
 
-const state = { index: 1, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null };
+const state = { index: 1, step: 0, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null };
 let videoEl = null;
 let videoEls = [];
 const pollScreen = { visible: false, url: "", active: null };
 let clockStart = Date.now();
 let slideGeneration = 0;
+let autoStepTimer = null;
+let currentOverlay = null; // spec of the scene now on screen, for return snapshots
+const returnStack = createReturnStack();
 const neighboringSlides = new Map();
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
@@ -43,7 +48,7 @@ function currentVideoSnapshot() {
 }
 function broadcastSnapshot(requestId) {
   if (typeof requestId !== "string" || !/^[a-f0-9]{16}$/.test(requestId)) return;
-  send({ type: "snapshot", requestId, index: state.index, main: state.main,
+  send({ type: "snapshot", requestId, index: state.index, step: state.step, main: state.main,
     videos: currentVideoSnapshot() });
 }
 function adjustAudienceMediaTime(el, time, force = false) {
@@ -145,14 +150,85 @@ function prefetchNeighbors(index) {
     preview.src = "/bundles/" + state.bundle + "/" + slide.image;
     neighboringSlides.set(target, preview);
   }
+  const here = state.slides[index - 1];
+  const steps = buildSteps(here);
+  if (steps) {
+    for (let k = state.step + 1; k <= Math.min(state.step + 2, steps.length - 1); k++) {
+      const key = "s" + index + "-" + k;
+      if (neighboringSlides.has(key)) continue;
+      const preview = new Image();
+      preview.decoding = "async";
+      preview.src = slideImageUrl(here, k);
+      neighboringSlides.set(key, preview);
+    }
+  }
   for (const known of [...neighboringSlides.keys()]) {
+    if (typeof known === "string") {
+      if (!steps || !known.startsWith("s" + index + "-")) neighboringSlides.delete(known);
+      continue;
+    }
     if (!wanted.includes(known)) neighboringSlides.delete(known);
   }
 }
-function showSlide(index) {
+function slideImageUrl(slide, step) {
+  return `/bundles/${state.bundle}/${imageFor(slide, step)}`;
+}
+// Calm single cross-fade between two build states of the SAME slide; never restarts the slide.
+function swapStepImage(img, url, alt, generation, ms) {
+  const incoming = new Image();
+  incoming.decoding = "async";
+  incoming.src = url;
+  const commit = () => {
+    if (generation !== slideGeneration) return;
+    const layer = document.createElement("img");
+    layer.className = "slide step-fade";
+    layer.alt = alt;
+    layer.src = url;
+    layer.style.transition = `opacity ${ms}ms ease`;
+    img.after(layer);
+    requestAnimationFrame(() => requestAnimationFrame(() => { layer.style.opacity = "1"; }));
+    setTimeout(() => {
+      if (generation === slideGeneration) { img.src = url; img.alt = alt; }
+      layer.remove();
+    }, ms + 40);
+  };
+  incoming.decode ? incoming.decode().then(commit, commit) : (incoming.onload = commit);
+}
+function scheduleAutoStep() {
+  clearTimeout(autoStepTimer);
+  autoStepTimer = null;
+  if (role !== "presenter") return;
+  const slide = state.slides[state.index - 1];
+  const delay = autoDelay(slide, state.step);
+  if (delay === null) return;
+  const generation = slideGeneration, index = state.index, step = state.step;
+  autoStepTimer = setTimeout(() => {
+    if (generation === slideGeneration && state.index === index && state.step === step) {
+      setStep(step + 1);
+    }
+  }, delay + 150);
+}
+// Move to another click state of the current slide without touching the slide, videos or overlays.
+function setStep(step, { broadcast = true } = {}) {
+  const slide = state.slides[state.index - 1];
+  const target = clampStep(slide, step);
+  if (!slide || !buildSteps(slide) || target === state.step) return;
+  state.step = target;
+  const img = document.getElementById("slide-img");
+  if (img) swapStepImage(img, slideImageUrl(slide, target), `الشريحة ${state.index}`, slideGeneration, fadeMs(slide, target));
+  prefetchNeighbors(state.index);
+  if (role === "presenter") {
+    if (broadcast) send({ type: "step", index: state.index, step: target });
+    renderPresenterPanels();
+    scheduleAutoStep();
+  }
+}
+function showSlide(index, step = 0) {
   const slide = state.slides[index - 1];
   if (!slide) return;
   state.index = index;
+  state.step = clampStep(slide, step);
+  clearTimeout(autoStepTimer);
   if (role === "presenter") {
     directorRuntime.cloudSeq++;
     directorRuntime.pending = null;
@@ -162,16 +238,18 @@ function showSlide(index) {
   const generation = ++slideGeneration;
   if (img) {
     img.classList.add("leaving");
+    const url = slideImageUrl(slide, state.step);
     setTimeout(() => {
       if (generation !== slideGeneration) return;
-      img.src = `/bundles/${state.bundle}/${slide.image}`;
+      img.src = url;
       img.alt = `الشريحة ${index}`;
       img.classList.remove("leaving");
     }, 120);
   }
+  document.querySelectorAll(".step-fade").forEach((el) => el.remove());
   placeVideo(slide);
   prefetchNeighbors(index);
-  if (role === "presenter") renderPresenterPanels();
+  if (role === "presenter") { renderPresenterPanels(); scheduleAutoStep(); }
 }
 
 function renderAudience() {
@@ -271,8 +349,8 @@ function renderPresenter() {
       </aside>
     </section>`;
   setAspect(state.aspect);
-  document.getElementById("prev").onclick = () => go(state.index - 1);
-  document.getElementById("next").onclick = () => go(state.index + 1);
+  document.getElementById("prev").onclick = () => retreat();
+  document.getElementById("next").onclick = () => advance();
   document.getElementById("home").onclick = () => goMain();
   document.getElementById("playvid").onclick = () => toggleVideo();
   document.getElementById("open-vote").onclick = () => {
@@ -288,6 +366,7 @@ function renderPresenter() {
       document.getElementById("project-poll").textContent = "سجّل دخولك وأنشئ جلسة أولاً";
       return;
     }
+    if (!pollScreen.visible) beginDigression();
     pollScreen.visible = true;
     renderPollScreen(pollScreen);
     send({ type: "poll-projection", data: pollScreen });
@@ -303,7 +382,9 @@ function renderPresenter() {
   };
   document.getElementById("info-show").onclick = showInfographicFromForm;
   fillLecturePicker();
-  document.getElementById("info-hide").onclick = () => hideInfographic(true);
+  document.getElementById("info-hide").onclick = () => {
+    if (returnStack.active()) backOneLevel(); else hideInfographic(true);
+  };
   document.getElementById("open-audience").onclick = () =>
     window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
   showSlide(state.index);
@@ -318,7 +399,8 @@ function renderReadiness() {
   const summary = summarizeLecture(state.manifest);
   const info = document.createElement("p");
   info.textContent = summary.slideCount + " شريحة، " + summary.embeddedVideoCount +
-    " فيديو مضمّن، " + summary.animatedSlides.length + " شريحة بها حركات أصلية.";
+    " فيديو مضمّن، " + summary.animatedSlides.length + " شريحة بها حركات أصلية (" +
+    summary.reproducedBuildSlides.length + " تعمل خطوة بخطوة).";
   const verdict = document.createElement("p");
   verdict.textContent = summary.summary;
   target.replaceChildren(info, verdict);
@@ -379,7 +461,7 @@ function renderReadiness() {
     p.textContent = (warning.slide ? "الشريحة " + warning.slide + ": " : "") + warning.problem;
     target.append(p);
   }
-  if (summary.animatedSlides.length) {
+  if (summary.animatedSlides.length && (summary.unreproducedAnimationSlides.length || summary.partialBuildSlides.length)) {
     const head = document.getElementById("readiness-drawer");
     if (head) head.open = true;
   }
@@ -391,6 +473,8 @@ function renderPresenterPanels() {
   if (meta) meta.textContent = `الشريحة ${state.index} من ${state.count}`;
   const notes = document.getElementById("notes");
   if (notes) notes.textContent = slide.notes || "لا توجد ملاحظات لهذه الشريحة.";
+  const steps = buildSteps(slide);
+  if (steps && meta) meta.textContent += ` — حركة ${state.step} من ${steps.length - 1}`;
   const next = state.slides[state.index];
   const thumb = document.getElementById("next-thumb");
   if (thumb) {
@@ -427,7 +511,9 @@ function showInfographicFromForm() {
       lines: document.getElementById("info-lines").value.split("\n"),
     };
     renderInfographic(spec); // validates before sending
+    beginDigression();
     renderLayer(spec);
+    currentOverlay = spec;
     send({ type: "infographic", spec });
     directorRuntime.activeOverlay = true;
     msg.textContent = "معروض للطلبة. يُخفى تلقائياً عند تغيير الشريحة.";
@@ -442,26 +528,88 @@ function hideInfographic(notify) {
   if (notify) send({ type: "infographic-hide" });
   if (role === "presenter") {
     directorRuntime.activeOverlay = false;
+    currentOverlay = null;
     pollScreen.visible = false; // Emergency/slide navigation must not keep projecting QR.
   }
   document.querySelectorAll(".info-layer").forEach((el) => el.remove());
 }
 
-function go(index) {
-  if (index < 1 || index > state.count) return;
+// Normal navigation: the lecturer is resuming the lecture, so any digression anchor is obsolete.
+function resumeLecture() {
+  returnStack.clear();
+  currentOverlay = null;
   hideInfographic(true);
+}
+function go(index, step = 0) {
+  if (index < 1 || index > state.count) return;
+  resumeLecture();
   state.main = index; // A normal slide change updates the safe return anchor.
-  showSlide(index);
-  send({ type: "slide", index, main: state.main });
+  showSlide(index, step);
+  send({ type: "slide", index, step: state.step, main: state.main });
+}
+function advance() {
+  const target = nextPosition(state.slides, state.index, state.step);
+  if (!target) return;
+  if (target.index === state.index) { resumeLecture(); setStep(target.step); }
+  else go(target.index, target.step);
+}
+function retreat() {
+  const target = prevPosition(state.slides, state.index, state.step);
+  if (!target) return;
+  if (target.index === state.index) { resumeLecture(); setStep(target.step); }
+  else go(target.index, target.step);
+}
+
+function captureStageState() {
+  return { index: state.index, step: state.step,
+    videos: videoEls.map((el) => ({ time: validMediaTime(el.currentTime) ? el.currentTime : 0,
+      playing: !el.paused && !el.ended })),
+    overlay: currentOverlay, poll: pollScreen.visible };
+}
+// Call right before any scene/poll goes on screen so one "return" can restore everything.
+function beginDigression() { returnStack.enter(captureStageState); }
+
+function restoreStageState(snapshot) {
+  if (!snapshot) return;
+  if (state.index !== snapshot.index) {
+    state.main = snapshot.index;
+    showSlide(snapshot.index, snapshot.step);
+  } else if (state.step !== snapshot.step) setStep(snapshot.step, { broadcast: false });
+  document.querySelectorAll(".info-layer").forEach((el) => el.remove());
+  currentOverlay = null;
+  directorRuntime.activeOverlay = false;
+  if (snapshot.overlay) {
+    try { renderLayer(snapshot.overlay); currentOverlay = snapshot.overlay; directorRuntime.activeOverlay = true; }
+    catch {}
+  }
+  pollScreen.visible = Boolean(snapshot.poll);
+  if (pollScreen.visible) renderPollScreen(pollScreen);
+  videoEls.forEach((el, i) => {
+    const wanted = snapshot.videos?.[i];
+    if (!wanted) return;
+    el.pause();
+    try { if (Math.abs(el.currentTime - wanted.time) > 0.05) el.currentTime = wanted.time; } catch {}
+    if (wanted.playing) el.play()?.catch?.(() => {});
+  });
+  send({ type: "restore", index: state.index, step: state.step, main: state.main,
+    infographic: currentOverlay, poll: pollScreen.visible ? pollScreen : { visible: false },
+    videos: snapshot.videos?.length === videoEls.length ? snapshot.videos : currentVideoSnapshot() });
 }
 
 function goMain() {
-  // Emergency: stop any playing clip, hide any infographic, and return to the main deck position at once.
+  // Emergency/return: back to the exact lecture state captured when the digression began.
+  const original = returnStack.home();
+  if (original) { restoreStageState(original); return; }
+  // No digression recorded: stop clips, hide scenes, stay on the current slide and click state.
   for (const el of videoEls) el.pause();
   hideInfographic(true);
-  // Preserve the current slide and its paused video state when already at the safe anchor.
   if (state.index !== state.main) showSlide(state.main);
-  send({ type: "slide", index: state.main, main: state.main, emergency: true });
+  send({ type: "slide", index: state.main, step: state.step, main: state.main, emergency: true });
+}
+// One level back out of nested digressions (scene inside a scene).
+function backOneLevel() {
+  const previous = returnStack.back();
+  if (previous) restoreStageState(previous); else goMain();
 }
 
 function toggleVideo() {
@@ -552,7 +700,9 @@ function revealDirectorScene(proposal) {
   if (!proposal?.spec || proposal.slide !== state.index ||
       Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
   try {
+    beginDigression();
     renderLayer(proposal.spec);
+    currentOverlay = proposal.spec;
     send({ type: "infographic", spec: proposal.spec });
     directorRuntime.activeOverlay = true;
     if (proposal.utterance) {
@@ -670,12 +820,15 @@ function receiveDirectorSpeech(text) {
   if (key === directorRuntime.lastKey && Date.now() - directorRuntime.lastAt < 15000) return;
   directorRuntime.lastKey = key;
   directorRuntime.lastAt = Date.now();
-  if (moment.kind === "return") {
+  if (moment.kind === "return" || moment.kind === "return-level") {
     directorRuntime.story = null;
     directorRuntime.cloudSeq++;
     clearDirectorProposal();
-    if (directorRuntime.activeOverlay) goMain();
-    setDirectorStatus("تم فهم العودة إلى الموضوع الأصلي.");
+    if (directorRuntime.activeOverlay || returnStack.active()) {
+      if (moment.kind === "return-level") backOneLevel(); else goMain();
+    }
+    setDirectorStatus(moment.kind === "return-level"
+      ? "رجعنا خطوة واحدة في الاستطراد." : "تم فهم العودة إلى الموضوع الأصلي.");
     return;
   }
   // Avoid repeating a dismissed exact proposal on the same slide; skip paid AI too.
@@ -856,14 +1009,42 @@ function applyRemote(message) {
   if (message.type === "slide") {
     if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
     state.main = message.main;
-    if (message.index !== state.index) showSlide(message.index);
+    const wanted = Number.isInteger(message.step) ? message.step : 0;
+    if (message.index !== state.index) showSlide(message.index, wanted);
+    else if (wanted !== state.step) setStep(wanted, { broadcast: false });
+    return;
+  }
+  if (message.type === "step") {
+    if (message.index === state.index && Number.isInteger(message.step)) setStep(message.step, { broadcast: false });
+    return;
+  }
+  if (message.type === "restore") {
+    if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
+    state.main = message.main;
+    const wanted = Number.isInteger(message.step) ? message.step : 0;
+    if (message.index !== state.index) showSlide(message.index, wanted);
+    else if (wanted !== state.step) setStep(wanted, { broadcast: false });
+    hideInfographic(false);
+    if (message.infographic) { try { renderLayer(message.infographic); } catch {} }
+    renderPollScreen(message.poll);
+    if (Array.isArray(message.videos) && message.videos.length === videoEls.length &&
+        message.videos.every((item) => item && validMediaTime(item.time) && typeof item.playing === "boolean")) {
+      message.videos.forEach((item, i) => {
+        const el = videoEls[i];
+        el.pause();
+        adjustAudienceMediaTime(el, item.time, true);
+        if (item.playing) playAudienceMedia(el);
+      });
+    }
     return;
   }
   if (message.type === "snapshot") {
     if (message.requestId !== audienceRequestId) return; // Do not disturb other audience tabs.
     if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
     state.main = message.main;
-    if (message.index !== state.index) showSlide(message.index);
+    const wanted = Number.isInteger(message.step) ? message.step : 0;
+    if (message.index !== state.index) showSlide(message.index, wanted);
+    else if (wanted !== state.step) setStep(wanted, { broadcast: false });
     if (!validSnapshot(message, state.bundle, videoEls.length)) return;
     message.videos.forEach((item, i) => {
       const el = videoEls[i];
@@ -912,12 +1093,12 @@ function setupKeys() {
       case "PageDown":
       case " ":
         event.preventDefault();
-        go(state.index + 1);
+        advance();
         break;
       case "ArrowLeft":
       case "PageUp":
         event.preventDefault();
-        go(state.index - 1);
+        retreat();
         break;
       case "Home":
         go(1);
@@ -989,7 +1170,7 @@ async function boot() {
     window.addEventListener("message", receiveVoteAdminMessage);
     setupKeys();
     setupClock();
-    send({ type: "slide", index: state.index, main: state.main });
+    send({ type: "slide", index: state.index, step: state.step, main: state.main });
   }
 }
 

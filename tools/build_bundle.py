@@ -18,6 +18,8 @@ from lxml import etree
 from pptx import Presentation
 from pptx.util import Emu
 
+import animations
+
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -77,11 +79,12 @@ def slide_text(slide):
     return "\n".join(texts)[:12000]
 
 
-def slide_compatibility(slide):
-    """Report PowerPoint features we cannot reproduce by PNG conversion.
+def slide_compatibility(slide, model="auto"):
+    """Report what PNG conversion could not keep, and how far build steps recover it.
 
-    Detection is conservative: a timing tree implies an animation is present;
-    it does not pretend the browser has recreated the animation.
+    animationFidelity: "none" (no builds), "order-and-state" (click builds reproduced as
+    per-click images; motion approximated), "partial" (some effects not reproducible) or
+    "unsupported" (builds exist but could not be reproduced at all).
     """
     xml = slide._element
     timing = xml.find(f"{{{P_NS}}}timing")
@@ -90,12 +93,65 @@ def slide_compatibility(slide):
         1 for shape in iter_shapes(slide.shapes)
         if getattr(shape, "has_chart", False)
     )
+    if model == "auto":
+        model = animations.parse_build_model(slide)
+    has_builds = model is not None and (bool(model.clicks) or bool(model.blocking))
+    if not has_builds:
+        fidelity = "none"
+    elif not model.usable:
+        fidelity = "unsupported"
+    elif model.unsupported:
+        fidelity = "partial"
+    else:
+        fidelity = "order-and-state"
     return {
-        "animationsDetected": timing is not None,
+        "animationsDetected": has_builds,
+        "timingDetected": timing is not None,
         "transitionDetected": transition is not None,
         "chartCount": chart_count,
-        "animationPreserved": False if timing is not None else None,
+        "animationFidelity": fidelity,
+        "animationPreserved": fidelity in ("order-and-state", "partial") if has_builds else None,
+        "unsupportedEffects": list(model.unsupported + model.blocking) if has_builds else [],
     }
+
+
+UNSUPPORTED_TEXT = {
+    "emphasis-or-path-motion": "حركات التأكيد أو المسارات لا تُعاد؛ يبقى ترتيب الظهور والحالة",
+    "chart-type": "نوع مخطط غير مدعوم في بناء الخطوات؛ يعرض كاملاً",
+    "chart-build": "نمط بناء مخطط غير مدعوم؛ يعرض كاملاً",
+    "interactive": "حركات تفاعلية بمحفزات؛ تعرض الشريحة بحالتها النهائية فقط",
+    "smartart": "حركات SmartArt؛ تعرض الشريحة بحالتها النهائية فقط",
+    "ole-chart": "مخطط OLE متحرك؛ تعرض الشريحة بحالتها النهائية فقط",
+    "unsupported-target": "هدف حركة غير مدعوم؛ تعرض الشريحة بحالتها النهائية فقط",
+}
+
+
+def attach_builds(pptx: Path, out_dir: Path, width: int, deck, entries: list, problems: list):
+    """Render per-click images for animated slides and describe them in the manifest."""
+    models, by_slide = {}, {}
+    for index, slide in enumerate(deck.slides, start=1):
+        model = animations.parse_build_model(slide)
+        if model is None or not (model.clicks or model.blocking):
+            continue
+        by_slide[index] = model
+        if model.usable:
+            models[index] = model
+    images = animations.render_steps(pptx, out_dir, width, models) if models else {}
+    for entry in entries:
+        index = entry["index"]
+        model = by_slide.get(index)
+        entry["compatibility"] = slide_compatibility(deck.slides[index - 1], model)
+        entry.pop("build", None)
+        if index in images and len(images[index]) == len(models[index].clicks) + 1:
+            entry["build"] = {
+                "version": 1,
+                "steps": animations.describe_steps(models[index], lambda k, i=images[index]: i[k]),
+            }
+        if model is not None:
+            for reason in model.unsupported + model.blocking:
+                problems.append({"slide": index,
+                                 "problem": UNSUPPORTED_TEXT.get(reason, reason)})
+    return entries
 
 
 def write_indexes(bundles_root: Path, selected_id: str):
@@ -214,19 +270,20 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     fingerprint = sha256_file(pptx)[:12]
     out_dir = bundles_root / fingerprint
     if (out_dir / "manifest.json").exists():
-        # Backfill text on older bundles without rerendering expensive media.
+        # Backfill text and build steps on older bundles without rerendering media.
         manifest_file = out_dir / "manifest.json"
         manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
         deck = Presentation(str(pptx))
-        for index, (entry, slide) in enumerate(zip(manifest["slides"], deck.slides), start=1):
+        for entry, slide in zip(manifest["slides"], deck.slides):
             entry["text"] = slide_text(slide)
-            compatibility = slide_compatibility(slide)
-            entry["compatibility"] = compatibility
-            if compatibility["animationsDetected"]:
-                warning = {"slide": index,
-                           "problem": "powerpoint animations are not preserved in PNG rendering"}
-                if warning not in manifest.setdefault("problems", []):
-                    manifest["problems"].append(warning)
+        legacy = ("powerpoint animations are not preserved in PNG rendering",
+                  "potentially animated PowerPoint chart: visual compatibility review required")
+        manifest["problems"] = [x for x in manifest.get("problems", [])
+                                if x.get("problem") not in legacy and x.get("problem") not in UNSUPPORTED_TEXT.values()]
+        needs_steps = manifest.get("buildVersion") != 1
+        if needs_steps:
+            attach_builds(pptx, out_dir, width, deck, manifest["slides"], manifest["problems"])
+            manifest["buildVersion"] = 1
         manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         write_indexes(bundles_root, fingerprint)
         print(f"bundle already built, slide text refreshed: {out_dir}")
@@ -244,10 +301,6 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     slides = []
     for index, slide in enumerate(deck.slides, start=1):
         compatibility = slide_compatibility(slide)
-        if compatibility["animationsDetected"]:
-            problems.append({"slide": index, "problem": "powerpoint animations are not preserved in PNG rendering"})
-        if compatibility["chartCount"] and compatibility["animationsDetected"]:
-            problems.append({"slide": index, "problem": "potentially animated PowerPoint chart: visual compatibility review required"})
         videos = []
         for shape in iter_shapes(slide.shapes):
             for rid in video_targets(shape):
@@ -288,6 +341,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
         })
 
     shutil.rmtree(out_dir / "_src", ignore_errors=True)
+    attach_builds(pptx, out_dir, width, deck, slides, problems)
     if page_count != len(slides):
         raise RuntimeError(f"rendered {page_count} pages but deck has {len(slides)} slides")
 
@@ -297,6 +351,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
         "slideCount": len(slides),
         "aspect": round(slide_w / slide_h, 6),
         "slides": slides,
+        "buildVersion": 1,
         "problems": problems,
     }
     (out_dir / "manifest.json").write_text(

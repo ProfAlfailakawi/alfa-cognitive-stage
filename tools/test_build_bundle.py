@@ -40,7 +40,10 @@ class ManifestTests(unittest.TestCase):
         self.assertFalse(build_bundle.slide_compatibility(slide)["animationsDetected"])
         from pptx.oxml.xmlchemy import OxmlElement
         slide._element.append(OxmlElement("p:timing"))
-        self.assertTrue(build_bundle.slide_compatibility(slide)["animationsDetected"])
+        compat = build_bundle.slide_compatibility(slide)
+        # A bare timing node (as written for plain video) is not a click build.
+        self.assertTrue(compat["timingDetected"])
+        self.assertFalse(compat["animationsDetected"])
 
     def test_index_generation(self):
         with tempfile.TemporaryDirectory() as temp:
