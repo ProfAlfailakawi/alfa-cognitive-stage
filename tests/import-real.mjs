@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ const pptx = process.env.ALFA_TEST_PPTX || "/tmp/alfa-ci-lecture.pptx";
 const port=4288, base="http://127.0.0.1:"+port;
 const token="integration-test-admin-abc123456789";
 if (!existsSync(pptx)) throw Error("Missing synthetic PPTX fixture");
+let browser;
 const child=spawn(process.execPath,[join(root,"server/server.mjs")],{
  env:{...process.env,PORT:String(port),ADMIN_TOKEN:token},
  stdio:["ignore","pipe","pipe"]
@@ -48,6 +50,54 @@ try {
   }
   const manifest=await (await fetch(base+"/bundles/"+id+"/manifest.json")).json();
   assert.equal(manifest.slides.length,2);
+  assert.equal(manifest.slides[1].videos.length,1,"embedded MP4 must be extracted");
+  const videoPath=manifest.slides[1].videos[0].src;
+  // Real Chromium distributions vary in proprietary H.264 decoder availability.
+  // On CI, require an explicit royalty-free WebM fallback and verify actual decoding.
+  if (process.env.ALFA_WEBM_BACKUP === "1") {
+    assert.ok(manifest.slides[1].videos[0].webm,"WebM fallback must be built when enabled");
+  }
+  const range=await fetch(base+"/bundles/"+id+"/"+videoPath, {
+    headers:{"Range":"bytes=0-50"}
+  });
+  assert.equal(range.status,206,"video must be seekable through HTTP Range");
+  browser=await chromium.launch({executablePath:process.env.CHROME_PATH||chromium.executablePath(),
+    args:["--no-sandbox","--autoplay-policy=no-user-gesture-required"]});
+  const page=await browser.newPage();
+  await page.goto(base+"/?bundle="+id+"#presenter");
+  await page.locator("#next").click();
+  await page.locator("video.clip").waitFor();
+  // A metadata-only video remains readyState=1 until playback begins.
+  // Explicitly play before waiting for decoded frames; this tests media, not preload policy.
+  const playback=await page.locator("video.clip").evaluate(async (v)=>{
+    v.muted=true;
+    try {
+      await Promise.race([
+        v.play(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("video.play timed out")), 10000))
+      ]);
+      if (v.readyState < 2) await Promise.race([
+        new Promise((resolve)=>v.addEventListener("loadeddata",resolve,{once:true})),
+        new Promise((resolve)=>v.addEventListener("error",resolve,{once:true})),
+        new Promise((resolve)=>setTimeout(resolve,10000))
+      ]);
+    } catch (error) {
+      return { decoded:false, reason:error.message, src:v.currentSrc, readyState:v.readyState,
+        videoWidth:v.videoWidth, networkState:v.networkState,
+        sources:[...v.querySelectorAll("source")].map(s=>s.src),
+        canPlay:v.canPlayType('video/mp4; codecs="avc1.42E01E,mp4a.40.2"'),
+      canPlayWebm:v.canPlayType('video/webm; codecs="vp9,opus"'),
+        canPlayWebm:v.canPlayType('video/webm; codecs="vp9,opus"'),
+        mediaError:v.error?.code || null };
+    }
+    return {decoded:v.readyState>=2 && v.videoWidth>0,
+      src:v.currentSrc,readyState:v.readyState,videoWidth:v.videoWidth,
+      networkState:v.networkState,
+      canPlay:v.canPlayType('video/mp4; codecs="avc1.42E01E,mp4a.40.2"'),
+      mediaError:v.error?.code || null};
+  });
+  assert.equal(playback.decoded,true,"real embedded video must decode in Chromium: "+JSON.stringify(playback));
+  await page.close();
   assert.ok(manifest.slides[0].text.includes("الألعاب"));
   assert.ok(manifest.slides[1].notes.includes("2"));
   const image=await fetch(base+"/bundles/"+id+"/slides/001.png");
@@ -55,8 +105,8 @@ try {
   assert.ok(Number(image.headers.get("content-length"))>1000);
   const current=await (await fetch(base+"/bundles/current.json")).json();
   assert.equal(current.id,id);
-  console.log("PASS real PPTX API import/rerun, lecture selection, image render and speaker notes");
+  console.log("PASS real PPTX import, embedded MP4 extraction, range seeking and Chromium decode");
 } catch(error) {
   console.error(logs);
   throw error;
-} finally {child.kill();}
+} finally {await browser?.close();child.kill();}

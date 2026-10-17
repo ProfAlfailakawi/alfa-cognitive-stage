@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 from lxml import etree
@@ -23,6 +24,26 @@ A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
 
+
+
+def validate_pptx_container(path: Path):
+    """Reject malformed, oversized and potentially zip-bomb Office archives early."""
+    if not zipfile.is_zipfile(path):
+        raise ValueError("ملف PowerPoint غير صالح")
+    with zipfile.ZipFile(path) as archive:
+        members = archive.infolist()
+        if len(members) > 15000:
+            raise ValueError("الملف يحتوي على عدد غير معقول من العناصر")
+        total = sum(item.file_size for item in members)
+        if total > 750 * 1024 * 1024:
+            raise ValueError("حجم الملفات بعد فك الضغط يتجاوز الحد الآمن")
+        names = set(archive.namelist())
+        if "[Content_Types].xml" not in names or "ppt/presentation.xml" not in names:
+            raise ValueError("هذا ليس ملف PPTX صالحاً")
+        for item in members:
+            if (item.file_size > 100 * 1024 * 1024 and
+                    item.compress_size < item.file_size // 1000):
+                raise ValueError("ضغط مريب لأحد عناصر العرض")
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -189,6 +210,7 @@ def rerender(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
 
 
 def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
+    validate_pptx_container(pptx)
     fingerprint = sha256_file(pptx)[:12]
     out_dir = bundles_root / fingerprint
     if (out_dir / "manifest.json").exists():

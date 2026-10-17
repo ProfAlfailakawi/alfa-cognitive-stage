@@ -59,13 +59,25 @@ export function renderStructuredScene(type,title,lines) {
   return base(title,'<line x1="110" y1="285" x2="845" y2="285" stroke="'+C.blue+'" stroke-width="5"/>'+nodes);
  }
  if(type==="story") {
+  // The story never generates people, events or conclusions: only symbolic icons.
+  const marks=[
+    {re:/(العاب|الألعاب|لعب|game)/i, d:"M7 9h10l3 8-4-2-3-3h-2l-3 3-4 2z M9 11v4 M7 13h4 M16 12h.1 M18 14h.1"},
+    {re:/(الوقت|الساعات|ساعة|سا ع|ليل|الساعة)/i, d:"M12 3a9 9 0 1 1-.01 0 M12 6v6l4 3"},
+    {re:/(دراس|الجامعة|المدرس|تعلم|التحصيل)/i, d:"M4 5h7a3 3 0 0 1 3 3v12H5a1 1 0 0 0-1 1z M20 5h-7a3 3 0 0 0-3 3v12h9a1 1 0 0 1 1 1z"},
+    {re:/(علاقات|الاسرة|العزلة|صديق|مجتمع)/i, d:"M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M2 21a7 7 0 0 1 14 0 M18 9a3 3 0 1 0 0-6 M18 15a6 6 0 0 1 4 6"},
+    {re:/(تغير|تغيير|قرر|الفكرة|فهم|اكتشف)/i, d:"M9 18h6 M10 21h4 M12 2a7 7 0 0 0-4 12c1 1 2 2 2 3h4c0-1 1-2 2-3a7 7 0 0 0-4-12z"}
+  ];
   const step=860/lines.length;
   const nodes=lines.map((v,i)=>{
    const x=50+i*step,w=step-12;
+   const selected=marks.find((m)=>m.re.test(v));
+   const icon=selected?.d || "M4 5h16v14H4z M7 9h10 M7 13h10";
+   const cx=x+w/2;
    return '<rect x="'+x+'" y="147" width="'+w+'" height="299" rx="22" fill="'+C.white+'" stroke="'+C.edge+'"/>'+
-    '<circle cx="'+(x+w/2)+'" cy="205" r="30" fill="'+(i%2?C.gold:C.blue)+'"/>'+
-    label(String(i+1),x+w/2,214,{size:24,color:C.white})+
-    label(v,x+w/2,270,{limit:lines.length>3?15:24,size:19,rows:4});
+    '<circle cx="'+cx+'" cy="209" r="36" fill="'+C.bg+'" stroke="'+C.edge+'"/>'+
+    '<path d="'+icon+'" transform="translate('+(cx-14)+' 195) scale(1.16)" fill="none" stroke="'+C.blue+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'+
+    label("المشهد "+String(i+1),cx,276,{limit:18,size:17,color:C.gold,rows:1})+
+    label(v,cx,323,{limit:lines.length>3?15:24,size:19,rows:4});
   }).join("");
   return base(title,nodes);
  }

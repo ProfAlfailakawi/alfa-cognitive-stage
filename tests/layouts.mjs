@@ -10,4 +10,11 @@ assert.throws(()=>validateSpec({type:"flow",title:"x",lines:["1","2","3","4","5"
 const html=renderInfographic({type:"concept",title:"<script>alert(1)</script>",lines:["اختبار","مفهوم"]});
 assert.ok(!html.includes("<script>"));
 assert.ok(html.includes("&lt;script&gt;"));
+const storyIcons=renderInfographic({
+ type:"story",title:"قصة المحاضر",
+ lines:["شخص كان يلعب ألعاب الفيديو","ثم تأثرت دراسته"]
+});
+assert.ok(storyIcons.includes("المشهد 1") && storyIcons.includes("المشهد 2"));
+assert.ok(storyIcons.includes("<path d="));
+assert.ok(!storyIcons.includes("وبعدها شفي"));
 console.log("extra vector layouts passed");

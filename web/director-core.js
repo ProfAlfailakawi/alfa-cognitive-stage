@@ -14,7 +14,11 @@ export function interpretSpeech(utterance) {
   if (/(نرجع|نعود|نرد|خلونا نرجع|نكمل درسنا|نرجع لموضوع|نرجع للعرض)/.test(text)) {
     return { kind: "return", confidence: 0.96, utterance: raw };
   }
-  const mention = text.match(/([0-9]+(?:[.,][0-9]+)?)\s*(%|بالمئه|بالمائه|بالمية|في الميه)/);
+  const percentages = [...text.matchAll(/([0-9]+(?:[.,][0-9]+)?)\s*(%|بالمئه|بالمائه|بالميه|في الميه)/g)];
+  const correction = /(عفوا|اقصد|التصحيح|اصحح|مو قصدي|بل الصحيح)/.test(text);
+  // Never show an arbitrary first value if two different percentages were discussed.
+  const mention = percentages.length === 1 || (percentages.length > 1 && correction)
+    ? percentages[percentages.length - 1] : null;
   const context = /(نسبه|دراس|احصائ|بحث|مشارك|طلب|طلاب|طالب|نتيج|اظهر|اشار|تشير|وصلت|بلغت|ارتفعت|انخفضت)/;
   if (mention && context.test(text)) {
     const number = mention[1].replace(",", ".") + "%";
