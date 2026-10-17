@@ -8,7 +8,8 @@ import { loadEnvFile } from "node:process";
 import { analyzeWithAI, directorUsageStatus } from "./director-ai.mjs";
 import { importLecture, prerequisitesStatus } from "./lecture-import.mjs";
 import { createSceneStore, SceneStoreError } from "./scene-store.mjs";
-import { allowedLectureClient } from "./security.mjs";
+import { allowedLectureClient, requestOrigin, studentSurfaceAllows } from "./security.mjs";
+import { createServer as createSecureServer } from "node:https";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
@@ -16,7 +17,7 @@ import { createVoteStore, VoteError } from "./votes.mjs";
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 try { loadEnvFile(join(root, ".env")); } catch (err) { if (err.code !== "ENOENT") throw err; }
 const webRoot = join(root, "web");
-const bundlesRoot = join(root, "bundles");
+const bundlesRoot = resolve(process.env.ALFA_BUNDLES_DIR || join(root, "bundles"));
 const port = Number(process.env.PORT || 4173);
 const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
 const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });
@@ -161,7 +162,7 @@ async function handleApi(req, res, path) {
       .filter((x) => x.family === "IPv4" && !x.internal);
     const preferred = addresses.find((x) => /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(x.address));
     const ip = (preferred || addresses[0])?.address || null;
-    const publicUrl = process.env.PUBLIC_URL || (ip ? "http://" + ip + ":" + port : null);
+    const publicUrl = process.env.PUBLIC_URL || (ip ? (tls ? "https://" : "http://") + ip + ":" + port : null);
     return sendJson(res, 200, { publicUrl });
   }
   if (resource === "director" && code === "status" && req.method === "GET") {
@@ -230,9 +231,15 @@ async function handleApi(req, res, path) {
   throw new VoteError("غير موجود", 404);
 }
 
-const server = createServer(async (req, res) => {
+const handler = async (req, res) => {
   try {
     const path = new URL(req.url, "http://x").pathname;
+    // Remote clients (phones, tunnels, proxies) only ever see the student surface, even with a valid token.
+    if (requestOrigin(req.socket.remoteAddress, req.headers) === "remote" &&
+        process.env.ALFA_ALLOW_REMOTE_SLIDES !== "1" && !studentSurfaceAllows(req.method, path)) {
+      res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end("هذه الصفحة متاحة على جهاز المحاضر فقط");
+    }
     if (path.startsWith("/api/")) return await handleApi(req, res, path);
     const isBundle = path.startsWith("/bundles/");
     if (isBundle && !allowedLectureClient(req.socket.remoteAddress,
@@ -253,10 +260,17 @@ const server = createServer(async (req, res) => {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("غير موجود");
   }
-});
+};
+// Optional HTTPS for the LAN (e.g. a mkcert certificate): ALFA_TLS_KEY and ALFA_TLS_CERT file paths.
+let tls = null;
+if (process.env.ALFA_TLS_KEY && process.env.ALFA_TLS_CERT) {
+  const { readFileSync } = await import("node:fs");
+  tls = { key: readFileSync(process.env.ALFA_TLS_KEY), cert: readFileSync(process.env.ALFA_TLS_CERT) };
+}
+const server = tls ? createSecureServer(tls, handler) : createServer(handler);
 
 server.listen(port, () => {
-  console.log(`ALFA Cognitive Stage على http://localhost:${port}`);
+  console.log(`ALFA Cognitive Stage على ${tls ? "https" : "http"}://localhost:${port}`);
   if (!process.env.ADMIN_TOKEN) console.log(`رمز المحاضر (لا تشاركه): ${adminToken}`);
 });
 

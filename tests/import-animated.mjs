@@ -15,7 +15,7 @@ if (!existsSync(pptx)) throw Error("Missing animated PPTX fixture: run tools/ani
 const port = 4289, base = "http://127.0.0.1:" + port, token = "animated-test-admin-abc123456789";
 const scratch = mkdtempSync(join(tmpdir(), "alfa-anim-"));
 const child = spawn(process.execPath, [join(root, "server/server.mjs")], {
-  env: { ...process.env, PORT: String(port), ADMIN_TOKEN: token, VOTES_FILE: join(scratch, "v.json"), SCENES_FILE: join(scratch, "s.json") },
+  env: { ...process.env, PORT: String(port), ADMIN_TOKEN: token, ALFA_BUNDLES_DIR: join(scratch, "bundles"), VOTES_FILE: join(scratch, "v.json"), SCENES_FILE: join(scratch, "s.json") },
   stdio: ["ignore", "pipe", "pipe"],
 });
 let logs = "", browser;

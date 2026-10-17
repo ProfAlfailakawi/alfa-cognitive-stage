@@ -11,14 +11,15 @@ import { promisify } from "node:util";
 const exec = promisify(execFile);
 const LIMIT = 80 * 1024 * 1024;
 let busy = false;
-const prerequisites = ["python3", "soffice", "pdftoppm", "ffmpeg", "ffprobe"];
+const prerequisites = ["python3", "soffice", "pdftoppm", "pdftotext", "pdfinfo", "ffmpeg", "ffprobe"];
 function toolEnvironment() {
   const macSoffice = "/Applications/LibreOffice.app/Contents/MacOS/soffice";
   const pathExtra = process.platform === "darwin" && existsSync(macSoffice)
     ? delimiter + dirname(macSoffice) : "";
   return { ...process.env, PATH: (process.env.PATH || "") + pathExtra };
 }
-const isAllowed = (name) => /^[\p{L}\p{N}_ ().\-]{1,180}\.pptx$/iu.test(name);
+const isAllowed = (name) => /^[\p{L}\p{N}_ ().\-]{1,180}\.(?:pptx|pdf|key)$/iu.test(name);
+export const lectureKind = (name) => name.toLowerCase().endsWith(".pdf") ? "pdf" : name.toLowerCase().endsWith(".key") ? "key" : "pptx";
 
 export function lectureFileName(raw) {
   let name;
@@ -52,10 +53,13 @@ async function receivePptx(req, path) {
   if (size < 100) throw Object.assign(new Error("الملف فارغ أو ليس PowerPoint صالحاً"), { status: 400 });
   const handle = await fs.open(path, "r");
   try {
-    const first = Buffer.alloc(4);
-    await handle.read(first, 0, 4, 0);
-    if (first.toString("hex").slice(0, 4) !== "504b") {
-      throw Object.assign(new Error("صيغة الملف ليست PPTX"), { status: 400 });
+    const first = Buffer.alloc(5);
+    await handle.read(first, 0, 5, 0);
+    const kind = lectureKind(path);
+    const isZip = first.toString("hex").slice(0, 4) === "504b";
+    const isPdf = first.toString("latin1") === "%PDF-";
+    if ((kind === "pdf" && !isPdf) || (kind !== "pdf" && !isZip)) {
+      throw Object.assign(new Error("محتوى الملف لا يطابق صيغته (" + kind.toUpperCase() + ")"), { status: 400 });
     }
   } finally { await handle.close(); }
 }
@@ -63,7 +67,7 @@ async function receivePptx(req, path) {
 export async function importLecture(req, { root, bundlesRoot }) {
   if (busy) throw Object.assign(new Error("توجد محاضرة قيد التحويل؛ انتظر اكتمالها"), { status: 409 });
   const filename = lectureFileName(req.headers["x-lecture-filename"]);
-  if (!filename) throw Object.assign(new Error("اختر ملف PowerPoint بصيغة .pptx واسم صالح"), { status: 400 });
+  if (!filename) throw Object.assign(new Error("اختر ملف PowerPoint أو PDF أو Keynote باسم صالح"), { status: 400 });
   const length = Number(req.headers["content-length"]);
   if (Number.isFinite(length) && length > LIMIT) throw Object.assign(new Error("حجم الملف أكبر من 80 MB"), { status: 413 });
   busy = true;

@@ -123,3 +123,10 @@ jobs:
         run: |
           python tools/animated_fixture.py /tmp/alfa-animated.pptx
           node tests/import-animated.mjs
+      - name: Import formats and video compatibility (PDF, Keynote failure path, codecs)
+        run: |
+          cd tools && python -m unittest test_import_formats -v
+      - name: Import a PDF through the server
+        run: |
+          (cd tools && python make_test_pdf.py /tmp/alfa-test.pdf)
+          node tests/import-pdf.mjs
