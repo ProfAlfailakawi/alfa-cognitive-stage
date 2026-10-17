@@ -66,6 +66,9 @@ function placeVideo(slide) {
     el.style.height = (clip.h * 100) + "%";
     el.style.objectFit = "contain";
     stage.appendChild(el);
+    // Dynamically attached <source> children are not always fetched until load() is called.
+    // Trigger metadata loading explicitly so the lecturer can play/seek immediately.
+    el.load();
     videoEls.push(el);
     if (role === "presenter") {
       el.addEventListener("play", () => {

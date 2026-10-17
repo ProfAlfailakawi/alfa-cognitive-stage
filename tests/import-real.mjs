@@ -78,10 +78,15 @@ try {
       ]);
     } catch (error) {
       return { decoded:false, reason:error.message, src:v.currentSrc, readyState:v.readyState,
-        videoWidth:v.videoWidth, mediaError:v.error?.code || null };
+        videoWidth:v.videoWidth, networkState:v.networkState,
+        sources:[...v.querySelectorAll("source")].map(s=>s.src),
+        canPlay:v.canPlayType('video/mp4; codecs="avc1.42E01E,mp4a.40.2"'),
+        mediaError:v.error?.code || null };
     }
     return {decoded:v.readyState>=2 && v.videoWidth>0,
       src:v.currentSrc,readyState:v.readyState,videoWidth:v.videoWidth,
+      networkState:v.networkState,
+      canPlay:v.canPlayType('video/mp4; codecs="avc1.42E01E,mp4a.40.2"'),
       mediaError:v.error?.code || null};
   });
   assert.equal(playback.decoded,true,"real embedded video must decode in Chromium: "+JSON.stringify(playback));
