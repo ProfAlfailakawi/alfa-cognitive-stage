@@ -26,6 +26,7 @@ jobs:
           node --check web/director-core.js
           node --check web/speech-director.js
           node --check web/vote-admin.js
+          node --check web/poll-analytics.js
           node --check web/vote.js
       - name: JS unit regression
         run: |
@@ -39,6 +40,7 @@ jobs:
           npm run test:scene-store
           npm run test:security
           npm run test:readiness
+          npm run test:poll-analytics
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'

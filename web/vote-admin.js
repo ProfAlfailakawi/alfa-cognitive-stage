@@ -1,9 +1,11 @@
+import { compareRounds, exportAggregateCsv } from "./poll-analytics.js";
 // Lecturer's voting console: create a session, add questions, open/close/reveal, see results.
 const $ = (id) => document.getElementById(id);
 const KEY = "alfa-admin-token";
 let adminToken = sessionStorage.getItem(KEY) || "";
 let code = "";
 let refreshTimer = null;
+let latestPollState = null;
 
 async function call(method, path, body) {
   const res = await fetch(`/api${path}`, {
@@ -42,6 +44,30 @@ function drawQr(url) {
 }
 
 function renderPolls(state) {
+  latestPollState = state;
+  const changes = compareRounds(state.polls);
+  const container = $("round-comparisons");
+  if (container) {
+    container.replaceChildren();
+    for (const group of changes) {
+      const item = document.createElement("div");
+      item.className = "poll";
+      const title = document.createElement("strong");
+      title.textContent = "تغير التوزيع بين الجولتين " + group.firstId + " و" + group.lastId + ": " + group.question;
+      item.append(title);
+      for (const value of group.values) {
+        const line = document.createElement("p");
+        const change = (value.deltaPoints > 0 ? "+" : "") + value.deltaPoints + " نقطة مئوية";
+        line.textContent = value.option + ": " + value.firstPercent + "% ← " + value.lastPercent + "% (" + change + ")";
+        item.append(line);
+      }
+      const warning = document.createElement("p");
+      warning.className = "meta";
+      warning.textContent = "هذه مقارنة لتوزيع الإجابات، وليست إثباتاً لتحسّن التعلم أو مشاركة الطلاب أنفسهم.";
+      item.append(warning);
+      container.append(item);
+    }
+  }
   $("polls").innerHTML = state.polls.map((p) => {
     const total = p.total || 0;
     const rows = p.options.map((text, i) => {
@@ -149,4 +175,18 @@ window.addEventListener("message", (event) => {
     $("q-opts").value = "نعم\nلا\nغير متأكد";
   }
   $("poll-msg").textContent = "جهّز المخرج سؤالاً من حديثك. راجعه ثم أضفه وافتحه بنفسك.";
+});
+
+$("export-poll-aggregates")?.addEventListener("click", () => {
+  if (!latestPollState?.polls?.length) {
+    $("poll-msg").textContent = "لا توجد نتائج للتصدير بعد.";
+    return;
+  }
+  const csv=exportAggregateCsv(latestPollState.polls);
+  const link=document.createElement("a");
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8;"}));
+  link.href=url;
+  link.download="alfa-voting-"+(code||"session")+".csv";
+  link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),500);
 });
