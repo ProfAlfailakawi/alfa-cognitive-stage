@@ -20,6 +20,7 @@ let videoEls = [];
 const pollScreen = { visible: false, url: "", active: null };
 let clockStart = Date.now();
 let slideGeneration = 0;
+const neighboringSlides = new Map();
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
   recent: [], cloudSeq: 0, activeOverlay: false, story: null, questionDraft: null,
@@ -83,6 +84,22 @@ function placeVideo(slide) {
   videoEl = videoEls[0] || null;
 }
 
+function prefetchNeighbors(index) {
+  // Quietly warm the browser cache for next/previous slides, with small memory cap.
+  const wanted = [index - 1, index + 1, index + 2].filter((n) => n >= 1 && n <= state.count);
+  for (const target of wanted) {
+    if (neighboringSlides.has(target)) continue;
+    const slide = state.slides[target - 1];
+    if (!slide?.image) continue;
+    const preview = new Image();
+    preview.decoding = "async";
+    preview.src = "/bundles/" + state.bundle + "/" + slide.image;
+    neighboringSlides.set(target, preview);
+  }
+  for (const known of [...neighboringSlides.keys()]) {
+    if (!wanted.includes(known)) neighboringSlides.delete(known);
+  }
+}
 function showSlide(index) {
   const slide = state.slides[index - 1];
   if (!slide) return;
@@ -104,6 +121,7 @@ function showSlide(index) {
     }, 120);
   }
   placeVideo(slide);
+  prefetchNeighbors(index);
   if (role === "presenter") renderPresenterPanels();
 }
 

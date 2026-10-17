@@ -47,7 +47,8 @@ async function sendFile(req, res, file) {
   const range = req.headers.range;
   res.setHeader("Content-Type", type);
   res.setHeader("Accept-Ranges", "bytes");
-  res.setHeader("Cache-Control", "no-cache");
+  const immutableMedia = /[\\/]bundles[\\/][a-f0-9]{12}[\\/](?:slides|media)[\\/]/.test(file);
+  res.setHeader("Cache-Control", immutableMedia ? "private, max-age=86400, immutable" : "no-cache");
   if (range) {
     const match = /bytes=(\d*)-(\d*)/.exec(range);
     let start = match && match[1] ? Number(match[1]) : 0;
