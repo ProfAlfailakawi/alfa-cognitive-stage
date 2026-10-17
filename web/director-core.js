@@ -1,4 +1,5 @@
 // Pure, offline teaching-event detector. No network, no invented research.
+import { extractSpokenSteps } from "./spoken-steps.js";
 export function normalizeArabic(value) {
   return String(value || "").replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x660))
     .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x6f0))
@@ -14,6 +15,8 @@ export function interpretSpeech(utterance) {
   if (/(نرجع|نعود|نرد|خلونا نرجع|نكمل درسنا|نرجع لموضوع|نرجع للعرض)/.test(text)) {
     return { kind: "return", confidence: 0.96, utterance: raw };
   }
+  const spokenSteps = extractSpokenSteps(raw);
+  if (spokenSteps) return { kind: "steps", confidence: 0.96, utterance: raw, spec: spokenSteps };
   const percentages = [...text.matchAll(/([0-9]+(?:[.,][0-9]+)?)\s*(%|بالمئه|بالمائه|بالميه|في الميه)/g)];
   const correction = /(عفوا|اقصد|التصحيح|اصحح|مو قصدي|بل الصحيح)/.test(text);
   const context = /(نسبه|دراس|احصائ|بحث|مشارك|طلب|طلاب|طالب|نتيج|اظهر|اشار|تشير|وصلت|بلغت|ارتفعت|انخفضت)/;
