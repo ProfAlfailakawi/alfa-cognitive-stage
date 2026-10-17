@@ -24,6 +24,21 @@ assert.equal(across?.spec.lines[0],"68%");
 assert.equal(across?.reusedAcrossLecture,true);
 assert.equal(recallScene({bundle:"lecture2",slide:2,utterance:"في دراسة عن تحفيز الألعاب نسبة 69%"},storage),null);
 assert.equal(recallScene({bundle:"lecture2",slide:2,utterance:"في دراسة عن تحفيز الألعاب"},storage),null);
+const trendSpec = {type:"compare",title:"تغير النسبة",lines:["من 20% | إلى 60%"]};
+const trendSpeech = "في النشاط التعليمي ارتفعت النسبة من 20% الى 60% للمشاركين";
+const reversedTrend = "في النشاط التعليمي ارتفعت النسبة من 60% الى 20% للمشاركين";
+assert.equal(rememberScene({bundle:"trend1",slide:4,utterance:trendSpeech,spec:trendSpec},storage),true);
+assert.equal(recallScene({bundle:"trend1",slide:4,utterance:reversedTrend},storage),null);
+assert.equal(recallScene({bundle:"trend2",slide:1,utterance:reversedTrend},storage),null);
+assert.equal(recallScene({bundle:"trend2",slide:1,utterance:trendSpeech},storage)?.reusedAcrossLecture,true);
+assert.equal(recallScene({bundle:"trend2",slide:1,
+  utterance:"في النشاط التعليمي ارتفعت النسبة من ٢٠٪ الى ٦٠٪ للمشاركين"},storage)?.reusedAcrossLecture,true);
+const olderIndex = JSON.parse(map.get("alfa-approved-scenes-cross-v1"));
+delete olderIndex.find((entry) => entry.bundle === "trend1").numberSequence;
+map.set("alfa-approved-scenes-cross-v1",JSON.stringify(olderIndex));
+assert.equal(recallScene({bundle:"trend2",slide:1,utterance:trendSpeech},storage),null);
+assert.equal(recallScene({bundle:"trend1",slide:4,utterance:trendSpeech},storage)?.spec.type,"compare");
+
 assert.equal(recallScene({bundle:"lecture2",slide:2,utterance:"في دراسة عن تحفيز الألعاب نسبة 68%"},{
   getItem: () => null, setItem: () => {}
 }),null); // Separate browser profile does not inherit lecturer memory.

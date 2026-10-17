@@ -29,11 +29,14 @@ function read(bundle, storage) {
     return Array.isArray(value) ? value : [];
   } catch { return []; }
 }
-function numericTokens(text) {
+function numericSequence(text) {
   const normalized = normalizeArabic(text).toLowerCase()
     .replace(/(\d+(?:[.,]\d+)?)\s*(?:بالمئه|بالمائه|بالميه|في الميه)/g, "$1%");
-  return [...new Set([...normalized.matchAll(/\d+(?:[.,]\d+)?\s*%?/g)]
-    .map(([value]) => value.replace(/\s+/g, "").replace(",", ".")))].sort();
+  return [...normalized.matchAll(/\d+(?:[.,]\d+)?\s*%?/g)]
+    .map(([value]) => value.replace(/\s+/g, "").replace(",", "."));
+}
+function numericTokens(text) {
+  return [...new Set(numericSequence(text))].sort();
 }
 function readGlobal(storage) {
   try {
@@ -60,6 +63,7 @@ export function rememberScene({ bundle, slide, utterance, spec }, customStorage)
       const global = readGlobal(storage).filter((entry) => entry.id !== bundle + ":" + id);
       const compact = { id: bundle + ":" + id, bundle, terms,
         numbers: numericTokens(String(utterance) + " " + spec.lines.join(" ")),
+        numberSequence: numericSequence(utterance),
         spec, storedAt: item.storedAt };
       storage.setItem(GLOBAL_KEY, JSON.stringify([...global, compact].slice(-GLOBAL_LIMIT)));
     } catch {}
@@ -73,6 +77,7 @@ export function recallScene({ bundle, slide, utterance }, customStorage) {
   if (query.length < 2) return null;
   let best = null, max = 0;
   const queryNumbers = JSON.stringify(numericTokens(utterance));
+  const querySequence = JSON.stringify(numericSequence(utterance));
   for (const item of read(bundle, storage)) {
     if (!item || !Array.isArray(item.terms) || !item.spec ||
         !Array.isArray(item.spec.lines)) continue;
@@ -80,7 +85,8 @@ export function recallScene({ bundle, slide, utterance }, customStorage) {
     // similarity alone could reuse 68% when the lecturer corrected it to 69%.
     const savedNumbers = JSON.stringify(numericTokens(
       String(item.utterance || "") + " " + item.spec.lines.join(" ")));
-    if (savedNumbers !== queryNumbers) continue;
+    if (savedNumbers !== queryNumbers ||
+        JSON.stringify(numericSequence(item.utterance || "")) !== querySequence) continue;
     const common = query.filter((word) => item.terms.includes(word)).length;
     const union = new Set([...query, ...item.terms]).size;
     const similarity = union ? common / union : 0;
@@ -99,7 +105,10 @@ export function recallScene({ bundle, slide, utterance }, customStorage) {
     const common = query.filter((word) => item.terms.includes(word)).length;
     const similarity = common / new Set([...query, ...item.terms]).size;
     if (common < 3 || similarity < 0.85 || similarity <= max ||
-        JSON.stringify(item.numbers) !== queryNumbers) continue;
+        JSON.stringify(item.numbers) !== queryNumbers ||
+        (Array.isArray(item.numberSequence)
+          ? JSON.stringify(item.numberSequence) !== querySequence
+          : numericSequence(utterance).length > 1)) continue;
     try { validateSpec(item.spec); best = item; max = similarity; } catch {}
   }
   return best ? { spec: best.spec, similarity: max, reusedAcrossLecture: true } : null;
