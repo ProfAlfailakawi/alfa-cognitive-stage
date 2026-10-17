@@ -67,6 +67,7 @@ try {
   check("lecturer sees cloud availability in existing director panel",
     (await presenter.locator("#director-usage").textContent()).includes("غير مجهزة"));
   await presenter.uncheck("#director-cloud");
+  await presenter.locator("#director-cloud").evaluate((el) => el.blur()); // Release focus so slide hotkeys work.
 
 
   await audience.goto(`${base}/#audience`);
