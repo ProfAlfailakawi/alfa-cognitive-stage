@@ -117,7 +117,6 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const api = (path, init = {}) => fetch("http://localhost:4311/api" + path, { ...init, headers: { "X-Admin-Token": token, "Content-Type": "application/json" } });
   const { code } = await (await api("/sessions", { method: "POST", body: "{}" })).json();
   assert.match(code, /^[A-Z2-9]{6}$/);
-  assert.equal((await (await api("/director/status")).json()).available, false, "the guest never spends the host's API key");
   child.kill("SIGTERM");
   await new Promise((r) => child.once("exit", r));
   assert.equal(existsSync(join(tmpdir(), dirs[0])), false, "the guest's data directory is deleted on exit");

@@ -213,8 +213,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @keyframes k-phrase { 0% { opacity: 0; transform: translateY(18px) scale(.97); filter: blur(10px); } 14% { opacity: 1; transform: none; filter: blur(0); } 84% { opacity: 1; transform: none; filter: blur(0); } 100% { opacity: 0; transform: translateY(-10px) scale(1.02); filter: blur(10px); } }
 @keyframes k-last { 0% { opacity: 0; transform: translateY(18px) scale(.97); filter: blur(10px); } 100% { opacity: 1; transform: none; filter: blur(0); } }
 .info-layer svg .k-static { display: none; }
+/* a whole scene arrives with a slight tilt and rise (a flat stand-in for a 3D entrance) */
+.info-layer > svg { transform-origin: 50% 70%; animation: scene-in .55s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes scene-in { from { opacity: 0; transform: perspective(1500px) rotateX(6deg) translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .info-layer svg [class^="m-"], .info-layer svg .fl { animation: none !important; }
+  .info-layer svg [class^="m-"], .info-layer svg .fl, .info-layer > svg { animation: none !important; }
   .info-layer svg .k-seq { display: none; }
   .info-layer svg .k-static { display: inline; }
 }

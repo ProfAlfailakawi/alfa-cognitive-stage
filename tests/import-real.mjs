@@ -64,7 +64,7 @@ try {
   browser=await chromium.launch({executablePath:process.env.CHROME_PATH||chromium.executablePath(),
     args:["--no-sandbox","--autoplay-policy=no-user-gesture-required"]});
   const page=await browser.newPage();
-  await page.goto(base+"/?bundle="+id+"#presenter");
+  await page.goto(base+"/?bundle="+id+"&dev=1#presenter");
   await page.locator("#next").click();
   await page.locator("video.clip").waitFor();
   // A metadata-only video remains readyState=1 until playback begins.

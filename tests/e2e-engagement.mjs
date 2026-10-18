@@ -132,7 +132,7 @@ try {
   const presenter = await shared.newPage(), audience = await shared.newPage();
   presenter.on("pageerror", (e) => { console.log("presenter pageerror: " + e); failures.push("presenter pageerror"); });
   await audience.goto(`${base}/#audience`);
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#open-vote");
   await presenter.click("#open-vote");
   const frame = presenter.frameLocator("#vote-iframe");

@@ -30,7 +30,7 @@ const cdp = await context.newCDPSession(presenter);
 const heap = async () => { await cdp.send("HeapProfiler.collectGarbage"); await cdp.send("HeapProfiler.collectGarbage"); return (await cdp.send("Runtime.getHeapUsage")).usedSize; };
 try {
   await audience.goto(`${base}/#audience`); await audience.waitForSelector("#slide-img");
-  await presenter.goto(`${base}/#presenter`); await presenter.waitForSelector("#meta");
+  await presenter.goto(`${base}/?dev=1#presenter`); await presenter.waitForSelector("#meta");
   await presenter.waitForTimeout(1500);
   const before = await stats(presenter), heapBefore = await heap();
 

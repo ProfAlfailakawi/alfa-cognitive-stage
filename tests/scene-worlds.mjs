@@ -34,6 +34,7 @@ const samples = {
   compare: [["محاضرة | تفاعل", "حفظ | فهم"], ["أ | ب", "ج | د", "هـ | و", "ز | ح", "ط | ي"]],
   quote: [[long, "د. أحمد"], ["جملة قصيرة"]],
   tour: [["افتح البرنامج", "نزّل الملف", "جرّب النكهة"], ["أ", "ب"], ["١", "٢", "٣", "٤", "٥", "٦", long]],
+  dialogue: [["الطالب | مو فاهم", "المعلم | راجع الشرح"], ["أ", "ب", "ج", "د", "هـ", "و"], ["الطالب | " + long, "المعلم | " + long, "الطالب | شكراً"]],
   kinetic: [["أول شي | ادخل Claude", "أو ارفع | ملف البوربوينت", "وبعدها | انسخ البرومبت"], ["أ", "ب"], ["١ | " + long, "٢", "٣", "٤", "٥", "٦"]],
 };
 const picks = ["copper-eclipse", "ivory-thesis", "lunar-glass", "emerald-atlas", "desert-bloom", "black-margin", ...WORLDS.filter((_, i) => i % 5 === 0).map((w) => w.id)];
@@ -48,6 +49,7 @@ for (const id of picks) for (const [type, sets] of Object.entries(samples)) for 
     const shape = [...svg.slice(0, m.index).matchAll(/<(?:circle|rect)\b[^>]*>/g)].at(-1)?.[0] || "";
     assert.ok(!/fill="url\(#sk-(?:blue|gold)\)"/.test(shape), `${where}: text on a gradient`);
   }
+  if (type === "dialogue") { for (const l of lines) assert.ok(svg.includes(`data-full="${l}"`), `${where}: turn kept`); continue; }
   if (type === "kinetic" || type === "tour") { for (const l of lines) assert.ok(svg.includes(`data-full="${l}"`), `${where}: phrase kept`); assert.ok(svg.includes("k-static") && svg.includes("k-last")); continue; }
   if (type === "quote") assert.ok(svg.includes(`data-full`) || svg.includes(lines[0].split(" ")[0]), `${where}: the sentence is drawn`);
   else for (const raw of lines.flatMap((l) => (type === "compare" ? l.split("|").map((x) => x.trim()) : [l]))) {
@@ -71,8 +73,8 @@ assert.throws(() => validateSpec({ type: "kinetic", title: "x", lines: ["1", "2"
 assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], theme: "world:copper-eclipse" }).theme, "world:copper-eclipse");
 assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], theme: "world:no-such-world" }).theme, undefined);
 assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], theme: "world:__proto__" }).theme, undefined);
-assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], variant: 3 }).variant, 3);
-for (const bad of [4, -1, 1.5, "1", null, NaN]) assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], variant: bad }).variant, undefined, `variant ${bad} is ignored`);
+assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], variant: 4 }).variant, 4);
+for (const bad of [5, -1, 1.5, "1", null, NaN]) assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], variant: bad }).variant, undefined, `variant ${bad} is ignored`);
 assert.equal(validateSpec({ type: "bars", title: "x", lines: ["أ | 10%", "ب | 20%"], variant: 1 }).variant, undefined, "types with one layout ignore variant");
 assert.equal(validateSpec({ type: "quote", title: "x", lines: ["ا".repeat(300)] }).lines[0].length, 260);
 assert.throws(() => validateSpec({ type: "quote", title: "x", lines: [] }));

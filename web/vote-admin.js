@@ -288,10 +288,11 @@ $("save-token").addEventListener("click", () => {
   enter();
 });
 $("new-session").addEventListener("click", () => newSession().catch((e) => ($("poll-msg").textContent = e.message)));
-$("add-poll").addEventListener("click", async () => {
+// Adds the question typed (or drafted from the lecturer's speech) in the form. Returns the new poll, or null.
+async function addPoll() {
   const options = $("q-opts").value.split("\n").map((s) => s.trim()).filter(Boolean);
   try {
-    await call("POST", `/sessions/${code}/polls`, {
+    const { poll } = await call("POST", `/sessions/${code}/polls`, {
       question: $("q-text").value, options, allowChange: $("q-change").checked,
       kind: $("q-kind").value, objective: $("q-objective").value,
     });
@@ -300,18 +301,56 @@ $("add-poll").addEventListener("click", async () => {
     $("q-opts").value = "";
     $("poll-msg").textContent = "تمت إضافة السؤال.";
     await refresh();
+    return poll;
   } catch (err) {
     $("poll-msg").textContent = err.message;
+    return null;
   }
-});
+}
+$("add-poll").addEventListener("click", addPoll);
+
+// Spoken poll commands from the lecturer's page (no typing): open the drafted question, close it, reveal results.
+async function voicePoll(action) {
+  const reply = (ok, note) => window.parent.postMessage({ alfaVoicePollResult: { action, ok, note } }, location.origin);
+  try {
+    if (!code) await newSession();
+    const polls = (latestPollState?.polls || []);
+    if (action === "poll-open") {
+      const question = $("q-text").value.trim();
+      if (question.length < 3) return reply(false, "ما سمعت سؤالاً بعد. اطرح سؤالك على الطلبة أولاً.");
+      // A question without choices becomes a word cloud (one word per box), so nothing is invented as an option.
+      if (!$("q-opts").value.trim()) { $("q-kind").value = "words"; $("q-opts").hidden = true; }
+      const poll = await addPoll();
+      if (!poll) return reply(false, $("poll-msg").textContent);
+      await call("POST", `/sessions/${code}/polls/${poll.id}/open`);
+      await refresh();
+      return reply(true, poll.kind === "words" ? "فُتح السؤال كسحابة كلمات." : "فُتح السؤال للطلبة.");
+    }
+    const open = polls.find((p) => p.status === "open"), last = open || polls[polls.length - 1];
+    if (!last) return reply(false, "لا يوجد سؤال.");
+    if (action === "poll-close") {
+      if (!open) return reply(false, "لا يوجد سؤال مفتوح.");
+      await call("POST", `/sessions/${code}/polls/${open.id}/close`);
+    } else if (action === "poll-reveal") await call("POST", `/sessions/${code}/polls/${last.id}/reveal`);
+    await refresh();
+    reply(true, action === "poll-close" ? "أُغلق السؤال." : "ظهرت النتائج.");
+  } catch (err) { reply(false, err.message); }
+}
 
 if (adminToken) {
   $("token").value = adminToken;
   enter();
+} else {
+  // No typing: this machine's own page receives the token from the local server.
+  fetch("/api/local-token", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+    if (d?.token) { adminToken = d.token; $("token").value = adminToken; enter(); }
+  }).catch(() => {});
 }
 
 window.addEventListener("message", (event) => {
   if (event.origin !== location.origin || event.source !== window.parent) return;
+  const voice = event.data?.alfaVoicePoll;
+  if (typeof voice === "string" && /^poll-(?:open|close|reveal)$/.test(voice)) { void voicePoll(voice); return; }
   const text = event.data?.alfaQuestionDraft;
   if (typeof text !== "string" || !text.trim()) return;
   const question = text.trim().slice(0, 200);

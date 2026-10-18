@@ -53,7 +53,7 @@ try {
   const slideResponse = await fetch(`${base}/bundles/${bundleId}/slides/001.png`);
   check("slide images are cached privately for faster navigation",
     (slideResponse.headers.get("cache-control") || "").includes("private, max-age=600"));
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#meta");
   check("presenter shows slide 1 of N", (await presenter.textContent("#meta")).includes(`1 من ${manifest.slideCount}`));
 
@@ -78,7 +78,7 @@ try {
   const separateContext = await browser.newContext();
   const isolated = await separateContext.newPage();
   isolated.on("pageerror", (err) => failures.push("isolated profile: " + err));
-  await isolated.goto(`${base}/#presenter`);
+  await isolated.goto(`${base}/?dev=1#presenter`);
   await isolated.waitForSelector("#director-memory-sync");
   check("new lecturer profile has no cross-lecture index at first",
     !(await isolated.evaluate(() => localStorage.getItem("alfa-approved-scenes-cross-v1") || ""))
@@ -104,26 +104,7 @@ try {
     restored.changed === null);
   await separateContext.close();
 
-  const unauthorizedUsage = await fetch(base + "/api/director/status");
-  check("cloud consumption summary is lecturer-authenticated", unauthorizedUsage.status === 401);
-  const authorizedUsage = await fetch(base + "/api/director/status", {
-    headers: { "X-Admin-Token": ADMIN }
-  });
-  const usageReport = await authorizedUsage.json();
-  check("cloud consumption summary starts with no calls and a zero estimated USD cost",
-    authorizedUsage.status === 200 && usageReport.callsUsed === 0 &&
-    usageReport.inputTokens === 0 && usageReport.costUsd === 0 && usageReport.costIsEstimate === true &&
-    usageReport.capUsd === 0.25 && usageReport.pricing?.verifiedAt &&
-    usageReport.scope === "server-process" && usageReport.daily?.healthy === true &&
-    usageReport.daily.callsUsed === 0 && usageReport.daily.scope === "utc-day");
   await presenter.fill("#director-admin-token", ADMIN);
-  await presenter.check("#director-cloud");
-  await presenter.waitForFunction(() => document.querySelector("#director-usage")?.textContent
-    ?.includes("غير مجهزة"));
-  check("lecturer sees cloud availability in existing director panel",
-    (await presenter.locator("#director-usage").textContent()).includes("غير مجهزة"));
-  await presenter.uncheck("#director-cloud");
-  await presenter.locator("#director-cloud").evaluate((el) => el.blur()); // Release focus so slide hotkeys work.
 
 
   await audience.goto(`${base}/#audience`);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { interpretSpeech, eligibleForCloud, normalizeArabic } from "../web/director-core.js";
+import { interpretSpeech, normalizeArabic } from "../web/director-core.js";
 import { createDirectorBrain } from "../web/director-brain.js";
 
 assert.equal(normalizeArabic("٦٨٪"), "68%");
@@ -29,9 +29,6 @@ assert.equal(interpretSpeech("بقولكم قصة عن شخص كان يلعب ك
 assert.equal(interpretSpeech("الفرق بين الألعاب التعليمية والترفيهية").kind, "compare");
 assert.equal(interpretSpeech("تتوقعون شنو راح يصير؟").kind, "question");
 assert.equal(interpretSpeech("نشرح المقدمة اليوم"), null);
-assert.equal(eligibleForCloud(stat, "في دراسة ذكرت أن ٦٨٪"), false);
-assert.equal(eligibleForCloud(interpretSpeech("بقولكم قصة مؤثرة عن شخص"), "بقولكم قصة مؤثرة عن شخص"), true);
-assert.equal(eligibleForCloud(interpretSpeech("زين نرجع لموضوعنا"), "زين نرجع لموضوعنا"), false);
 assert.equal(interpretSpeech("ذكرت الدراسة نسبة 68% عفواً أقصد 86%")?.spec?.lines[0],"86%");
 assert.equal(interpretSpeech("ارتفعت النسبة من 30% إلى 70%")?.kind,"compare");
 assert.equal(interpretSpeech("وصلت نسبة المشاركة إلى ٧٤ بالمية")?.spec?.lines[0],"74%");
@@ -65,5 +62,17 @@ console.log("director-core: all checks passed");
   assert.deepEqual(b.spec.lines, ["النسبة الأولى | 25%", "في المحاضرة التقليدية | 60%"]);
   t += 40000; brain.observe("وبناء على الدراسة فهناك ٢٥٪ مقارنة مع", { slide: { index: 2 } }); t += 30000;
   assert.notEqual(brain.observe("ستين بالمية في المحاضرة", { slide: { index: 2 } }).kind, "bars", "too late: no pairing after 25 s");
+}
+// a verbal comparison without numbers is built locally (no cloud) from the lecturer's two clauses, and only proposed
+{
+  const brain = (t) => createDirectorBrain().observe(t, { slide: { index: 1 } });
+  const v = brain("التعلم النشط فيه نقاش والمحاضرة فيها استماع");
+  assert.equal(v.kind, "compare"); assert.equal(v.action, "propose");
+  assert.deepEqual(v.spec.lines, ["التعلم النشط فيه نقاش | المحاضرة فيها استماع"]);
+  assert.equal(brain("هذا فيه شي").spec, null); assert.equal(brain("الطلاب فيه كلام كثير وانا اشرح").spec, null, "one clause is never a comparison");
+  const d = brain("قال الطالب مو فاهم فردت عليه المعلمة راجع الشرح وقال الطالب تمام شكراً");
+  assert.equal(d.kind, "dialogue"); assert.equal(d.action, "propose");
+  assert.deepEqual(d.spec.lines, ["الطالب | مو فاهم", "المعلمة | راجع الشرح", "الطالب | تمام شكراً"]);
+  assert.equal(brain("قال الطالب مو فاهم").spec, null, "a single reported sentence is not a dialogue");
 }
 console.log("director: stat captions, comparisons and hanging comparisons passed");

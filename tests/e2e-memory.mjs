@@ -36,7 +36,7 @@ try {
   check("the whole library can be erased", all.removed >= 1 && (await (await api("/api/memory/library")).json()).scenes.length === 0);
 
   // ---- preference learning: one decline changes nothing, repeated declines quiet only that type ----
-  await page.goto(`${base}/#presenter`);
+  await page.goto(`${base}/?dev=1#presenter`);
   await page.waitForSelector("#director-box");
   await page.selectOption("#director-mode", "safe");
   await page.locator("#director-box details").evaluate((d) => { d.open = true; });

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = mkdtempSync(join(tmpdir(), "alfa-guest-"));
 const env = { ...process.env, VOTES_FILE: join(dir, "votes.json"), SCENES_FILE: join(dir, "scenes.json"), LIBRARY_FILE: join(dir, "library.json"),
-  QUESTION_BANK_FILE: join(dir, "question-bank.json"), DIRECTOR_USAGE_FILE: join(dir, "usage.json"), OPENAI_API_KEY: "" };
+  QUESTION_BANK_FILE: join(dir, "question-bank.json"), DIRECTOR_USAGE_FILE: join(dir, "usage.json") };
 delete env.ADMIN_TOKEN; // a fresh token for the guest
 const child = spawn(process.execPath, [join(root, "server/server.mjs")], { env, stdio: "inherit" });
 let cleaned = false;

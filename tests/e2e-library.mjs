@@ -40,7 +40,7 @@ try {
   await audience.goto(`${base}/#audience`);
   await audience.waitForSelector("#slide-img");
 
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#library-drawer");
   await presenter.fill("#director-admin-token", ADMIN);
   await presenter.locator("#director-admin-token").press("Tab");

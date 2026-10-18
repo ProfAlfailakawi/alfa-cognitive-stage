@@ -41,7 +41,7 @@ async function open(options = {}) {
   const presenter = await context.newPage(), audience = await context.newPage();
   for (const [n, p] of [["presenter", presenter], ["audience", audience]]) p.on("pageerror", (e) => { console.log(n + " pageerror: " + e); failures.push(n + " pageerror"); });
   await audience.goto(`${base}/#audience`);
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#director-start");
   return { context, presenter, audience };
 }

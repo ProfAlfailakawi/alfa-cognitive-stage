@@ -20,7 +20,7 @@ import { clockState, PLANNED_CHOICES } from "./lecture-clock.js";
 import { runRehearsal } from "./rehearsal.js";
 import { mountInsight } from "./insight-ui.js";
 import { mountFieldTools } from "./field-ui.js";
-import { interpretNav } from "./voice-nav.js";
+import { interpretNav, interpretPoll } from "./voice-nav.js";
 import { THEMES } from "./scene-theme.js";
 import { styleScene } from "./scene-stylist.js";
 import { createFieldRecorder } from "./field-recorder.js";
@@ -32,6 +32,8 @@ const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
 const role = location.hash === "#audience" ? "audience" : "presenter";
+// Typing tools (manual scene form, typed test sentence, token box) exist only for developers/tests: ?dev=1. The lecturer works by voice.
+const DEV = new URLSearchParams(location.search).has("dev");
 const audienceRequestId = role === "audience"
   ? Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("")
   : null;
@@ -55,7 +57,7 @@ let sessionLog = { slide() {}, scene() {}, declined() {}, video() {}, digression
 const neighboringSlides = new Map();
 const directorRuntime = {
   speech: null, pending: null, lastKey: "", lastAt: 0,
-  cloudSeq: 0, activeOverlay: false, questionDraft: null,
+  activeOverlay: false, questionDraft: null,
   mediaCheckAbort: null,
 };
 
@@ -263,7 +265,6 @@ function showSlide(index, step = 0) {
   if (role === "presenter") sessionLog.slide(index, state.step);
   if (role === "presenter") insight?.slideChanged();
   if (role === "presenter") {
-    directorRuntime.cloudSeq++;
     directorRuntime.pending = null;
     brain.resetSlide();
   }
@@ -311,7 +312,7 @@ function renderPresenter() {
           <button class="emergency" id="home" aria-label="عودة فورية إلى العرض الأصلي">عودة فورية (E)</button>
           <button id="open-audience">فتح نافذة الطلبة</button>
           <button id="open-vote">التصويت</button>
-          <button id="toggle-info">إنفوجرافيك</button>
+          ${DEV ? '<button id="toggle-info">إنفوجرافيك</button>' : ""}
           <select id="lecture-picker" aria-label="اختيار المحاضرة"></select>
         </div>
       </div>
@@ -331,9 +332,9 @@ function renderPresenter() {
             <button id="project-poll" type="button">إظهار QR والسؤال للطلبة</button>
             <button id="hide-poll" type="button">إخفاء التصويت عن الشاشة</button>
           </div>
-          <iframe id="vote-iframe" src="/vote-admin.html?embed=1" title="لوحة إدارة التصويت" loading="lazy"></iframe>
+          <iframe id="vote-iframe" src="/vote-admin.html?embed=1" title="لوحة إدارة التصويت"></iframe>
         </details>
-                <form class="info-form" id="info-form" hidden>
+${DEV ? `<form class="info-form" id="info-form" hidden>
           <select id="info-type" aria-label="نوع الإنفوجرافيك">
             <option value="stat">بطاقة إحصائية</option>
             <option value="compare">مقارنة (الأول | الثاني)</option>
@@ -356,7 +357,7 @@ function renderPresenter() {
             <button id="info-hide" type="button">إخفاء</button>
             <span class="meta" id="info-msg" aria-live="polite"></span>
           </div>
-        </form>
+        </form>` : ""}
         <section class="director-box" id="director-box">
           <div class="label">المخرج الخفي — تجريبي</div>
           <div class="director-actions">
@@ -372,9 +373,7 @@ function renderPresenter() {
           <label class="director-cloud"><input type="checkbox" id="director-nav" checked /> التنقل بالصوت («الشريحة التالية»، «السابقة»، «روح للشريحة خمسة»)</label>
           <label class="director-cloud">ألوان المشاهد <select id="scene-theme" aria-label="ألوان المشاهد"><option value="auto">ذكي — عوالم متنوعة حسب كلامك (فاتح، موصى به)</option><option value="auto-all">ذكي — فاتح وداكن</option>${Object.entries(THEMES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}</select></label>
           <button type="button" id="nav-undo" hidden>تراجع عن آخر انتقال صوتي</button>
-          <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
-          <p class="meta" id="director-usage">السحابة مغلقة. المشاهد المحلية بلا API.</p>
-          <input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر من Terminal (للذاكرة والتصويت وAPI)" />
+          ${DEV ? '<input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر" />' : ""}
           <button type="button" id="director-memory-sync">مزامنة المشاهد المعتمدة محلياً</button>
           <button type="button" id="director-forget-dismissals">مسح الاقتراحات المتجاهلة لهذه المحاضرة</button>
           <p class="meta" id="director-status" aria-live="polite">المايك متوقف. لا توجد طلبات API.</p>
@@ -387,16 +386,15 @@ function renderPresenter() {
               <button type="button" id="director-reject">تجاهل</button>
             </div>
           </div>
-          <details><summary>أدوات متقدمة: اختبار نصّي وإدارة الذاكرة</summary>
-            <input id="director-test-text" type="text" maxlength="950" placeholder="في دراسة ذكرت أن 68% من الطلبة..." />
-            <button id="director-test-run" type="button">اختبر العبارة</button>
+          <details><summary>إدارة الذاكرة</summary>
+            ${DEV ? `<input id="director-test-text" type="text" maxlength="950" placeholder="جملة تجريبية" /><button id="director-test-run" type="button">اختبر العبارة</button>` : ""}
             <p class="meta" id="director-taste" aria-live="polite"></p>
             <div class="director-actions">
               <button type="button" id="director-clear-taste">نسيان تفضيلات الأسلوب</button>
               <button type="button" id="director-clear-scenes">مسح مشاهد هذه المحاضرة المحفوظة</button>
               <button type="button" id="director-clear-all-scenes">مسح كل ذاكرة المشاهد</button>
             </div>
-          </details>
+          </details> : ""}
         </section>
         <div><div class="label">ملاحظات المحاضر</div></div>
         <div class="notes" id="notes"></div>
@@ -431,14 +429,17 @@ function renderPresenter() {
     clearPollScreen();
     send({ type: "poll-projection", data: { visible: false } });
   };
-  document.getElementById("toggle-info").onclick = () => {
-    const form = document.getElementById("info-form");
-    form.hidden = !form.hidden;
-  };
-  document.getElementById("info-form").addEventListener("submit", (event) => event.preventDefault()); // no inline handlers (CSP)
-  document.getElementById("info-show").onclick = showInfographicFromForm;
+  if (DEV) {
+    document.getElementById("toggle-info").onclick = () => {
+      const form = document.getElementById("info-form");
+      form.hidden = !form.hidden;
+    };
+    document.getElementById("info-form").addEventListener("submit", (event) => event.preventDefault()); // no inline handlers (CSP)
+    document.getElementById("info-show").onclick = showInfographicFromForm;
+  }
   fillLecturePicker();
-  document.getElementById("info-hide").onclick = () => {
+  const infoHide = document.getElementById("info-hide");
+  if (infoHide) infoHide.onclick = () => {
     if (returnStack.active()) backOneLevel(); else hideInfographic(true);
   };
   document.getElementById("open-audience").onclick = () =>
@@ -450,8 +451,7 @@ function renderPresenter() {
   mountLibraryPanel(document.getElementById("library-mount"), {
     getToken: directorAdminToken, getBundle: () => state.bundle, getManifest: () => state.manifest, sessionLog,
     getPollCode: () => { try { return new URL(pollScreen.url).searchParams.get("s"); } catch { return null; } },
-    getUsage: async () => { const r = await fetch("/api/director/status", { headers: { "X-Admin-Token": directorAdminToken() } }); return r.ok ? r.json() : null; },
-    onOpen: (bundle) => { sessionLog.end(); location.search = "?bundle=" + bundle; },
+    onOpen: (bundle) => { sessionLog.end(); location.search = "?bundle=" + bundle + (DEV ? "&dev=1" : ""); },
   });
   insight = mountInsight(document.getElementById("insight-mount"), {
     getToken: directorAdminToken, getBundle: () => state.bundle, getManifest: () => state.manifest,
@@ -632,7 +632,7 @@ async function fillLecturePicker() {
   }
   picker.onchange = () => {
     // Switching lectures reloads both windows on the chosen bundle; the audience tab must be reopened.
-    location.search = `?bundle=${picker.value}`;
+    location.search = `?bundle=${picker.value}${DEV ? "&dev=1" : ""}`;
   };
 }
 
@@ -873,59 +873,6 @@ function revealDirectorScene(proposal, source = "approved") {
     return false;
   }
 }
-async function refreshDirectorUsage() {
-  const target = document.getElementById("director-usage");
-  if (!target) return;
-  if (!document.getElementById("director-cloud")?.checked) {
-    target.textContent = "السحابة مغلقة. المشاهد المحلية بلا API.";
-    return;
-  }
-  const token = directorAdminToken();
-  if (!token) { target.textContent = "عرض الاستهلاك يحتاج رمز المحاضر."; return; }
-  try {
-    const response = await fetch("/api/director/status", { headers: { "X-Admin-Token": token } });
-    if (!response.ok) throw Error("status unavailable");
-    const info = await response.json();
-    if (!document.getElementById("director-cloud")?.checked) return;
-    const daily = info.daily;
-    if (info.available && daily && !daily.healthy) {
-      target.textContent = "تعذر قراءة سجل سقف API اليومي؛ أُوقفت الطلبات المدفوعة لحماية التكلفة.";
-      return;
-    }
-    const money = info.costUsd === null ? "لا سعر موثوق للنموذج؛ الطلبات المدفوعة موقوفة"
-      : "تقدير اليوم $" + info.costUsd.toFixed(4) + " من سقف $" + info.capUsd.toFixed(2) + " (تقدير لا فاتورة المزود)";
-    target.textContent = info.available
-      ? "السحابة اليوم (UTC): " + daily.callsUsed + "/" + daily.maxCalls +
-        " طلب، " + (daily.inputTokens + daily.outputTokens) + " توكن مبلّغ عنه" +
-        (daily.unknownUsageCalls ? "، " + daily.unknownUsageCalls + " طلب بتوكنات غير معروفة (محتسبة بأسوأ حالة)" : "") +
-        (daily.unreportedCalls ? "، " + daily.unreportedCalls + " طلب لم تكتمل بياناته" : "") +
-        " — " + money + (info.cacheHits ? " — " + info.cacheHits + " إجابة من الذاكرة بلا تكلفة" : "")
-      : "السحابة غير مجهزة بمفتاح API؛ العرض المحلي مستمر.";
-  } catch { target.textContent = "تعذر قراءة عداد API المحلي."; }
-}
-async function requestDirectorAI(text, seq) {
-  const token = directorAdminToken();
-  if (!token) { setDirectorStatus("API يحتاج رمز المحاضر من شاشة Terminal."); return; }
-  try {
-    const current = state.slides[state.index - 1] || {};
-    const response = await fetch("/api/director/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Admin-Token": token },
-      body: JSON.stringify({ utterance: text.slice(0, 950),
-        slideText: String(current.text || "").slice(0, 1600),
-        notes: String(current.notes || "").slice(0, 500) }),
-    });
-    const data = await response.json();
-    void refreshDirectorUsage();
-    if (seq !== directorRuntime.cloudSeq) return; // Topic or slide changed.
-    if (!response.ok) { setDirectorStatus(data.error || "تعذر تحليل المخرج"); return; }
-    if (!data.proposal?.spec) { setDirectorStatus("لا يوجد مشهد إضافي يستحق الظهور."); return; }
-    showDirectorProposal({ ...data.proposal, utterance: text }, data.proposal.reason || "مشهد من التحليل السحابي — يحتاج موافقتك.");
-  } catch (err) {
-    void refreshDirectorUsage();
-    if (seq === directorRuntime.cloudSeq) setDirectorStatus("الاتصال السحابي غير متاح؛ العرض مستمر.");
-  }
-}
 function directorContext() {
   const slide = state.slides[state.index - 1] || {};
   return { slide: { index: state.index, text: String(slide.text || ""), notes: String(slide.notes || "") },
@@ -966,6 +913,13 @@ function navEnabled() {
   const box = document.getElementById("director-nav");
   return !box || box.checked;
 }
+// Spoken poll control. The question itself was drafted from what the lecturer asked aloud; nothing is typed.
+function handleVoicePoll(command) {
+  if (command === "poll-hide") { document.getElementById("hide-poll")?.click(); setDirectorStatus("أُخفي التصويت عن الشاشة."); return; }
+  const frame = document.getElementById("vote-iframe")?.contentWindow;
+  if (!frame) { setDirectorStatus("لوحة التصويت غير جاهزة."); return; }
+  frame.postMessage({ alfaVoicePoll: command }, location.origin);
+}
 function handleVoiceNav(command) {
   if (videoEls.some((el) => !el.paused)) { setDirectorStatus("الفيديو يعمل؛ لم أنفّذ أمر التنقل الصوتي."); return; }
   const key = command.kind + ":" + (command.index ?? "");
@@ -994,6 +948,8 @@ function receiveDirectorSpeech(text, meta = {}) {
   if (!raw) return;
   const navCommand = navEnabled() ? interpretNav(raw) : null;
   if (navCommand) { handleVoiceNav(navCommand); return; }
+  const pollCommand = navEnabled() ? interpretPoll(raw) : null;
+  if (pollCommand) { handleVoicePoll(pollCommand); return; }
   // A return command already executed from a stable interim transcript must not run twice.
   const early = directorRuntime.interimReturn;
   if (early && Date.now() - early.at < 5000 && brain.peekReturn(raw)) { directorRuntime.interimReturn = null; return; }
@@ -1007,7 +963,6 @@ function receiveDirectorSpeech(text, meta = {}) {
   };
   const last = document.getElementById("director-last");
   if (last) last.textContent = "سمعت: " + raw.slice(0, 160);
-  directorRuntime.cloudSeq++;
   const context = directorContext();
   const decision = brain.observe(raw, context);
   const heardId = recorder?.recording() ? recorder.utterance({ text: raw, slide: state.index, engine: meta.engine }) : null;
@@ -1023,7 +978,6 @@ function receiveDirectorSpeech(text, meta = {}) {
     setDirectorStatus("عدتَ إلى موضوع سابق: " + decision.topic.returnedTo);
   }
   if (decision.action === "return" || decision.action === "return-level") {
-    directorRuntime.cloudSeq++;
     clearDirectorProposal();
     if (directorRuntime.activeOverlay || returnStack.active()) {
       if (decision.action === "return-level") backOneLevel(); else goMain();
@@ -1064,7 +1018,7 @@ function receiveDirectorSpeech(text, meta = {}) {
     setDirectorStatus("وضع الظل: اكتُشف " + decision.kind + " دون تغيير شاشة الطلبة.");
     return;
   }
-  // No local scene: explain what was noticed, then try memory, then (rarely) the optional cloud.
+  // No local scene: explain what was noticed, then try the approved-scene memory.
   if (decision.kind === "question") postPollDraft(raw);
   const names = { story: "بداية قصة أو استطراد", compare: "فرصة مقارنة تعليمية", question: "سؤال موجه للطلبة",
     concept: "تعريف مفهوم", example: "مثال", timeline: "تسلسل زمني" };
@@ -1076,11 +1030,6 @@ function receiveDirectorSpeech(text, meta = {}) {
     showDirectorProposal({ spec: saved.spec, utterance: raw, fromMemory: true },
       noticed ? "مشهد محفوظ — لا يحتاج API." : "مشهد محفوظ سابقاً — بلا تكلفة API. أكد ظهوره أمام الطلبة.");
     return;
-  }
-  if (decision.cloudText && document.getElementById("director-cloud")?.checked) {
-    const seq = ++directorRuntime.cloudSeq;
-    brain.noteCloudRequest();
-    requestDirectorAI(decision.cloudText, seq); // Explicitly enabled, billed API; never auto-displays response.
   }
 }
 function renderVoiceHealth() {
@@ -1107,11 +1056,6 @@ function setupDirector() {
     onUtterance: receiveDirectorSpeech,
     onStatus: (message) => {
       setDirectorStatus(message);
-      // No microphone service: bring the typed fallback forward instead of leaving the lecturer stranded.
-      if (/لا يوجد إنترنت|not-allowed|service-not-allowed/.test(message)) {
-        const details = document.querySelector("#director-box details");
-        if (details) details.open = true;
-      }
     },
     onDiagnostics: (health) => { lastVoiceHealth = health; renderVoiceHealth(); },
     onStableInterim: (transcript) => {
@@ -1119,7 +1063,6 @@ function setupDirector() {
       const kind = brain.peekReturn(transcript);
       if (!kind || !(directorRuntime.activeOverlay || returnStack.active())) return;
       directorRuntime.interimReturn = { at: Date.now() };
-      directorRuntime.cloudSeq++;
       clearDirectorProposal();
       if (kind === "return-level") backOneLevel(); else goMain();
       setDirectorStatus("فُهمت العودة من المعاينة المستقرة قبل اكتمال الجملة.");
@@ -1154,7 +1097,6 @@ function setupDirector() {
         fingerprint: fingerprint(proposal.utterance) });
       refreshTasteLine();
     }
-    directorRuntime.cloudSeq++; // Ignore any outdated paid analysis still in flight.
     clearDirectorProposal();
     setDirectorStatus(saved ? "تم تجاهل الاقتراح وتذكّر القرار محلياً لهذه الشريحة (14 يوماً)." : "تم تجاهل الاقتراح لهذه المرة.");
   };
@@ -1187,17 +1129,24 @@ function setupDirector() {
     setDirectorStatus((local ? "مُسحت كل المشاهد من المتصفح " : "تعذر المسح المحلي ") + where + ".");
   };
   refreshTasteLine();
-  document.getElementById("director-cloud").addEventListener("change", () => void refreshDirectorUsage());
-  document.getElementById("director-admin-token").addEventListener("change", () => {
+  document.getElementById("director-admin-token")?.addEventListener("change", () => {
     if (directorAdminToken()) void syncApprovedScenes();
-    if (document.getElementById("director-cloud")?.checked) void refreshDirectorUsage();
   });
-  if (sessionStorage.getItem("alfa-admin-token")) void syncApprovedScenes();
+  // The lecturer never types the token: this machine's own page receives it from the local server (never from a phone or tunnel).
+  void (async () => {
+    if (!sessionStorage.getItem("alfa-admin-token")) {
+      try {
+        const r = await fetch("/api/local-token", { cache: "no-store" });
+        if (r.ok) sessionStorage.setItem("alfa-admin-token", (await r.json()).token);
+      } catch { /* the token box (dev) or Terminal token still works */ }
+    }
+    if (directorAdminToken()) void syncApprovedScenes();
+  })();
   setDirectorStatus("مكتبة المشاهد المعتمدة لهذه المحاضرة: " +
     countSavedScenes(state.bundle) + " — الاقتراحات المتجاهلة: " +
     countRejectedProposals(state.bundle) + " — الاستماع متوقف.");
-  document.getElementById("director-test-run").onclick = () => receiveDirectorSpeech(
-    document.getElementById("director-test-text").value);
+  const testRun = document.getElementById("director-test-run");
+  if (testRun) testRun.onclick = () => receiveDirectorSpeech(document.getElementById("director-test-text").value);
 }
 
 function clearPollScreen() {
@@ -1269,6 +1218,12 @@ function receiveVoteAdminMessage(event) {
   const iframe = document.getElementById("vote-iframe");
   if (!iframe || event.source !== iframe.contentWindow) return;
   const data = event.data;
+  if (data?.alfaVoicePollResult) {
+    const { action, ok, note } = data.alfaVoicePollResult;
+    setDirectorStatus(String(note || (ok ? "تم." : "تعذّر تنفيذ الأمر.")).slice(0, 160));
+    if (ok && (action === "poll-open" || action === "poll-reveal") && !pollScreen.visible) setTimeout(() => document.getElementById("project-poll")?.click(), 700);
+    return;
+  }
   if (!data || data.alfaVoting !== "status") return;
   let url;
   try { url = new URL(data.url); } catch { return; }

@@ -55,7 +55,7 @@ try {
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
-  await page.goto(`${base}/?bundle=${id}#presenter`);
+  await page.goto(`${base}/?bundle=${id}&dev=1#presenter`);
   await page.waitForSelector("#meta");
   const meta = () => page.textContent("#meta");
   assert.match(await meta(), /1 من 3.*حركة 0 من 2/);

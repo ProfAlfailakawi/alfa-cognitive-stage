@@ -5,7 +5,6 @@ import { createReadStream, promises as fs } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnvFile } from "node:process";
-import { analyzeWithAI, directorUsageStatus } from "./director-ai.mjs";
 import { importLecture, prerequisitesStatus } from "./lecture-import.mjs";
 import { createSceneStore, SceneStoreError } from "./scene-store.mjs";
 import { allowedLectureClient, requestOrigin, studentSurfaceAllows } from "./security.mjs";
@@ -268,14 +267,14 @@ async function handleApi(req, res, path) {
     const publicUrl = process.env.PUBLIC_URL || (ip ? (tls ? "https://" : "http://") + ip + ":" + port : null);
     return sendJson(res, 200, { publicUrl });
   }
-  if (resource === "director" && code === "status" && req.method === "GET") {
-    requireAdmin(req);
-    return sendJson(res, 200, directorUsageStatus());
-  }
-  if (resource === "director" && code === "analyze" && req.method === "POST") {
-    requireAdmin(req);
-    try { return sendJson(res, 200, await analyzeWithAI(await readBody(req, 12000))); }
-    catch (err) { return sendJson(res, err.status || 502, { error: err.message || "تعذر تحليل الكلام" }); }
+  // The lecturer's own page gets the token without typing. Only a same-origin request from this machine (never a phone,
+  // a tunnel, or another website in the lecturer's browser) can read it.
+  if (resource === "local-token" && !code && req.method === "GET") {
+    const site = req.headers["sec-fetch-site"];
+    if (requestOrigin(req.socket.remoteAddress, req.headers) !== "local" || (site !== undefined && site !== "same-origin" && site !== "none")) {
+      throw new VoteError("غير مصرح", 403);
+    }
+    return sendJson(res, 200, { token: adminToken });
   }
   if (resource === "admin" && code === "check" && req.method === "GET") {
     requireAdmin(req);

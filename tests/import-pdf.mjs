@@ -43,7 +43,7 @@ try {
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
-  await page.goto(`${base}/?bundle=${id}#presenter`);
+  await page.goto(`${base}/?bundle=${id}&dev=1#presenter`);
   await page.waitForSelector("#meta");
   assert.match(await page.textContent("#meta"), /1 من 4$/);
   await page.keyboard.press("ArrowRight");

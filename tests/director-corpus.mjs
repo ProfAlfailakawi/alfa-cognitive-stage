@@ -140,16 +140,13 @@ assert.equal(unwanted, 0, `${unwanted} unwanted intervention(s)`);
   assert.deepEqual(results, ["auto", "auto", "auto", "auto", "none", "none"]);
 }
 {
-  // Cloud is eligible only for opportunities without local data, rarely, and with enough spoken context.
+  // There is no cloud analysis: an opportunity without local data only yields a status note, never a request.
   let t = 20_000_000;
   const brain = createDirectorBrain({ now: () => t });
   const say = (x) => { t += 8000; return brain.observe(x, { slide: { index: 2 }, mode: "balanced" }); };
   const first = say("مرة واحد من الطلاب كان يلعب طول الليل ويسهر");
-  assert.ok(first.cloudText && first.cloudText.length >= 40, "story opportunity may ask the cloud when enabled");
-  brain.noteCloudRequest();
-  const second = say("وبعدين حصل له موقف غريب في الجامعة");
-  assert.equal(second.cloudText, null, "cooldown prevents repeated billed requests");
-  assert.equal(say("في دراسة طلعت إن 68 بالمية من الطلبة استفادوا").cloudText, null, "a local statistic never uses the cloud");
+  assert.equal(first.action, "none");
+  assert.equal("cloudText" in first, false, "no decision ever carries text meant for a paid service");
 }
 
 {

@@ -9,7 +9,6 @@ const WINDOW_MS = 60000;
 const MAX_WINDOW = 8;
 const STORY_MS = 75000;
 const GAP_MS = 15000;          // quiet period after any scene
-const CLOUD_GAP_MS = 45000;    // billed requests are rare by design
 const MAX_PER_SLIDE = 4;
 
 // ---- spoken Arabic numbers before a percent word: "خمسة وسبعين بالمية" -> 75 ----
@@ -119,6 +118,44 @@ function detectContrast(raw) {
   if (left.split(/\s+/).length < 3 || right.split(/\s+/).length < 3) return null;
   return { type: "compare", title: "مقارنة", lines: [`${left} | ${right}`] };
 }
+// "التعلم النشط فيه نقاش والمحاضرة فيها استماع": two clauses, each "<subject> <has/relies-on verb> <thing>", joined by و.
+// Both clauses are the lecturer's own words, shown as one comparison row; nothing is inferred or added.
+const HAS = /^(?:فيه|فيها|عنده|عندها|يعتمد|تعتمد|يحتاج|تحتاج|يركز|تركز|يتميز|تتميز|يعطي|تعطي|يمنح|تمنح)$/;
+function detectHasContrast(raw) {
+  const words = raw.trim().replace(CLAUSE_TRIM, "").split(/\s+/);
+  const verbAt = (from) => words.findIndex((w, i) => i >= from && HAS.test(normalizeArabic(w)));
+  const v1 = verbAt(1);
+  if (v1 < 1) return null;
+  const v2 = verbAt(v1 + 2);
+  if (v2 < 0) return null;
+  // the second subject starts at a word carrying the joining و, 1-4 words before the second verb
+  let k = -1;
+  for (let i = v2 - 1; i > v1 + 1 && v2 - i <= 4; i--) if (/^و\S{2,}/u.test(words[i]) || words[i] === "و") k = i;
+  if (k < 0) return null;
+  const left = words.slice(0, k).join(" "), right = [words[k].replace(/^و/u, ""), ...words.slice(k + 1)].filter(Boolean).join(" ");
+  if (left.split(" ").length < 3 || right.split(" ").length < 3 || words.length > 22) return null;
+  return { type: "compare", title: "مقارنة", lines: [`${trimClause(left)} | ${trimClause(right)}`] };
+}
+// Explicit reported speech: "قال الطالب مو فاهم فرديت عليه راجع الشرح". Each turn is the words that follow a speech verb, up to the next one.
+const SPEECH = /^(?:قال|قالت|يقول|تقول|سال|سالت|يسال|تسال|رد|ردت|يرد|ترد|اجاب|اجابت|يجيب|تجيب|فقال|فقالت|فرد|فردت|فاجاب)$/;
+function detectDialogue(raw) {
+  const words = raw.trim().replace(CLAUSE_TRIM, "").split(/\s+/);
+  if (words.length > 60) return null;
+  const marks = words.map((w, i) => (SPEECH.test(normalizeArabic(w).replace(/^و(?=\S{2,})/u, "")) ? i : -1)).filter((i) => i >= 0);
+  if (marks.length < 2 || marks.length > 6) return null;
+  const turns = marks.map((at, n) => {
+    const end = n + 1 < marks.length ? marks[n + 1] : words.length;
+    let body = words.slice(at + 1, end);
+    while (body.length && /^(?:و|ف|ثم)$/u.test(body.at(-1))) body.pop();
+    while (body.length > 2 && /^(?:عليه|عليها|عليهم|له|لها|لهم)$/u.test(normalizeArabic(body[0]))) body = body.slice(1);
+    let who = "";
+    if (body.length >= 3 && /^ال\S{2,}$/u.test(normalizeArabic(body[0]).replace(/^ال/, "ال")) ) { who = body[0]; body = body.slice(1); }
+    return { who, text: body.join(" ").replace(CLAUSE_TRIM, "") };
+  });
+  if (turns.some((t) => t.text.split(" ").length < 2 || t.text.length > 90)) return null;
+  const lines = turns.map((t) => (t.who ? `${t.who} | ${t.text}` : t.text));
+  return { type: "dialogue", title: "حوار", lines };
+}
 const YEAR = /(?:^|[\s(])((?:19|20)\d{2})(?=$|[\s،,.):])/g;
 function detectTimeline(raw) {
   const text = normalizeArabic(raw);
@@ -201,14 +238,14 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
   let topic = new Set();
   let topicStack = [];
   let offTopicStreak = 0;
-  let lastShownAt = 0, lastCloudAt = 0, lastKey = "", lastKeyAt = 0;
+  let lastShownAt = 0, lastKey = "", lastKeyAt = 0;
   let pendingStat = null; // "25% مقارنة مع…" left hanging, waiting for the second number
   const perSlide = new Map();
 
   function status(decision, why) { decision.why.push(why); return decision; }
   function blank(extra = {}) {
     return { action: "none", kind: null, spec: null, reason: "", confidence: 0, why: [], topic: { shifted: false, returnedTo: null },
-      cloudText: null, opportunity: null, ...extra };
+      opportunity: null, ...extra };
   }
   function trackTopic(text, d) {
     const words = keywords(text);
@@ -319,7 +356,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       const timeline = detectTimeline(spoken);
       if (timeline) found = { kind: "timeline", confidence: 0.9, spec: timeline, utterance: raw };
       else {
-        const contrast = detectContrast(spoken);
+        const contrast = detectContrast(spoken) || detectHasContrast(spoken);
         if (contrast) found = { kind: "compare", confidence: 0.86, spec: contrast, utterance: raw };
       }
     }
@@ -332,6 +369,10 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       else {
         const activity = detectActivity(spoken);
         if (activity) found = { kind: "activity", confidence: 0.84, spec: activity, utterance: raw };
+        else {
+          const dialogue = detectDialogue(spoken);
+          if (dialogue) found = { kind: "dialogue", confidence: 0.8, spec: dialogue, utterance: raw };
+        }
       }
     }
     if (!found) {
@@ -365,9 +406,6 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       if (!decision.spec) {
         decision.action = "none";
         decision.opportunity = decision.kind;
-        const wantsCloud = ["story", "compare", "concept", "example"].includes(decision.kind) &&
-          window.map((w) => w.text).join(" ").length >= 40 && t - lastCloudAt >= CLOUD_GAP_MS && !decision.topic.shifted;
-        if (wantsCloud) decision.cloudText = window.filter((w) => t - w.at < 25000).slice(-3).map((w) => w.text).join(" ").slice(0, 950);
         return status(decision, "فرصة بدون بيانات كافية لبناء مشهد محلي");
       }
       if (mode === "shadow") return status({ ...decision, action: "observe" }, "وضع الظل");
@@ -394,9 +432,8 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       lastShownAt = now();
       perSlide.set(slideIndex, (perSlide.get(slideIndex) || 0) + 1);
     },
-    noteCloudRequest() { lastCloudAt = now(); },
     resetSlide() { story = null; },
-    reset() { window = []; story = null; topic = new Set(); topicStack = []; perSlide.clear(); lastShownAt = 0; lastCloudAt = 0; },
+    reset() { window = []; story = null; topic = new Set(); topicStack = []; perSlide.clear(); lastShownAt = 0; },
     snapshot: () => ({ window: window.length, topicWords: topic.size, topics: topicStack.length, storyOpen: Boolean(story) }),
   };
 }
