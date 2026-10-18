@@ -21,6 +21,7 @@ import { runRehearsal } from "./rehearsal.js";
 import { mountInsight } from "./insight-ui.js";
 import { mountFieldTools } from "./field-ui.js";
 import { interpretNav } from "./voice-nav.js";
+import { THEMES, themeName } from "./scene-theme.js";
 import { createFieldRecorder } from "./field-recorder.js";
 import { createResume } from "./resume-state.js";
 import { createNumberWitness } from "./number-witness.js";
@@ -365,6 +366,7 @@ function renderPresenter() {
             <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
           <label class="director-cloud"><input type="checkbox" id="director-nav" checked /> التنقل بالصوت («الشريحة التالية»، «السابقة»، «روح للشريحة خمسة»)</label>
+          <label class="director-cloud">ألوان المشاهد <select id="scene-theme" aria-label="ألوان المشاهد">${Object.entries(THEMES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}</select></label>
           <button type="button" id="nav-undo" hidden>تراجع عن آخر انتقال صوتي</button>
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
           <p class="meta" id="director-usage">السحابة مغلقة. المشاهد المحلية بلا API.</p>
@@ -439,6 +441,7 @@ function renderPresenter() {
     window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
   showSlide(state.index);
   setupDirector();
+  setupSceneTheme();
   mountImportPanel(document.getElementById("lecture-import-mount"));
   mountLibraryPanel(document.getElementById("library-mount"), {
     getToken: directorAdminToken, getBundle: () => state.bundle, getManifest: () => state.manifest, sessionLog,
@@ -629,6 +632,18 @@ async function fillLecturePicker() {
   };
 }
 
+// The colour theme travels inside the scene, so the audience window draws exactly what the lecturer chose.
+function sceneTheme() {
+  const box = document.getElementById("scene-theme");
+  const chosen = box?.value || (() => { try { return localStorage.getItem("alfa-scene-theme"); } catch { return null; } })();
+  return themeName(chosen);
+}
+function setupSceneTheme() {
+  const box = document.getElementById("scene-theme");
+  if (!box) return;
+  try { box.value = themeName(localStorage.getItem("alfa-scene-theme")); } catch {}
+  box.onchange = () => { try { localStorage.setItem("alfa-scene-theme", box.value); } catch {} };
+}
 function showInfographicFromForm() {
   const msg = document.getElementById("info-msg");
   try {
@@ -636,6 +651,7 @@ function showInfographicFromForm() {
       type: document.getElementById("info-type").value,
       title: document.getElementById("info-title").value,
       lines: document.getElementById("info-lines").value.split("\n"),
+      theme: sceneTheme(),
     };
     renderInfographic(spec); // validates before sending
     beginDigression();
@@ -831,6 +847,7 @@ function revealDirectorScene(proposal, source = "approved") {
       Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
   try {
     beginDigression();
+    proposal.spec.theme = sceneTheme();
     renderLayer(proposal.spec);
     currentOverlay = proposal.spec;
     sessionLog.scene({ slide: state.index, type: proposal.spec.type, title: proposal.spec.title, lines: proposal.spec.lines, source });

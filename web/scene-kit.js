@@ -1,8 +1,13 @@
-// Shared drawing kit for the vector scenes: palette, text wrapping, the animated frame and motion wrappers.
+// Shared drawing kit for the vector scenes: theme palette, text wrapping, the animated frame and motion wrappers.
 // Motion is CSS only (see style.css, ".info-layer svg .m-*"): text content is always the exact final text, so
 // nothing is ever shown "counting up" to a number the lecturer did not say. Reduced-motion users get a still scene.
-export const C = { bg: "#f4f5f3", paper: "#ffffff", blue: "#3e5c78", blue2: "#6f8fab", ink: "#15161a", mute: "#5e6570", edge: "#d4d9da",
-  track: "#e3e8ec", gold: "#8f5a28", gold2: "#b98350", wash: "#e7eef1" };
+import { THEMES, themeName } from "./scene-theme.js";
+
+/** The live palette. renderInfographic() calls useTheme() before it draws; drawing is synchronous so this is safe. */
+export const C = { ...THEMES.warm };
+export function useTheme(name) { Object.assign(C, THEMES[themeName(name)]); return C; }
+
+export const FONT = { display: "Cairo, Tahoma, sans-serif", hero: "Lalezar, Cairo, sans-serif", hand: "'Aref Ruqaa', Cairo, serif" };
 
 export const E = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
@@ -35,11 +40,16 @@ export function fitText(value, { size = 21, limit = 24, rows = 3, lh = 28 } = {}
   return { lines, size: Math.round(size * Math.min(0.55, scale) * 10) / 10, lh: Math.round(lh * Math.min(0.55, scale) * 10) / 10 };
 }
 
-/** Centred, wrapped, RTL text. */
-export function label(value, x, y, { size = 21, color = C.ink, limit = 24, rows = 3, weight = 400, lh = 28 } = {}) {
+/** Centred, wrapped, RTL text. `accent` colours the last word (the title style). `ui` marks fixed scene captions (numbers, ordinals) that are not the lecturer's words. */
+export function label(value, x, y, { size = 21, color = C.ink, limit = 24, rows = 3, weight = 400, lh = 28, family = "", accent = "", ui = false } = {}) {
   const f = fitText(value, { size, limit, rows, lh });
-  return `<text x="${x}" y="${y}" fill="${color}" font-size="${f.size}" font-weight="${weight}" text-anchor="middle" direction="rtl">` +
-    f.lines.map((t, i) => `<tspan x="${x}" dy="${i ? f.lh : 0}">${E(t)}</tspan>`).join("") + "</text>";
+  const row = (t, last) => {
+    if (!accent || !last) return E(t);
+    const w = t.split(" ");
+    return w.length > 1 ? `${E(w.slice(0, -1).join(" "))} <tspan fill="${accent}">${E(w.at(-1))}</tspan>` : `<tspan fill="${accent}">${E(t)}</tspan>`;
+  };
+  return `<text${ui ? ' class="ui"' : ""} x="${x}" y="${y}" fill="${color}" font-size="${f.size}" font-weight="${weight}"${family ? ` font-family="${family}"` : ""} text-anchor="middle" direction="rtl">` +
+    f.lines.map((t, i) => `<tspan x="${x}" dy="${i ? f.lh : 0}">${row(t, i === f.lines.length - 1)}</tspan>`).join("") + "</text>";
 }
 
 /** Like label(), but `cy` is the vertical CENTRE of the text block, whatever the number of rows. */
@@ -59,26 +69,29 @@ export const drawLine = (x1, y1, x2, y2, { color = C.edge, width = 3, i = 0, ext
 /** x position of item i of n, first item on the RIGHT (Arabic reading order). */
 export const rtlX = (i, n, left, right) => (n === 1 ? (left + right) / 2 : right - (i * (right - left)) / (n - 1));
 
-const DEFS = `<defs>
-  <linearGradient id="sk-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fafbf9"/><stop offset="1" stop-color="#eceeeb"/></linearGradient>
-  <linearGradient id="sk-blue" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3e5c78"/><stop offset="1" stop-color="#6f8fab"/></linearGradient>
-  <linearGradient id="sk-gold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8f5a28"/><stop offset="1" stop-color="#b98350"/></linearGradient>
-  <filter id="sk-shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#15161a" flood-opacity="0.09"/></filter>
+const defs = () => `<defs>
+  <linearGradient id="sk-bg" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="${C.bg}"/><stop offset="1" stop-color="${C.bg2}"/></linearGradient>
+  <radialGradient id="sk-g1"><stop offset="0" stop-color="${C.glow1}" stop-opacity="0.55"/><stop offset="1" stop-color="${C.glow1}" stop-opacity="0"/></radialGradient>
+  <radialGradient id="sk-g2"><stop offset="0" stop-color="${C.glow2}" stop-opacity="${C.glow2Opacity ?? 0.5}"/><stop offset="1" stop-color="${C.glow2}" stop-opacity="0"/></radialGradient>
+  <pattern id="sk-pat" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1.5" fill="${C.dots}" opacity="${C.dotsOpacity}"/></pattern>
+  <linearGradient id="sk-blue" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${C.blue}"/><stop offset="1" stop-color="${C.blue2}"/></linearGradient>
+  <linearGradient id="sk-gold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${C.gold}"/><stop offset="1" stop-color="${C.gold2}"/></linearGradient>
+  <filter id="sk-shadow" x="-12%" y="-12%" width="124%" height="140%"><feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="${C.shadow}" flood-opacity="${C.shadowOpacity}"/></filter>
 </defs>`;
 
-/** The scene frame: soft background, a centred title with a drawn underline, then the scene content. */
+/** The scene frame: themed background, a heavy title whose last word carries the accent, a drawn underline, then the content. */
 export function frame(title, inside, extraDefs = "") {
-  const fit = fitText(title, { size: 34, limit: 42, rows: 2, lh: 40 });
-  const underlineY = 76 + (fit.lines.length - 1) * fit.lh + 26;
-  return `<svg viewBox="0 0 960 540" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="${E(title)}">` +
-    DEFS.replace("</defs>", extraDefs + "</defs>") +
-    `<rect width="960" height="540" fill="url(#sk-bg)"/>` +
-    `<circle cx="70" cy="60" r="150" fill="${C.blue}" opacity="0.045"/><circle cx="900" cy="500" r="190" fill="${C.gold}" opacity="0.04"/>` +
-    motion("rise", 0, label(title, 480, 76, { size: 34, color: C.blue, limit: 42, rows: 2, weight: 700, lh: 40 })) +
-    drawLine(430, underlineY, 530, underlineY, { color: C.gold, width: 4, i: 1 }) +
+  const fit = fitText(title, { size: 40, limit: 34, rows: 1, lh: 46 });
+  const underlineY = 84 + (fit.lines.length - 1) * fit.lh + 24;
+  return `<svg viewBox="0 0 960 540" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="${E(title)}" data-theme="${C.dark ? "dark" : "light"}">` +
+    defs().replace("</defs>", extraDefs + "</defs>") +
+    `<rect width="960" height="540" fill="url(#sk-bg)"/><rect width="960" height="540" fill="url(#sk-pat)"/>` +
+    `<circle cx="120" cy="40" r="260" fill="url(#sk-g1)"/><circle cx="880" cy="520" r="300" fill="url(#sk-g2)"/>` +
+    motion("rise", 0, label(title, 480, 84, { size: 40, color: C.ink, limit: 34, rows: 1, weight: 900, lh: 46, family: FONT.display, accent: C.blue })) +
+    drawLine(436, underlineY, 524, underlineY, { color: C.blue, width: 5, i: 1 }) +
     inside + "</svg>";
 }
 
 /** A card with a soft shadow. */
-export const card = (x, y, w, h, { fill = C.paper, r = 18, stroke = C.edge } = {}) =>
+export const card = (x, y, w, h, { fill = C.paper, r = 20, stroke = C.edge } = {}) =>
   `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}" stroke="${stroke}" filter="url(#sk-shadow)"/>`;

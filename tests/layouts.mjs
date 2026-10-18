@@ -14,7 +14,7 @@ const storyIcons=renderInfographic({
  type:"story",title:"قصة المحاضر",
  lines:["شخص كان يلعب ألعاب الفيديو","ثم تأثرت دراسته"]
 });
-assert.ok(storyIcons.includes("المشهد 1") && storyIcons.includes("المشهد 2"));
+assert.ok(storyIcons.includes("المشهد الأول") && storyIcons.includes("المشهد الثاني"));
 assert.ok(storyIcons.includes("<path d="));
 assert.ok(!storyIcons.includes("وبعدها شفي"));
 console.log("extra vector layouts passed");

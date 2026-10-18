@@ -70,7 +70,7 @@ try {
     await page.waitForTimeout(40);
     const early = await page.evaluate(() => {
       const els = [...document.querySelectorAll('svg [class^="m-"]')];
-      const joined = (node) => [...node.querySelectorAll("text")].map((t) => [...t.querySelectorAll("tspan")].map((x) => x.textContent).join(" ") || t.textContent).join(" ");
+      const joined = (node) => [...node.querySelectorAll("text:not(.ui)")].map((t) => [...t.querySelectorAll("tspan")].map((x) => x.textContent).join(" ") || t.textContent).join(" ");
       return { count: els.length, hidden: els.filter((e) => Number(getComputedStyle(e).opacity) < 0.99).length, animated: els.filter((e) => getComputedStyle(e).animationName !== "none").length,
         text: [...document.querySelectorAll("svg text")].map((t) => t.textContent).join("|"),
         items: [...document.querySelectorAll("svg [data-full]")].map((g) => ({ full: g.getAttribute("data-full"), titleEl: g.querySelector("title")?.textContent, visible: joined(g) })),
@@ -85,7 +85,7 @@ try {
       // the FULL text of every item is kept in the scene; what is drawn is a few of the lecturer's own words, in order
       exact = exact && pieces.every((p) => early.items.some((it) => it.full === p && it.titleEl === p));
       for (const it of early.items) {
-        const fullWords = it.full.split(/\s+/), seen = it.visible.split(/\s+/).filter(Boolean).filter((w) => !/^\d+$/.test(w) || it.full.includes(w)).filter((w) => w !== "المشهد" || it.full.includes(w)); // "المشهد n" is a fixed scene caption, not lecturer text
+        const fullWords = it.full.split(/\s+/), seen = it.visible.split(/\s+/).filter(Boolean).filter((w) => !/^\d+$/.test(w) || it.full.includes(w));
         let cursor = 0, ordered = true;
         for (const w of seen) { const at = fullWords.indexOf(w, cursor); if (at < 0) { ordered = false; break; } cursor = at + 1; }
         const tooMany = seen.filter((w) => !/^[0-9]+$/.test(w)).length > 5;
@@ -109,6 +109,19 @@ try {
     check(`${key}: no text clipped by the frame`, late.bad.length === 0, late.bad.join(" ; "));
     check(`${key}: everything is fully visible when the motion ends`, late.shown === 0, String(late.shown));
     if (shots) await page.screenshot({ path: join(shots, key + ".png"), clip: { x: 0, y: 0, width: 1280, height: 720 } });
+  }
+  // the other themes: same worst-case checks on a representative subset
+  for (const theme of ["deep", "calm"]) {
+    for (const key of ["stat-percent", "stat-long", "steps6", "steps-long", "concept6", "compare", "bars6", "story4", "cycle6", "timeline6"]) {
+      const spec = { ...SPECS.find(([k]) => k === key)[1], theme };
+      await mount(page, spec);
+      await page.waitForTimeout(2300);
+      const r = await page.evaluate(() => ({ dark: document.querySelector("svg").dataset.theme,
+        bad: [...document.querySelectorAll("svg text")].filter((t) => { const b = t.getBBox(); return b.width > 0 && (b.x < 4 || b.y < 4 || b.x + b.width > 956 || b.y + b.height > 536); }).map((t) => t.textContent.slice(0, 16)),
+        shown: [...document.querySelectorAll('svg [class^="m-"]')].filter((e) => Number(getComputedStyle(e).opacity) < 0.99).length }));
+      check(`${key} [${theme}]: nothing clipped, fully visible after the motion`, r.bad.length === 0 && r.shown === 0 && r.dark === (theme === "deep" ? "dark" : "light"), JSON.stringify(r));
+      if (shots) await page.screenshot({ path: join(shots, `${key}.${theme}.png`), clip: { x: 0, y: 0, width: 1280, height: 720 } });
+    }
   }
   // ring: the arc is filled to exactly the stated percentage
   await mount(page, SPECS[0][1]);

@@ -55,6 +55,7 @@ jobs:
           node --check web/voice-nav.js
           node --check web/scene-kit.js
           node --check web/scene-icons.js
+          node --check web/scene-theme.js
           node --check web/insight-ui.js
           node --check web/number-witness.js
           node --check web/lecture-coach.js

@@ -12,7 +12,9 @@ const throwsWith = (fn, text) => {
 
 const stat = renderInfographic({ type: "stat", title: "الألعاب التعليمية", lines: ["68%", "من المشاركين استفادوا"] });
 ok("stat card shows the number exactly as typed", stat.includes(">68%</text>"));
-ok("stat title is centred, so a long Arabic title is never clipped at the page edge in an RTL page", /text-anchor="middle"[^>]*><tspan x="480"[^>]*>الألعاب التعليمية<\/tspan>/.test(stat));
+ok("stat title is centred, so a long Arabic title is never clipped at the page edge in an RTL page", /text-anchor="middle"[^>]*><tspan x="480"[^>]*>الألعاب <tspan fill="#[0-9a-f]{6}">التعليمية<\/tspan><\/tspan>/.test(stat));
+ok("the last word of a title carries the accent colour", /<tspan fill="#[0-9a-f]{6}">التعليمية<\/tspan>/.test(stat));
+ok("an unknown theme falls back to the default, a known one is kept", !renderInfographic({ type: "stat", title: "x", lines: ["1"], theme: "nope" }).includes("data-theme=\"dark\"") && renderInfographic({ type: "stat", title: "x", lines: ["1"], theme: "deep" }).includes("data-theme=\"dark\""));
 ok("stat card shows the label as typed", stat.includes("من المشاركين استفادوا"));
 ok("stat card has no invented source text", !/دراسة|باحث|سنة|عينة/.test(stat.replace("الألعاب التعليمية", "")));
 
