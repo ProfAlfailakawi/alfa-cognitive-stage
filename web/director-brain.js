@@ -3,7 +3,7 @@
 // nothing is invented: every scene line is quoted or derived from those inputs.
 // This is NOT neural language understanding: it is explicit Kuwaiti/Gulf/MSA patterns plus
 // context (rolling window, topic tracking, slide grounding, pacing). Measured by tests/director-corpus.mjs.
-import { interpretSpeech, normalizeArabic } from "./director-core.js";
+import { interpretSpeech, normalizeArabic, percentMention } from "./director-core.js";
 
 const WINDOW_MS = 60000;
 const MAX_WINDOW = 8;
@@ -117,7 +117,7 @@ function detectContrast(raw) {
   if (!m) return null;
   const left = trimClause(m[1]), right = trimClause(m[2].replace(/^(?:ال)?/, ""));
   if (left.split(/\s+/).length < 3 || right.split(/\s+/).length < 3) return null;
-  return { type: "compare", title: "مقارنة من حديث المحاضر", lines: [`${left} | ${right}`] };
+  return { type: "compare", title: "مقارنة", lines: [`${left} | ${right}`] };
 }
 const YEAR = /(?:^|[\s(])((?:19|20)\d{2})(?=$|[\s،,.):])/g;
 function detectTimeline(raw) {
@@ -132,7 +132,7 @@ function detectTimeline(raw) {
     return clause.length >= 4 ? `${h.year} — ${trimClause(clause, 60)}` : null;
   });
   if (lines.some((l) => !l)) return null;
-  return { type: "timeline", title: "تسلسل زمني كما ذكره المحاضر", lines };
+  return { type: "timeline", title: "تسلسل زمني", lines };
 }
 // ---- labelled percentages -> bars: "الفئة أ 40% والفئة ب 35% والفئة ج 25%" ----
 const LABEL_NOISE = new Set(["و", "في", "كانت", "كان", "نسبه", "نسبة", "ثم", "اللي", "الي", "عند", "عن", "من", "الى", "إلى", "بينما", "اما", "أما", "حوالي", "تقريبا", "تقريباً", "هي", "هو", "يمثلون", "تمثل", "يشكلون", "تشكل", "بلغت", "وصلت", "منهم", "فقط", "كذلك", "وايضا", "أيضا"]);
@@ -164,7 +164,7 @@ function detectBars(spoken) {
   if (items.some((x) => x.label.length < 2)) return null;
   const labels = items.map((x) => x.label);
   if (new Set(labels).size !== labels.length) return null;
-  return { type: "bars", title: "توزيع كما ذكره المحاضر", lines: items.map((x) => x.label + " | " + x.value + "%") };
+  return { type: "bars", title: "توزيع النسب", lines: items.map((x) => x.label + " | " + x.value + "%") };
 }
 const ACTIVITY = /(?:^|\s)(?:ناقشوا|ناقش|تناقشون|فكروا|اشتغلوا|شاركوا زميلكم|خلونا نسوي نشاط|عندنا نشاط|نشاط سريع|كل واحد يكتب|اكتبوا)(?=\s|$)/;
 const MINUTE_WORDS = { دقيقه: 1, دقيقتين: 2, ثلاث: 3, اربع: 4, خمس: 5, ست: 6, سبع: 7, ثمان: 8, تسع: 9, عشر: 10 };
@@ -185,7 +185,7 @@ function detectActivity(spoken) {
   const instruction = trimClause(spoken, 110);
   const lines = [instruction];
   if (minutes !== null) lines.push("المدة: " + minutes + (minutes === 1 ? " دقيقة" : minutes === 2 ? " دقيقتان" : minutes <= 10 ? " دقائق" : " دقيقة"));
-  return { type: "activity", title: "نشاط كما شرحه المحاضر", lines };
+  return { type: "activity", title: "نشاط", lines };
 }
 const CYCLIC = /(?:دوره|حلقه|يتكرر|مستمره|دائريه|مره ثانيه ونرجع للاول)/;
 const SHIFT_MARKER = /(?:الحين نتكلم عن|الحين نتحدث عن|ننتقل الى|نروح لموضوع|موضوع ثاني|نغير الموضوع|نبدا موضوع|نتكلم الحين عن)/;
@@ -202,6 +202,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
   let topicStack = [];
   let offTopicStreak = 0;
   let lastShownAt = 0, lastCloudAt = 0, lastKey = "", lastKeyAt = 0;
+  let pendingStat = null; // "25% مقارنة مع…" left hanging, waiting for the second number
   const perSlide = new Map();
 
   function status(decision, why) { decision.why.push(why); return decision; }
@@ -278,14 +279,33 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
         reason: "تصحيح الرقم: يحتاج موافقتك قبل استبدال المشهد الظاهر" };
     }
 
+    // 2b. The second half of a comparison the lecturer left hanging ("٢٥٪ مقارنة مع" … "٦٠٪ في المحاضرة"):
+    // the two spoken numbers become two bars, each labelled with the lecturer's own words when there are any.
+    if (pendingStat && (t - pendingStat.at > 25000 || pendingStat.slide !== slideIndex)) pendingStat = null;
+    const second = pendingStat ? percentMention(spoken) : null;
+    if (second && second.value !== pendingStat.value) {
+      const first = pendingStat; pendingStat = null;
+      const names = [first.words || "النسبة الأولى", second.words && second.words !== first.words ? second.words : "النسبة الثانية"];
+      const spec = { type: "bars", title: "مقارنة النسب", lines: [`${names[0]} | ${first.value}`, `${names[1]} | ${second.value}`] };
+      for (const w of window) w.used = true;
+      lastKey = "bars:" + spec.lines[0]; lastKeyAt = t;
+      if (mode === "shadow") return status({ ...d, kind: "bars", spec, confidence: 0.96, action: "observe" }, "وضع الظل");
+      return { ...d, kind: "bars", spec, confidence: 0.96, action: mode === "safe" ? "propose" : "auto", utterance: first.utterance + " " + raw,
+        reason: "أكملتَ المقارنة: الرقمان كما نطقتهما" };
+    }
+
     // 3. Story already in progress: accumulate what was actually said.
+    if (moment?.kind === "stat" && moment.dangling) {
+      const p = percentMention(spoken);
+      pendingStat = { value: moment.spec.lines[0], words: p?.words && p.words.split(" ").length >= 2 ? p.words : "", at: t, slide: slideIndex, utterance: raw };
+    }
     if (story && (story.slide !== slideIndex || t - story.started > STORY_MS)) story = null;
     if (story && !moment) {
       const clean = raw.trim();
       if (clean.length >= 15 && story.last !== clean) {
         story.last = clean; story.events.push(clean.slice(0, 100)); story.events = story.events.slice(0, 4);
         if (story.events.length >= 2) {
-          const spec = { type: "story", title: "قصة يرويها المحاضر", lines: [...story.events] };
+          const spec = { type: "story", title: "قصة", lines: [...story.events] };
           return finalize({ ...d, kind: "story", spec, confidence: mode === "creative" ? 0.9 : 0.8,
             reason: "قصة من حديثك كما نطقتها دون اختراع أحداث. راجع النص قبل إظهاره.", storyAuto: true, utterance: story.events.join(" ") });
         }
@@ -304,7 +324,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       }
     }
     if (found?.kind === "steps" && found.spec && CYCLIC.test(normalized)) {
-      found = { ...found, kind: "cycle", confidence: 0.9, spec: { ...found.spec, type: "cycle", title: "دورة كما شرحها المحاضر" } };
+      found = { ...found, kind: "cycle", confidence: 0.9, spec: { ...found.spec, type: "cycle", title: "دورة" } };
     }
     if (!found) {
       const bars = detectBars(spoken);
@@ -355,6 +375,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       if (count >= MAX_PER_SLIDE) return status({ ...decision, action: "none" }, "بلغ الحد الأعلى لاقتراحات هذه الشريحة");
       if (t - lastShownAt < GAP_MS && decision.kind !== "steps") return status({ ...decision, action: "none" }, "فترة هدوء بعد المشهد السابق");
       const auto = (mode === "balanced" && decision.confidence >= 0.95 && ["stat", "steps"].includes(decision.kind) ||
+        mode === "balanced" && decision.confidence >= 0.96 && decision.kind === "bars" && decision.spec.lines.length === 2 ||
         mode === "balanced" && decision.confidence >= 0.95 && decision.kind === "compare" && decision.spec.lines.length === 1 && /^(?:من|كانت)/.test(decision.spec.lines[0]) ||
         mode === "creative" && (decision.storyAuto && decision.kind === "story" || decision.confidence >= 0.95));
       decision.action = auto ? "auto" : "propose";

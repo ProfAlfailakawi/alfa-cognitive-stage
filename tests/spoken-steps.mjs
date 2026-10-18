@@ -7,7 +7,7 @@ const first = "عندنا 3 خطوات: أول شي نحدد الهدف، ثان
 const parsed = extractSpokenSteps(first);
 assert.ok(parsed, "Explicit Kuwaiti ordered speech is recognized");
 assert.equal(parsed.type, "steps");
-assert.deepEqual(parsed.lines, ["نحدد الهدف", "نصمم النشاط", "نقيس الاثر"]);
+assert.deepEqual(parsed.lines, ["نحدد الهدف", "نصمم النشاط", "نقيس الأثر"]);
 assert.deepEqual(validateSpec(parsed).lines, parsed.lines);
 assert.equal(interpretSpeech(first)?.kind, "steps");
 assert.equal(interpretSpeech(first)?.confidence, 0.96);
@@ -33,4 +33,6 @@ assert.equal(interpretSpeech("نسبة 68% من المشاركين")?.kind, "sta
   "Existing one-percentage scene remains supported");
 assert.equal(interpretSpeech("نرجع للعرض الحين")?.kind, "return",
   "Return intent still takes precedence");
+assert.deepEqual(extractSpokenSteps("الخطوة الأولى نجمع البيانات والخطوة الثانية نحللها والخطوة الثالثة نكتب النتيجة")?.lines, ["نجمع البيانات", "نحللها", "نكتب النتيجة"],
+  "markers joined with و are recognised and the lecturer's spelling (ة) is kept");
 console.log("local spoken steps: ordered Kuwaiti phrases, fidelity, guardrails and existing director behavior passed");

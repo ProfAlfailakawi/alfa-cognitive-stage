@@ -333,7 +333,7 @@ try {
   await audience.waitForSelector(".info-layer svg", { timeout: 6000 });
   const proceduralScene = await audience.locator(".info-layer").textContent();
   check("three spoken educational steps are preserved on student screen",
-    ["نحدد الهدف", "نصمم النشاط", "نقيس الاثر"].every((line) => proceduralScene.includes(line)));
+    ["نحدد الهدف", "نصمم النشاط", "نقيس الأثر"].every((line) => proceduralScene.includes(line)));
   await presenter.click("#home");
   await audience.waitForTimeout(200);
   check("emergency return removes local procedural scene safely",

@@ -9,7 +9,7 @@
     "test:e2e": "node tests/e2e.mjs",
     "test:build": "python3 -m unittest discover -s tools -p 'test_*.py'",
     "test:vote": "node tests/vote.mjs",
-    "test:infographic": "node tests/infographic.mjs",
+    "test:infographic": "node tests/infographic.mjs && node tests/scene-themes.mjs && node tests/scene-worlds.mjs",
     "test": "npm run test:build && npm run test:director && npm run test:speech && npm run test:director-ai && npm run test:memory && npm run test:preferences && npm run test:import && npm run test:layouts && npm run test:media-preflight && npm run test:scene-store && npm run test:security && npm run test:readiness && npm run test:poll-analytics && npm run test:vote-rounds && npm run test:build-steps && npm run test:library && npm run test:engagement && npm run test:insight && npm run test:field-trial && npm run test:infographic && npm run test:e2e && npm run test:e2e-return && npm run test:e2e-memory && npm run test:import-pdf && npm run test:e2e-library && npm run test:e2e-speech && npm run test:e2e-stress && npm run test:e2e-engagement && npm run test:e2e-insight && npm run test:e2e-field && npm run test:e2e-voicenav && npm run test:e2e-scenes && npm run test:vote",
     "test:director": "node tests/director.mjs && node tests/director-corpus.mjs && npm run test:spoken-steps",
     "test:director-ai": "node tests/director-ai.mjs && node tests/director-quota.mjs && node tests/director-usage.mjs && node tests/director-budget.mjs",
