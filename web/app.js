@@ -332,7 +332,7 @@ function renderPresenter() {
             <button id="project-poll" type="button">إظهار QR والسؤال للطلبة</button>
             <button id="hide-poll" type="button">إخفاء التصويت عن الشاشة</button>
           </div>
-          <iframe id="vote-iframe" src="/vote-admin.html?embed=1" title="لوحة إدارة التصويت"></iframe>
+          <iframe id="vote-iframe" src="/vote-admin.html?embed=1${DEV ? "&dev=1" : ""}" title="لوحة إدارة التصويت"></iframe>
         </details>
 ${DEV ? `<form class="info-form" id="info-form" hidden>
           <select id="info-type" aria-label="نوع الإنفوجرافيك">

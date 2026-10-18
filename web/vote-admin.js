@@ -340,8 +340,8 @@ async function voicePoll(action) {
 if (adminToken) {
   $("token").value = adminToken;
   enter();
-} else {
-  // No typing: this machine's own page receives the token from the local server.
+} else if (!new URLSearchParams(location.search).has("dev")) {
+  // No typing: this machine's own page receives the token from the local server (the typed-token box stays for ?dev=1).
   fetch("/api/local-token", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
     if (d?.token) { adminToken = d.token; $("token").value = adminToken; enter(); }
   }).catch(() => {});

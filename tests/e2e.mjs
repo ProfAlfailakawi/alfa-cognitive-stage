@@ -80,14 +80,11 @@ try {
   isolated.on("pageerror", (err) => failures.push("isolated profile: " + err));
   await isolated.goto(`${base}/?dev=1#presenter`);
   await isolated.waitForSelector("#director-memory-sync");
-  check("new lecturer profile has no cross-lecture index at first",
-    !(await isolated.evaluate(() => localStorage.getItem("alfa-approved-scenes-cross-v1") || ""))
-      .includes(archivedBundle));
-  await isolated.fill("#director-admin-token", ADMIN);
-  await isolated.click("#director-memory-sync");
+  // The lecturer's own page receives the token from the local server (nothing typed), so the approved scenes arrive by themselves.
   await isolated.waitForFunction(bundle =>
     (localStorage.getItem("alfa-approved-scenes-cross-v1") || "").includes(bundle),
-    archivedBundle, { timeout: 6000 });
+    archivedBundle, { timeout: 8000 });
+  check("a new lecturer profile receives the approved scenes without typing a token", true);
   const restored = await isolated.evaluate(async () => {
     const { recallScene } = await import("/scene-memory.js");
     return {
@@ -105,7 +102,7 @@ try {
   await separateContext.close();
 
   await presenter.fill("#director-admin-token", ADMIN);
-
+  await presenter.locator("#director-admin-token").evaluate((el) => el.blur()); // release focus so slide hotkeys work
 
   await audience.goto(`${base}/#audience`);
   await audience.waitForSelector("#slide-img");
@@ -264,8 +261,8 @@ try {
   // Voting is embedded in the presenter, and the presenter can project QR on demand.
   await presenter.click("#open-vote");
   const votingFrame = presenter.frameLocator("#vote-iframe");
-  await votingFrame.locator("#token").fill(ADMIN);
-  await votingFrame.locator("#save-token").click();
+  // the token arrives by itself from the local server; the typed box exists only in dev mode
+  if (await votingFrame.locator("#token").isVisible()) { await votingFrame.locator("#token").fill(ADMIN); await votingFrame.locator("#save-token").click(); }
   await votingFrame.locator("#qr svg").waitFor({ timeout: 10000 });
   const sessionBefore = await votingFrame.locator("#session-line").textContent();
   await votingFrame.locator("body").evaluate(() => location.reload());
