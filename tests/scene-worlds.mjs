@@ -1,7 +1,7 @@
 // The 64 design worlds, the stylist and the extra layouts. Colours are measured, variety is measured, text is never lost.
 import assert from "node:assert/strict";
 import { WORLDS } from "../web/design-worlds.js";
-import { worldTheme, worldName, WORLD_BY_ID } from "../web/world-theme.js";
+import { worldTheme, worldName, WORLD_BY_ID, parseWorld } from "../web/world-theme.js";
 import { contrast } from "../web/color-math.js";
 import { renderInfographic, validateSpec } from "../web/infographic.js";
 import { VARIANTS } from "../web/scene-variants.js";
@@ -37,7 +37,7 @@ const samples = {
 };
 const picks = ["copper-eclipse", "ivory-thesis", "lunar-glass", "emerald-atlas", "desert-bloom", "black-margin", ...WORLDS.filter((_, i) => i % 5 === 0).map((w) => w.id)];
 for (const id of picks) for (const [type, sets] of Object.entries(samples)) for (let variant = 0; variant < (VARIANTS[type] || 1); variant++) for (const lines of sets) {
-  const svg = renderInfographic({ type, title: "عنوان المشهد", lines, theme: worldName(id), variant });
+  const svg = renderInfographic({ type, title: "عنوان المشهد", lines, theme: worldName(id, [undefined, 30, 140, 215, 300][picks.indexOf(id) % 5]), variant });
   const where = `${type}/v${variant}/${id}`;
   assert.ok(!/NaN|undefined/.test(svg), `${where}: no NaN or undefined`);
   assert.ok(svg.includes(worldTheme(id).bg), `${where}: uses the world background`);
@@ -84,8 +84,9 @@ const storage = memory(), seen = [], steps = [];
 for (let i = 0; i < 30; i++) {
   const [title, ...lines] = topics[i % 5];
   const out = styleScene({ type: "steps", title, lines }, { storage });
-  seen.push(out.theme); steps.push(out.variant || 0);
-  assert.ok(WORLD_BY_ID.has(out.theme.slice(6)) && !worldTheme(out.theme.slice(6)).dark, "auto mode offers light worlds only");
+  const p = parseWorld(out.theme);
+  seen.push(p.id); steps.push(out.variant || 0);
+  assert.ok(!worldTheme(p.id, p.hue).dark, "auto mode offers light worlds only");
 }
 assert.ok(new Set(seen).size >= 24, `30 scenes use ${new Set(seen).size} different worlds`);
 for (let i = 0; i < seen.length; i++) assert.ok(!seen.slice(Math.max(0, i - 12), i).includes(seen[i]), `scene ${i}: no world within the last 12 scenes repeats`);
@@ -95,13 +96,13 @@ assert.equal(new Set(steps).size, VARIANTS.steps, "all layouts of the type get u
 const lectureLooks = [];
 const lectureStore = memory();
 for (let lecture = 0; lecture < 5; lecture++) lectureLooks.push(styleScene({ type: "concept", title: "الدافعية", lines: ["الانتباه", "الجهد", "المكافأة"] }, { storage: lectureStore }));
-assert.equal(new Set(lectureLooks.map((s) => s.theme)).size, 5, "five lectures, five different worlds");
+assert.equal(new Set(lectureLooks.map((s) => parseWorld(s.theme).id)).size, 5, "five lectures, five different worlds");
 assert.ok(new Set(lectureLooks.map((s) => s.theme + (s.variant || 0))).size === 5);
 // deterministic: the same text and history give the same look
 const h = [];
 assert.deepEqual(pickStyle({ type: "stat", text: "نسبة النجاح", history: h }), pickStyle({ type: "stat", text: "نسبة النجاح", history: h }));
 // dark worlds only when the lecturer allows them
-assert.ok(Array.from({ length: 50 }, (_, i) => pickStyle({ type: "stat", text: "نص " + i, allowDark: true, history: [] })).some((p) => p.world.id && worldTheme(p.world.id).dark));
+assert.ok(Array.from({ length: 50 }, (_, i) => pickStyle({ type: "stat", text: "نص " + i, allowDark: true, history: [] })).some((p) => p.world.id && worldTheme(p.world.id, p.hue).dark));
 // a fixed theme keeps its colours; only the layout rotates
 const fixed = memory(), fixedOut = [0, 1, 2, 3].map(() => styleScene({ type: "concept", title: "x", lines: ["أ", "ب"] }, { mode: "calm", storage: fixed }));
 assert.ok(fixedOut.every((s) => s.theme === "calm"));
@@ -109,6 +110,27 @@ assert.ok(new Set(fixedOut.map((s) => s.variant || 0)).size >= 2, "a fixed theme
 assert.equal(pickVariant("bars", "x", []), 0, "types with one layout stay at 0");
 // without storage (private mode) styling still works
 assert.doesNotThrow(() => styleScene({ type: "steps", title: "x", lines: ["أ", "ب"] }, { storage: { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } } }));
+
+// 4b. smart tint: the accent hue follows the meaning, every world stays readable at every hue, bad hues are refused
+for (const w of WORLDS) for (let hue = 0; hue < 360; hue += 45) {
+  const t = worldTheme(w.id, hue);
+  for (const bg of [t.bg, t.bg2, t.solid]) { assert.ok(contrast(t.blue, bg) >= 3 && contrast(t.ink, bg) >= 7 && contrast(t.mute, bg) >= 4.5, `${w.id}@${hue}: readable on ${bg}`); }
+  assert.ok(contrast(t.onAccent, t.blue) >= 4.5 && contrast(t.blue, t.wash) >= 3, `${w.id}@${hue}: accent and badge`);
+}
+assert.equal(parseWorld("world:ivory-thesis@400"), null);
+assert.equal(parseWorld("world:ivory-thesis@12x"), null);
+assert.equal(parseWorld("world:nope@10"), null);
+assert.deepEqual(parseWorld("world:ivory-thesis@210"), { id: "ivory-thesis", hue: 210 });
+const hueOfScene = (text) => pickStyle({ type: "stat", text, history: [] }).hue;
+const near = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b)) <= 30;
+assert.ok(near(hueOfScene("مشكلة وأزمة كبيرة"), 8) || near(hueOfScene("مشكلة وأزمة كبيرة"), 14), "trouble leans warm red");
+assert.ok(near(hueOfScene("تواصل وربط الفريق"), 215), "connection leans blue");
+assert.ok(near(hueOfScene("نمو وجذور الهوية"), 120), "growth leans green");
+assert.equal(hueOfScene("هذا نص عادي"), null, "no clear meaning: the world keeps its own colour");
+// the two scenes in a row never share an accent hue
+const hueMem = memory(); const hues = [];
+for (let i = 0; i < 6; i++) hues.push(parseWorld(styleScene({ type: "stat", title: "نمو وجذور", lines: ["10%", "x"] }, { storage: hueMem }).theme).hue);
+for (let i = 1; i < hues.length; i++) assert.ok(!near(hues[i], hues[i - 1]) || Math.min(Math.abs(hues[i] - hues[i - 1]), 360 - Math.abs(hues[i] - hues[i - 1])) >= 25, "consecutive scenes use different accent hues");
 
 // 5. one world never leaks into the next render
 const warm = renderInfographic({ type: "steps", title: "x", lines: ["أ", "ب"], theme: "warm" });

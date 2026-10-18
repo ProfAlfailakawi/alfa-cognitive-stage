@@ -33,3 +33,14 @@ export function fit(color, toward, ok) {
   for (let t = 0; t <= 1.0001; t += 0.04) { const c = mix(color, toward, Math.min(t, 1)); if (ok(c)) return c; }
   return toward;
 }
+/** [hue 0..360, saturation 0..1, lightness 0..1] */
+export function hslOf(hex) {
+  const [r, g, b] = rgbOf(hex).map((v) => v / 255), max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
+  const h = d < 1e-6 ? 0 : max === r ? (((g - b) / d) % 6) * 60 : max === g ? ((b - r) / d + 2) * 60 : ((r - g) / d + 4) * 60;
+  return [(h + 360) % 360, d < 1e-6 ? 0 : d / (1 - Math.abs(2 * l - 1)), l];
+}
+export function hexFromHsl(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const [r, g, b] = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor((((h % 360) + 360) % 360) / 60) % 6];
+  return hexOf([(r + m) * 255, (g + m) * 255, (b + m) * 255]);
+}

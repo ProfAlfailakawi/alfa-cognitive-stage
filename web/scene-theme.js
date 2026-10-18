@@ -2,7 +2,7 @@
 // `solid` is an opaque stand-in for `paper` where lines must not show through (nodes, chips).
 //   blue = the main accent, blue2 = its lighter partner, gold = the second emphasis, onAccent = text on those.
 // "warm" is the default (cream, terracotta and ink); "deep" is a dark teal-and-green stage; "calm" is the quiet blue-grey original.
-import { worldTheme, isWorldName } from "./world-theme.js";
+import { worldTheme, isWorldName, parseWorld } from "./world-theme.js";
 export const THEMES = {
   warm: { label: "دافئ", dark: false,
     bg: "#f6eee2", bg2: "#efe1cf", glow1: "#f0b095", glow2: "#f7d9b4", dots: "#26241e", dotsOpacity: 0.07,
@@ -25,7 +25,7 @@ export const DEFAULT_THEME = "warm";
 export const themeName = (value) => (Object.hasOwn(THEMES, value) ? value : DEFAULT_THEME);
 // A scene may also name one of the 64 design worlds ("world:<id>"), chosen by the stylist (scene-stylist.js).
 export const themeKnown = (value) => Object.hasOwn(THEMES, value) || isWorldName(value);
-export const themeFor = (value) => (Object.hasOwn(THEMES, value) ? THEMES[value] : isWorldName(value) ? worldTheme(value.slice(6)) : THEMES[DEFAULT_THEME]);
+export const themeFor = (value) => (Object.hasOwn(THEMES, value) ? THEMES[value] : isWorldName(value) ? worldTheme(parseWorld(value).id, parseWorld(value).hue) : THEMES[DEFAULT_THEME]);
 
 // ---- contrast (WCAG 2.1), used by tests/scene-themes.mjs so colours are measured, not guessed ----
 export { contrast } from "./color-math.js";

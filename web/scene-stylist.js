@@ -3,7 +3,7 @@
 // The semantic verbs and the Arabic patterns come from the lecturer's design-worlds library (world-semantics.ts).
 import { WORLDS } from "./design-worlds.js";
 import { worldName } from "./world-theme.js";
-import { brightness, hueOf } from "./color-math.js";
+import { brightness, hueOf, hslOf } from "./color-math.js";
 import { VARIANTS } from "./scene-variants.js";
 
 const RULES = [
@@ -36,6 +36,11 @@ const TONES = [
   [/مستقبل|نهض|فرصة|ابتكار|تقنية|ذكاء/, ["متفائل", "مستقبلي", "تقني", "حداثي"]],
   [/مرح|لعبة|نشاط|سؤال|ليش|شلون/, ["حواري", "فضولي", "حي", "تعليمي"]],
 ];
+
+// What the sentence is about picks the accent hue (not the world's own colour): trouble is warm red, growth green, connection blue...
+const VERB_HUE = { fracture: 8, confront: 14, split: 22, rise: 140, root: 120, path: 160, connect: 215, question: 265, gather: 200, reveal: 38, echo: 30,
+  balance: 175, protect: 190, pulse: 345, transform: 280, weave: 320, orbit: 235, breathe: 150, liberate: 95, dissolve: 205 };
+const hueNear = (a, b) => { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d) < 25; };
 
 /** What the text is about, as a design verb and a few moods. Pure. */
 export function analyzeText(text) {
@@ -76,7 +81,13 @@ export function pickStyle({ type, text, allowDark = false, history = [] }) {
     });
     if (!best || score > best.score) best = { w, score };
   }
-  return { world: best.w, theme: worldName(best.w.id), variant: pickVariant(type, text, history), verb };
+  // The accent hue follows the meaning (only when the text matched one); it is rotated if the last two scenes already used that colour.
+  let hue = null;
+  if (analyzeText(text).matched) {
+    hue = Math.round((VERB_HUE[verb] + (hash(text + "~") - 0.5) * 36 + 360) % 360);
+    for (let k = 0; k < 8 && history.slice(0, 2).some((h) => h.hue !== undefined && hueNear(h.hue, hue)); k++) hue = (hue + 35) % 360;
+  }
+  return { world: best.w, hue, theme: worldName(best.w.id, hue ?? undefined), variant: pickVariant(type, text, history), verb };
 }
 
 /** The least recently overused layout of this type; never the same as the previous scene of that type. */
@@ -97,7 +108,7 @@ export function loadHistory(storage) {
 }
 export function entryOf(style, type) {
   const w = style.world;
-  return w ? { w: w.id, f: w.family, p: w.post, m: w.motion[0], h: hueBucket(w), t: type, v: style.variant } : { w: style.theme || "fixed", t: type, v: style.variant };
+  return w ? { w: w.id, f: w.family, p: w.post, m: w.motion[0], h: style.hue != null ? Math.round(style.hue / 40) % 9 : hueBucket(w), hue: style.hue ?? undefined, t: type, v: style.variant } : { w: style.theme || "fixed", t: type, v: style.variant };
 }
 export function saveHistory(entry, storage, history = loadHistory(storage)) {
   const next = [entry, ...history].slice(0, LIMIT);

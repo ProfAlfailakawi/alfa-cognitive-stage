@@ -6,7 +6,7 @@ import { themeFor } from "./scene-theme.js";
 /** The live palette. renderInfographic() calls useTheme() before it draws; drawing is synchronous so this is safe. */
 export const C = {};
 // `st` = style tokens (background pattern, title style, corner radius, flatness, motion); only the design worlds set them.
-const PLAIN = { bg: "dots", title: "center", rad: 1, flat: false, motion: "", post: "" };
+const PLAIN = { bg: "dots", title: "center", rad: 1, flat: false, motion: "", post: "", finish: "soft", light: "soft" };
 export function useTheme(name) {
   for (const k of Object.keys(C)) delete C[k];
   Object.assign(C, themeFor(name));
@@ -85,6 +85,7 @@ const defs = () => `<defs>
   <pattern id="sk-pat" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1.5" fill="${C.dots}" opacity="${C.dotsOpacity}"/></pattern>
   <linearGradient id="sk-blue" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${C.blue}"/><stop offset="1" stop-color="${C.blue2}"/></linearGradient>
   <linearGradient id="sk-gold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${C.gold}"/><stop offset="1" stop-color="${C.gold2}"/></linearGradient>
+  <filter id="sk-glow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="${C.blue}" flood-opacity="0.34"/></filter>
   <filter id="sk-shadow" x="-12%" y="-12%" width="124%" height="140%"><feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="${C.shadow}" flood-opacity="${C.shadowOpacity}"/></filter>
 </defs>`;
 
@@ -122,6 +123,15 @@ function decor() {
   }
 }
 
+/** Where the two soft glows sit follows the world's lighting. */
+function lights() {
+  const [a, b] = {
+    radial: [[480, 300, 380], [900, 60, 160]], backlit: [[480, 560, 430], [60, 60, 170]], side: [[0, 270, 380], [960, 520, 230]],
+    eclipse: [[830, 60, 330], [90, 500, 220]], "premium-neon": [[480, -20, 360], [480, 560, 300]],
+  }[C.st.light] || [[120, 40, 260], [880, 520, 300]];
+  return `<circle cx="${a[0]}" cy="${a[1]}" r="${a[2]}" fill="url(#sk-g1)"/><circle cx="${b[0]}" cy="${b[1]}" r="${b[2]}" fill="url(#sk-g2)"/>`;
+}
+
 /** The scene frame: themed background, a heavy title (style follows the world), a drawn rule, then the content. */
 export function frame(title, inside, extraDefs = "", { bare = false } = {}) {
   const mode = C.st.title;
@@ -136,12 +146,19 @@ export function frame(title, inside, extraDefs = "", { bare = false } = {}) {
   return `<svg viewBox="0 0 960 540" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="${E(title)}" data-theme="${C.dark ? "dark" : "light"}"${motionAttrs()}>` +
     defs().replace("</defs>", extraDefs + "</defs>") +
     `<rect width="960" height="540" fill="url(#sk-bg)"/><rect width="960" height="540" fill="url(#sk-pat)"/>` +
-    `<circle cx="120" cy="40" r="260" fill="url(#sk-g1)"/><circle cx="880" cy="520" r="300" fill="url(#sk-g2)"/>` +
-    decor() + head + inside + "</svg>";
+    lights() + decor() + head + inside + "</svg>";
 }
 
 /** A card with a soft shadow. */
-export const card = (x, y, w, h, { fill = C.paper, r = 20, stroke = C.edge } = {}) =>
-  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius(r)}" fill="${fill}" stroke="${stroke}"${C.st.flat ? ' stroke-width="2.5"' : ' filter="url(#sk-shadow)"'}/>`;
+export const card = (x, y, w, h, { fill = C.paper, r = 20, stroke = C.edge } = {}) => {
+  const rr = radius(r), f = C.st.finish;
+  const body = (extra) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rr}" fill="${fill}" stroke="${f === "ink" ? C.ink : stroke}"${extra}/>`;
+  if (f === "ink") return `<rect x="${x + 6}" y="${y + 6}" width="${w}" height="${h}" rx="${rr}" fill="${C.ink}" opacity=".9"/>` + body(' stroke-width="2.5"');
+  const base = body(C.st.flat ? ' stroke-width="2.5"' : f === "glow" ? ' filter="url(#sk-glow)"' : ' filter="url(#sk-shadow)"');
+  if (f === "glass") return base + `<rect x="${x + 2}" y="${y + 2}" width="${w - 4}" height="${h - 4}" rx="${Math.max(2, rr - 2)}" fill="none" stroke="${C.dark ? "#ffffff" : "#ffffff"}" stroke-opacity="${C.dark ? 0.14 : 0.7}" stroke-width="1.5"/>`;
+  if (f === "metal") return base + `<line x1="${x + rr}" y1="${y + 2}" x2="${x + w - rr}" y2="${y + 2}" stroke="${C.blue}" stroke-width="3" stroke-linecap="round"/>`;
+  if (f === "stone") return base + `<rect x="${x + 6}" y="${y + 6}" width="${w - 12}" height="${h - 12}" rx="${Math.max(2, rr - 5)}" fill="none" stroke="${stroke}" stroke-width="1.2"/>`;
+  return base;
+};
 /** A corner radius scaled by the world's material (glass is round, stone and ink are crisp). */
 export const radius = (r) => Math.max(2, Math.round(r * C.st.rad));
