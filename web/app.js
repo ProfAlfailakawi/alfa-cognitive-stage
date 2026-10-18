@@ -368,7 +368,7 @@ function renderPresenter() {
             <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
           <label class="director-cloud"><input type="checkbox" id="director-nav" checked /> التنقل بالصوت («الشريحة التالية»، «السابقة»، «روح للشريحة خمسة»)</label>
-          <label class="director-cloud">ألوان المشاهد <select id="scene-theme" aria-label="ألوان المشاهد"><option value="auto">تنويع تلقائي — عوالم فاتحة (موصى به)</option><option value="auto-all">تنويع تلقائي — فاتحة وداكنة</option>${Object.entries(THEMES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}</select></label>
+          <label class="director-cloud">ألوان المشاهد <select id="scene-theme" aria-label="ألوان المشاهد">${Object.entries(THEMES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}<option value="auto">عوالم موقعي — تنويع فاتح (اختياري)</option><option value="auto-all">عوالم موقعي — فاتح وداكن (اختياري)</option></select></label>
           <button type="button" id="nav-undo" hidden>تراجع عن آخر انتقال صوتي</button>
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
           <p class="meta" id="director-usage">السحابة مغلقة. المشاهد المحلية بلا API.</p>
@@ -639,13 +639,13 @@ async function fillLecturePicker() {
 const sceneMode = () => {
   const box = document.getElementById("scene-theme");
   const chosen = box?.value || (() => { try { return localStorage.getItem("alfa-scene-theme"); } catch { return null; } })();
-  return chosen === "auto-all" || Object.hasOwn(THEMES, chosen) ? chosen : "auto";
+  return chosen === "auto" || chosen === "auto-all" || Object.hasOwn(THEMES, chosen) ? chosen : "warm";
 };
 const styledScene = (spec) => styleScene(spec, { mode: sceneMode() });
 function setupSceneTheme() {
   const box = document.getElementById("scene-theme");
   if (!box) return;
-  try { box.value = (() => { const v = localStorage.getItem("alfa-scene-theme"); return v === "auto-all" || Object.hasOwn(THEMES, v) ? v : "auto"; })(); } catch {}
+  try { box.value = (() => { const v = localStorage.getItem("alfa-scene-theme"); return v === "auto" || v === "auto-all" || Object.hasOwn(THEMES, v) ? v : "warm"; })(); } catch {}
   box.onchange = () => { try { localStorage.setItem("alfa-scene-theme", box.value); } catch {} };
 }
 function showInfographicFromForm() {
