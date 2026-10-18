@@ -34,7 +34,7 @@ export function mountInsight(mount, { getToken, getBundle, getManifest, getSlide
   let lastSent = "";
   async function pushContext() {
     const code = getPollCode();
-    if (!code) return;
+    if (!code || !/^[a-f0-9]{12}$/.test(String(getBundle()))) return; // the server only accepts hashed lecture ids; do not hammer it with ones it refuses
     const key = code + "#" + getBundle() + "#" + getSlide();
     if (key === lastSent) return;
     lastSent = key;

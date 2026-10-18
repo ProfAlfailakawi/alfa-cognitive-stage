@@ -46,7 +46,7 @@ try {
   await context.addInitScript(([t, c]) => { try { sessionStorage.setItem("alfa-admin-token", t); sessionStorage.setItem("alfa-current-voting-session", c); } catch {} }, [ADMIN, code]);
   const presenter = await context.newPage();
   presenter.on("pageerror", (e) => { console.log("presenter pageerror: " + e); failures.push("presenter pageerror"); });
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#insight-drawer");
   await presenter.fill("#director-admin-token", ADMIN);
   await presenter.locator("#director-admin-token").press("Tab");

@@ -56,3 +56,24 @@ export function interpretNav(utterance, { maxWords = 6 } = {}) {
   if (g) { const n = parseNumber(g[1]); if (n !== null && n >= 1) return { kind: "goto", index: n }; }
   return null;
 }
+
+// ---- spoken poll commands: "اطرح السؤال", "اقفل التصويت", "اعرض النتائج", "اخف السؤال" (whole utterance only) ----
+const POLL_OPEN = [/^(?:ال)?(?:اطرح|اعرض|افتح|ابدا|شغل)\s+(?:ال)?(?:سؤال|تصويت)(?:\s+(?:علي|على|ع)\s*(?:ال)?(?:طلاب|طلبه)|\s+لل(?:طلاب|طلبه))?$/, /^اسال\s+(?:ال)?(?:طلاب|طلبه)$/];
+const POLL_CLOSE = /^(?:اقفل|اغلق|سكر|اوقف|انهي)\s+(?:ال)?(?:سؤال|تصويت)$/;
+const POLL_REVEAL = /^(?:اعرض|اظهر|وريني|طلع)\s+(?:ال)?نتائج$/;
+const POLL_HIDE = /^(?:اخفي|اخف|اخفِ|شيل|اطف)\s+(?:ال)?(?:سؤال|تصويت|رمز)(?:\s+من\s+(?:ال)?شاشه)?$/;
+/** -> "poll-open" | "poll-close" | "poll-reveal" | "poll-hide" or null. Short imperative sentences only. */
+export function interpretPoll(utterance) {
+  let t = normalizeArabic(String(utterance || "")).toLowerCase().replace(/[.,!?؟،"«»]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 40) return null;
+  const words = t.split(" ");
+  while (words.length && FILLERS.has(words[0])) words.shift();
+  while (words.length && FILLERS.has(words.at(-1))) words.pop();
+  t = words.join(" ");
+  if (!t || words.length > 6) return null;
+  if (POLL_OPEN.some((re) => re.test(t))) return "poll-open";
+  if (POLL_CLOSE.test(t)) return "poll-close";
+  if (POLL_REVEAL.test(t)) return "poll-reveal";
+  if (POLL_HIDE.test(t)) return "poll-hide";
+  return null;
+}

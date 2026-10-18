@@ -143,7 +143,7 @@ try {
   // Lecturer console: wrong token refused, right token shows the QR code.
   const adminCtx = await browser.newContext();
   const adminPage = await adminCtx.newPage();
-  await adminPage.goto(`${base}/vote-admin.html`);
+  await adminPage.goto(`${base}/vote-admin.html?dev=1`);
 
   await adminPage.evaluate((session) => sessionStorage.setItem("alfa-current-voting-session", session), code);
   await adminPage.reload(); // The console reads the resumed session only at module initialization.

@@ -27,7 +27,7 @@ let dialogs = 0;
 lecturer.on("dialog", (d) => { dialogs++; d.dismiss(); });
 const phones = [];
 try {
-  await lecturer.goto(`${base}/vote-admin.html`);
+  await lecturer.goto(`${base}/vote-admin.html?dev=1`);
   await lecturer.fill("#token", ADMIN);
   await lecturer.click("#save-token");
   await lecturer.waitForSelector("#qr svg");
@@ -132,12 +132,11 @@ try {
   const presenter = await shared.newPage(), audience = await shared.newPage();
   presenter.on("pageerror", (e) => { console.log("presenter pageerror: " + e); failures.push("presenter pageerror"); });
   await audience.goto(`${base}/#audience`);
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#open-vote");
   await presenter.click("#open-vote");
   const frame = presenter.frameLocator("#vote-iframe");
-  await frame.locator("#token").fill(ADMIN);
-  await frame.locator("#save-token").click();
+  if (await frame.locator("#token").isVisible()) { await frame.locator("#token").fill(ADMIN); await frame.locator("#save-token").click(); }
   await frame.locator("#qr svg").waitFor({ timeout: 10000 });
   const projCode = (await frame.locator("#session-line").textContent()).split(":")[1].trim();
   await frame.locator("#q-text").fill("كلمة عن التعلم؟");

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { interpretNav, parseNumber } from "../web/voice-nav.js";
+import { interpretNav, interpretPoll, parseNumber } from "../web/voice-nav.js";
 
 const kinds = (s) => interpretNav(s)?.kind ?? null;
 // ---- commands that must work ----
@@ -27,6 +27,15 @@ assert.equal(interpretNav("الشريحة صفر"), null);
 assert.equal(interpretNav("الشريحة 0"), null);
 assert.equal(interpretNav("x".repeat(500)), null);
 assert.equal(interpretNav(null), null);
+// ---- spoken poll commands: whole short utterances only ----
+for (const s of ["اطرح السؤال", "اطرح السؤال على الطلاب", "اعرض السؤال للطلاب", "طيب ابدأ التصويت", "اسأل الطلاب"]) assert.equal(interpretPoll(s), "poll-open", s);
+for (const s of ["اقفل التصويت", "أغلق السؤال", "سكر التصويت"]) assert.equal(interpretPoll(s), "poll-close", s);
+for (const s of ["اعرض النتائج", "أظهر النتائج", "وريني النتائج"]) assert.equal(interpretPoll(s), "poll-reveal", s);
+for (const s of ["اخف السؤال", "أخفِ التصويت من الشاشة"]) assert.equal(interpretPoll(s), "poll-hide", s);
+for (const s of ["في الشريحة القادمة اطرح السؤال على الطلاب وناقشوه", "السؤال مهم جداً", "اعرض الشريحة", "نتائج الدراسة كانت جيدة", "", null, "x".repeat(200)])
+  assert.equal(interpretPoll(s), null, "not a poll command: " + s);
+assert.equal(interpretNav("اطرح السؤال"), null, "a poll command is never a navigation command");
+
 // ---- numbers ----
 assert.deepEqual(["واحد", "اثنين", "تسعة", "عشرة", "أحد عشر", "اثنا عشر", "ثلاثين", "خمسة وسبعين", "42", "سبعة وأربعين"].map(parseNumber), [1, 2, 9, 10, 11, 12, 30, 75, 42, 47]);
 assert.equal(parseNumber("بطيخ"), null);

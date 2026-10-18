@@ -41,8 +41,9 @@ async function open(options = {}) {
   const presenter = await context.newPage(), audience = await context.newPage();
   for (const [n, p] of [["presenter", presenter], ["audience", audience]]) p.on("pageerror", (e) => { console.log(n + " pageerror: " + e); failures.push(n + " pageerror"); });
   await audience.goto(`${base}/#audience`);
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#director-start");
+  await presenter.evaluate(() => document.querySelectorAll("#director-box details").forEach((d) => { d.open = true; })); // dev-only typed test box lives in the memory drawer
   return { context, presenter, audience };
 }
 const status = (p) => p.locator("#director-status").textContent();
@@ -93,7 +94,7 @@ try {
     await presenter.evaluate(() => { window.__rec.onerror({ error: "not-allowed" }); window.__rec.onend(); });
     await presenter.waitForTimeout(3000);
     check("denied microphone does not retry", await presenter.evaluate(() => window.__starts) === 1);
-    check("typed fallback is brought forward", await presenter.locator("#director-test-text").isVisible());
+    check("denied microphone is explained and listening stays stopped (no typed fallback exists)", (await status(presenter)).includes("حالة المايك: not-allowed"));
     // A microphone plugged in later after an audio-capture failure resumes listening once.
     await presenter.click("#director-start");
     await presenter.waitForFunction(() => window.__starts === 2);
@@ -126,8 +127,7 @@ try {
     await presenter.waitForFunction(() => navigator.onLine === false);
     await presenter.click("#director-start");
     await presenter.waitForFunction(() => document.querySelector("#director-status")?.textContent?.includes("لا يوجد إنترنت"));
-    check("offline: cloud recognition is not attempted and the typed fallback opens", await presenter.evaluate(() => window.__starts) === 0 &&
-      await presenter.locator("#director-test-text").isVisible());
+    check("offline: cloud recognition is not attempted and the lecturer is told why", await presenter.evaluate(() => window.__starts) === 0);
     await presenter.fill("#director-test-text", "في دراسة طلعت إن 41 بالمية من الطلبة استفادوا");
     await presenter.click("#director-test-run");
     check("typed statistic still produces a scene while offline", await presenter.locator("#director-proposal, .info-layer").first().isVisible().catch(() => false));

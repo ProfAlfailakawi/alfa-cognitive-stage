@@ -6,7 +6,7 @@ import { pickIcon, iconSvg, shortLabel } from "./scene-icons.js";
 import { bubble, numChip, ORD_F } from "./scene-layouts.js";
 
 /** How many layouts exist for each scene type (including variant 0). */
-export const VARIANTS = { steps: 4, concept: 3, stat: 2, compare: 2, quote: 2 };
+export const VARIANTS = { steps: 5, concept: 3, stat: 2, compare: 2, quote: 2 };
 
 const AR_DIGITS = { "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9" };
 
@@ -62,6 +62,40 @@ export function kinetic(spec) {
     (p.lead ? label(p.lead, 480, 168 + i * rowH, { size: 18, color: C.mute, limit: 50, rows: 1, weight: 700, family: FONT.display }) : "") +
     labelMid(p.big, 480, 168 + i * rowH + rowH * 0.38, { size: Math.min(44, rowH * 0.52), color: C.ink, limit: 30, rows: 1, weight: 900, family: FONT.display, accent: C.blue, accentFirst: i % 2 === 0 }) + "</g>").join("");
   return frame(spec.title, `<g class="k-seq">${parts.map(one).join("")}</g><g class="k-static">${list}</g>`, "", { bare: true });
+}
+
+// ---- cover: a cover-flow row. The middle card is largest; the sides lean away (a flat stand-in for 3D) and float gently ----
+function cover(spec) {
+  const n = spec.lines.length, mid = (n - 1) / 2, w = Math.min(196, Math.floor(790 / n) - 10), small = n > 4;
+  const order = spec.lines.map((_, i) => i).sort((a, b) => Math.abs(b - mid) - Math.abs(a - mid)); // outer cards first, the middle one on top
+  const cards = order.map((i) => {
+    const text = spec.lines[i], d = i - mid, cx = rtlX(i, n, 480 - ((n - 1) * (w + 6)) / 2, 480 + ((n - 1) * (w + 6)) / 2), x = cx - w / 2, sc = 1 - 0.07 * Math.abs(d), sk = (-d * 5).toFixed(1), cy = 330;
+    return item("pop", i + 1, text, `<g class="fl" style="--i:${i}"><g transform="translate(${cx} ${cy + Math.abs(d) * 6}) skewY(${sk}) scale(${sc.toFixed(3)}) translate(${-cx} ${-cy})">` + card(x, 195, w, 270, { r: 24 }) +
+      label("الخطوة " + ORD_F[i], cx, 250, { size: small ? 18 : 22, color: C.blue, limit: 14, rows: 1, weight: 700, family: FONT.hand, ui: true }) +
+      bubble(cx, 318, 38, pickIcon(text), { fill: C.wash, shadow: false, square: true }) + numChip(cx + 32, 284, i + 1, 14) +
+      labelMid(shortLabel(text, small ? 3 : 4), cx, 410, { size: small ? 20 : 24, limit: Math.max(8, Math.floor(w / 13)), rows: 3, lh: 28, weight: 800, family: FONT.display }) + "</g></g>");
+  }).join("");
+  return frame(spec.title, cards);
+}
+
+// ---- dialogue: chat bubbles, one per spoken turn ("القائل | الكلام"); the first speaker is on the right ----
+export function dialogue(spec) {
+  const turns = spec.lines.map((l) => { const [a, b] = l.split("|").map((x) => x.trim()); return b ? { who: a, text: b, full: l } : { who: "", text: a, full: l }; });
+  const n = turns.length, rowH = 336 / n, size = n > 4 ? 20 : n > 3 ? 23 : 27;
+  const firstWho = turns[0].who;
+  const body = turns.map((t, i) => {
+    const mine = t.who ? t.who === firstWho : i % 2 === 0, y = 150 + i * rowH;
+    const f = fitText(t.text, { size, limit: 34, rows: 2, lh: size + 7 });
+    const w = Math.min(560, Math.max(190, Math.max(...f.lines.map((l) => l.length)) * size * 0.58 + 56)), h = f.lines.length * f.lh + 22;
+    const x = mine ? 900 - w : 60, by = y + (rowH - h - (t.who ? 16 : 0)) / 2 + (t.who ? 16 : 0);
+    const fill = mine ? C.blue : C.paper, ink = mine ? C.onAccent : C.ink;
+    const tail = mine ? `<path d="M ${x + w - 26} ${by + h - 1} l 10 14 l 10 -14 z" fill="${fill}"/>` : `<path d="M ${x + 26} ${by + h - 1} l -10 14 l 10 -14 z" fill="${fill}" transform="translate(20 0)"/>`;
+    return item(mine ? "right" : "left", i + 1, t.full,
+      (t.who ? label(t.who, mine ? x + w - 8 : x + 8, by - 8, { size: 16, color: C.mute, limit: 14, rows: 1, weight: 700, family: FONT.display }).replace('text-anchor="middle"', `text-anchor="${mine ? "start" : "end"}"`) : "") +
+      `<rect x="${x}" y="${by}" width="${w}" height="${h}" rx="${radius(22)}" fill="${fill}" stroke="${mine ? "none" : C.edge}"${C.st.flat ? "" : ' filter="url(#sk-shadow)"'}/>` + tail +
+      label(t.text, x + w / 2, by + 16 + size * 0.7, { size, color: ink, limit: 34, rows: 2, lh: size + 7, weight: 700, family: FONT.display }));
+  }).join("");
+  return frame(spec.title, body);
 }
 
 // ---- tour: a step-by-step walk with a progress stepper on top (segments, one chip per step, "3 / 7") ----
@@ -172,8 +206,9 @@ export const quoteScene = (spec) => quote(spec, 0);
 export function renderVariant(type, variant, spec) {
   if (type === "kinetic") return kinetic(spec);
   if (type === "tour") return tour(spec);
+  if (type === "dialogue") return dialogue(spec);
   if (type === "quote") return quote(spec, variant ? 1 : 0);
-  const table = { steps: [null, stairs, path, fan], concept: [null, tiles, orbit], stat: [null, statBand], compare: [null, versus] }[type];
+  const table = { steps: [null, stairs, path, fan, cover], concept: [null, tiles, orbit], stat: [null, statBand], compare: [null, versus] }[type];
   const fn = table?.[variant];
   return fn ? fn(spec) : null;
 }

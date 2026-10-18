@@ -43,7 +43,7 @@ async function showScene(title, number) {
 }
 
 try {
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#meta");
   await audience.goto(`${base}/#audience`);
   await audience.waitForSelector("#slide-img");

@@ -49,10 +49,19 @@ try {
     assert.ok([403, 404].includes(r.status) || r.status === 400, path + " -> " + r.status);
     assert.ok(!r.body.includes("createServer") && !r.body.includes("OPENAI") && !r.body.includes("[core]"), path + " leaked content");
   }
+  // ---- the lecturer's token is handed only to this machine's own same-origin page (nothing to type, nothing for a phone) ----
+  const own = await call(p, { path: "/api/local-token", headers: { "sec-fetch-site": "same-origin" } });
+  assert.equal(own.status, 200); assert.equal(JSON.parse(own.body).token, ADMIN);
+  assert.equal((await call(p, { path: "/api/local-token" })).status, 200, "a direct local request (no fetch metadata) works too");
+  assert.equal((await call(p, { path: "/api/local-token", headers: { "sec-fetch-site": "cross-site" } })).status, 403, "another website in the lecturer's browser cannot read it");
+  assert.equal((await call(p, { path: "/api/local-token", headers: { "sec-fetch-site": "same-site" } })).status, 403);
+  assert.equal((await call(p, { path: "/api/local-token", headers: { "x-forwarded-for": "5.6.7.8" } })).status, 403, "a tunnel cannot read it");
+  assert.equal((await call(p, { path: "/api/local-token", headers: { host: "classroom.example.org" } })).status, 403, "a LAN/other host name cannot read it");
+  assert.equal((await call(p, { path: "/api/local-token", method: "POST" })).status === 200, false);
   // ---- the API key never appears in any response ----
   const created = JSON.parse((await call(p, { path: "/api/sessions", method: "POST", headers: { "x-admin-token": ADMIN } })).body);
   const everything = [];
-  for (const [path, headers] of [["/api/director/status", { "x-admin-token": ADMIN }], ["/api/library", { "x-admin-token": ADMIN }], ["/api/data/summary", { "x-admin-token": ADMIN }],
+  for (const [path, headers] of [["/api/admin/check", { "x-admin-token": ADMIN }], ["/api/library", { "x-admin-token": ADMIN }], ["/api/data/summary", { "x-admin-token": ADMIN }],
     ["/api/network", {}], ["/api/memory/library", { "x-admin-token": ADMIN }], ["/api/lectures/prerequisites", { "x-admin-token": ADMIN }],
     [`/api/sessions/${created.code}/presenter`, { "x-admin-token": ADMIN }], [`/api/sessions/${created.code}/state`, {}], ["/nonexistent", {}], ["/api/nonexistent", {}]]) {
     const r = await call(p, { path, headers }); everything.push(r.body + JSON.stringify(r.headers));

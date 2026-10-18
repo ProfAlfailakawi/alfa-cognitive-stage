@@ -33,7 +33,7 @@ const FAKE = () => {
   window.SpeechRecognition = class { constructor() { window.__rec = this; } start() { this.running = true; } stop() { this.running = false; setTimeout(() => this.onend?.(), 0); } static available() { return Promise.resolve("unavailable"); } };
   window.__say = (final) => window.__rec.onresult({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: final } }] });
 };
-const newPresenter = async (context, url = `${base}/#presenter`) => {
+const newPresenter = async (context, url = `${base}/?dev=1#presenter`) => {
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("pageerror: " + e); failures.push("pageerror"); });
   await page.goto(url);
@@ -144,7 +144,7 @@ try {
   {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1100 } });
     await ctx.addInitScript(FAKE);
-    const page = await newPresenter(ctx, `${base}/?guest=1#presenter`);
+    const page = await newPresenter(ctx, `${base}/?guest=1&dev=1#presenter`);
     check("guest mode is announced", await page.locator("#guest-badge").isVisible());
     await page.keyboard.press("ArrowRight"); await page.waitForTimeout(300);
     await page.keyboard.press("ArrowRight"); await page.waitForTimeout(3200);

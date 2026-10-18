@@ -30,7 +30,7 @@ const cdp = await context.newCDPSession(presenter);
 const heap = async () => { await cdp.send("HeapProfiler.collectGarbage"); await cdp.send("HeapProfiler.collectGarbage"); return (await cdp.send("Runtime.getHeapUsage")).usedSize; };
 try {
   await audience.goto(`${base}/#audience`); await audience.waitForSelector("#slide-img");
-  await presenter.goto(`${base}/#presenter`); await presenter.waitForSelector("#meta");
+  await presenter.goto(`${base}/?dev=1#presenter`); await presenter.waitForSelector("#meta");
   await presenter.waitForTimeout(1500);
   const before = await stats(presenter), heapBefore = await heap();
 
@@ -82,7 +82,7 @@ try {
 
   // Every page loads without CSP violations (the policy forbids inline scripts and foreign origins).
   const admin = await context.newPage(); watch("vote-admin", admin);
-  await admin.goto(`${base}/vote-admin.html`); await admin.fill("#token", ADMIN); await admin.click("#save-token"); await admin.waitForSelector("#qr svg");
+  await admin.goto(`${base}/vote-admin.html?dev=1`); await admin.fill("#token", ADMIN); await admin.click("#save-token"); await admin.waitForSelector("#qr svg");
   await admin.fill("#q-text", "هل ننتقل؟"); await admin.fill("#q-opts", "نعم\nلا"); await admin.click("#add-poll"); await admin.waitForSelector("button[data-act=open]");
   const code = (await admin.textContent("#session-line")).split(":")[1].trim();
   const phone = await (await browser.newContext()).newPage(); watch("vote", phone);

@@ -9,7 +9,7 @@ const el = (tag, props = {}, ...children) => {
 };
 const option = (value, label, selected = false) => Object.assign(document.createElement("option"), { value, textContent: label, selected });
 
-export function mountLibraryPanel(mount, { getToken, getBundle, getManifest, sessionLog, getPollCode, getUsage, onOpen }) {
+export function mountLibraryPanel(mount, { getToken, getBundle, getManifest, sessionLog, getPollCode, onOpen }) {
   const root = el("details", { className: "library-drawer", id: "library-drawer" }, el("summary", { textContent: "المقررات والجلسات والبيانات" }));
   const body = el("div", { className: "library-body" });
   const status = el("p", { className: "meta", role: "status", id: "library-status" });
@@ -105,7 +105,6 @@ export function mountLibraryPanel(mount, { getToken, getBundle, getManifest, ses
           pending = (await call(`/api/sessions/${code}/questions`)).questions.length;
         }
       } catch {}
-      try { usage = await getUsage(); } catch {}
       lastMarkdown = reportToMarkdown(summarizeSession(session, { manifest: getManifest(), polls, pendingQuestions: pending, usage, endAt: Date.now() }));
       summaryPre.textContent = lastMarkdown;
     };

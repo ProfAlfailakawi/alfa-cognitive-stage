@@ -28,7 +28,7 @@ try {
   for (const [n, p] of [["presenter", presenter], ["audience", audience]]) p.on("pageerror", (e) => { console.log(n + " pageerror: " + e); failures.push(n + " pageerror"); });
   await audience.goto(`${base}/#audience`);
   await audience.waitForSelector("#slide-img");
-  await presenter.goto(`${base}/#presenter`);
+  await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#director-start");
   await presenter.click("#director-start");
   await presenter.waitForFunction(() => window.__rec?.running);

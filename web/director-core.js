@@ -145,8 +145,3 @@ export function percentMention(utterance) {
   const end = all[0].index + all[0][0].length;
   return { value: all[0][1].replace(",", ".") + "%", words: labelWords(norm, end, clauseEnd(text, end)) };
 }
-
-export function eligibleForCloud(event, utterance) {
-  return Boolean(event && event.kind !== "return" && event.kind !== "stat" &&
-    String(utterance || "").trim().length >= 16);
-}
