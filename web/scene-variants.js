@@ -64,6 +64,39 @@ export function kinetic(spec) {
   return frame(spec.title, `<g class="k-seq">${parts.map(one).join("")}</g><g class="k-static">${list}</g>`, "", { bare: true });
 }
 
+// ---- tour: a step-by-step walk with a progress stepper on top (segments, one chip per step, "3 / 7") ----
+// The active chip moves along as the steps arrive one after another; every step is the lecturer's own phrase, in full.
+export function tour(spec) {
+  const n = spec.lines.length, cw = 62, gap = 12, aw = 124;
+  const total = n * cw + (n - 1) * gap + (aw - cw);
+  const stepper = (active) => {
+    let x = 480 + total / 2, out = "";
+    const segW = (total - (n - 1) * 8) / n;
+    let sx = 480 + total / 2;
+    for (let i = 0; i < n; i++) { out += `<rect x="${sx - segW}" y="104" width="${segW}" height="5" rx="2.5" fill="${i <= active ? C.blue : C.track}"/>`; sx -= segW + 8; }
+    for (let i = 0; i < n; i++) {
+      const w = i === active ? aw : cw, left = x - w, cx = left + w / 2, key = pickIcon(spec.lines[i]);
+      if (i === active) out += `<rect x="${left}" y="124" width="${w}" height="64" rx="${radius(18)}" fill="${C.blue}"/>` + iconSvg(key, cx, 148, 28, C.onAccent) +
+        label(shortLabel(spec.lines[i], 2), cx, 179, { size: 14, color: C.onAccent, limit: 12, rows: 1, weight: 800, family: FONT.display });
+      else out += `<rect x="${left}" y="124" width="${w}" height="64" rx="${radius(18)}" fill="${i < active ? C.wash : C.paper}" stroke="${C.edge}"/>` +
+        (i < active ? iconSvg(key, cx, 156, 28, C.blue) : label(String(i + 1), cx, 164, { size: 24, color: C.mute, limit: 3, rows: 1, weight: 800, family: FONT.display, ui: true }));
+      x -= w + gap;
+    }
+    out += label("الخطوات", 480 + total / 2, 92, { size: 17, color: C.mute, limit: 12, rows: 1, weight: 800, family: FONT.display, ui: true });
+    out = out.replace(/^/, "") + `<text class="ui" x="${480 - total / 2}" y="92" font-size="17" font-weight="800" fill="${C.mute}" font-family="${FONT.display}" direction="ltr">${active + 1} / ${n}</text>`;
+    return out;
+  };
+  const one = (text, i) => `<g class="k-item${i === n - 1 ? " k-last" : ""}" style="--k:${i}" data-full="${E(text)}"><title>${E(text)}</title>${stepper(i)}` +
+    label("الخطوة " + ORD_F[i], 480, 262, { size: 34, color: C.blue, limit: 20, rows: 1, weight: 700, family: FONT.hand, ui: true }) +
+    labelMid(text, 480, 372, { size: 58, color: C.ink, limit: 20, rows: 3, lh: 70, weight: 900, family: FONT.display, accent: C.blue, accentFirst: i % 2 === 1 }) + "</g>";
+  const rowH = 330 / n;
+  const list = spec.lines.map((text, i) => `<g data-full="${E(text)}"><title>${E(text)}</title>` +
+    `<circle cx="760" cy="${160 + i * rowH + rowH / 2 - 6}" r="${Math.min(16, rowH / 2 - 4)}" fill="${C.blue}"/>` +
+    label(String(i + 1), 760, 160 + i * rowH + rowH / 2 - 6 + 6, { size: 16, color: C.onAccent, limit: 3, rows: 1, weight: 900, family: FONT.display, ui: true }) +
+    labelMid(text, 450, 160 + i * rowH + rowH / 2 - 6, { size: Math.min(28, rowH * 0.5), color: C.ink, limit: 38, rows: 1, weight: 800, family: FONT.display }) + "</g>").join("");
+  return frame(spec.title, `<g class="k-seq">${spec.lines.map(one).join("")}</g><g class="k-static">${list}</g>`, "", { bare: true });
+}
+
 // ---- concept ----
 function tiles(spec) {
   const n = spec.lines.length, cols = n <= 4 ? 2 : 3, rows = Math.ceil(n / cols), gap = 16;
@@ -138,6 +171,7 @@ export const quoteScene = (spec) => quote(spec, 0);
 /** Returns the drawing for variant >= 1 of a type, or null when that type has only the original layout. */
 export function renderVariant(type, variant, spec) {
   if (type === "kinetic") return kinetic(spec);
+  if (type === "tour") return tour(spec);
   if (type === "quote") return quote(spec, variant ? 1 : 0);
   const table = { steps: [null, stairs, path, fan], concept: [null, tiles, orbit], stat: [null, statBand], compare: [null, versus] }[type];
   const fn = table?.[variant];
