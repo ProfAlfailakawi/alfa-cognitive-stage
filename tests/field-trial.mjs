@@ -110,7 +110,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const before = new Set(readdirSync(tmpdir()).filter((f) => f.startsWith("alfa-guest-")));
   const child = spawn(process.execPath, [join(root, "tools/start-guest.mjs")], { env: { ...process.env, PORT: "4311", OPENAI_API_KEY: "sk-host-secret" }, stdio: ["ignore", "pipe", "pipe"] });
   let out = ""; child.stdout.on("data", (d) => (out += d));
-  await new Promise((r) => { const iv = setInterval(() => { if (/ALFA Cognitive Stage/.test(out) && /رمز المحاضر[^:]*: \w+/.test(out)) { clearInterval(iv); r(); } // the token line can arrive after the banner }, 100); });
+  // the token line can arrive after the banner, so wait for both
+  await new Promise((r) => { const iv = setInterval(() => { if (/ALFA Cognitive Stage/.test(out) && /رمز المحاضر[^:]*: \w+/.test(out)) { clearInterval(iv); r(); } }, 100); });
   const dirs = readdirSync(tmpdir()).filter((f) => f.startsWith("alfa-guest-") && !before.has(f));
   assert.equal(dirs.length, 1, "one temporary data directory");
   const token = out.match(/رمز المحاضر[^:]*: (\w+)/)?.[1];
