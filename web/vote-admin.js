@@ -29,7 +29,8 @@ function esc(value) {
 let joinUrl = "";
 function publishPresenterState(state) {
   if (window.parent === window || !joinUrl) return;
-  const active = state.polls.find((p) => p.status === "open") || null;
+  // The open question, or else the latest closed one whose results the lecturer revealed (so "اقفل" then "اعرض النتائج" still shows them).
+  const active = state.polls.find((p) => p.status === "open") || [...state.polls].reverse().find((p) => p.reveal) || null;
   window.parent.postMessage({
     alfaVoting: "status", url: joinUrl,
     active: active ? { question: active.question, options: active.options, kind: active.kind || "choice",
@@ -321,6 +322,7 @@ async function voicePoll(action) {
       // A question without choices becomes a word cloud (one word per box), so nothing is invented as an option.
       if (!$("q-opts").value.trim()) { $("q-kind").value = "words"; $("q-opts").hidden = true; }
       const poll = await addPoll();
+      $("q-kind").value = "choice"; $("q-opts").hidden = false; // the next drafted question starts as a normal choice question again
       if (!poll) return reply(false, $("poll-msg").textContent);
       await call("POST", `/sessions/${code}/polls/${poll.id}/open`);
       await refresh();

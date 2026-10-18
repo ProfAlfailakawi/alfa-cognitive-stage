@@ -948,7 +948,7 @@ function receiveDirectorSpeech(text, meta = {}) {
   if (!raw) return;
   const navCommand = navEnabled() ? interpretNav(raw) : null;
   if (navCommand) { handleVoiceNav(navCommand); return; }
-  const pollCommand = navEnabled() ? interpretPoll(raw) : null;
+  const pollCommand = interpretPoll(raw); // independent of the slide-navigation toggle
   if (pollCommand) { handleVoicePoll(pollCommand); return; }
   // A return command already executed from a stable interim transcript must not run twice.
   const early = directorRuntime.interimReturn;
