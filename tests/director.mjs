@@ -1,11 +1,21 @@
 import assert from "node:assert/strict";
 import { interpretSpeech, eligibleForCloud, normalizeArabic } from "../web/director-core.js";
+import { createDirectorBrain } from "../web/director-brain.js";
 
 assert.equal(normalizeArabic("٦٨٪"), "68%");
 const stat = interpretSpeech("في دراسة ذكرت أن ٦٨٪ من الطلبة استفادوا");
 assert.equal(stat.kind, "stat");
 assert.equal(stat.spec.lines[0], "68%");
-assert.equal(stat.spec.lines[1], "من حديث المحاضر — المصدر غير معروض");
+assert.equal(stat.spec.lines[1], "من الطلبة استفادوا", "the caption is the lecturer's own words after the number, in their spelling");
+// no words after the number: a plain note of the source the lecturer named, never an invented description
+assert.equal(interpretSpeech("وبناء على الدراسة او الاحصائية فهناك ٢٥٪ مقارنة مع").spec.lines[1], "حسب دراسة ذكرها المحاضر");
+assert.equal(interpretSpeech("وبناء على الدراسة او الاحصائية فهناك ٢٥٪ مقارنة مع").dangling, true);
+assert.equal(interpretSpeech("نسبة الناجحين 40%").spec.lines[1], "من حديث المحاضر — المصدر غير معروض");
+// two percentages joined by an explicit comparison word -> two bars labelled with the lecturer's words
+const versus = interpretSpeech("وبناء على الدراسة فهناك ٢٥٪ من الطلاب يفضلون التعلم النشط مقارنة مع ٦٠٪ يفضلون المحاضرة");
+assert.equal(versus.kind, "bars");
+assert.deepEqual(versus.spec.lines, ["من الطلاب يفضلون التعلم النشط | 25%", "يفضلون المحاضرة | 60%"]);
+assert.equal(interpretSpeech("في الدراسة 30% و 50% من الطلاب")?.kind ?? null, null, "two numbers without a stated relation are never paired");
 assert.equal(interpretSpeech("نسبة 140% من الطلبة")?.kind, undefined);
 assert.equal(interpretSpeech("زين نرجع لموضوعنا").kind, "return");
 assert.equal(interpretSpeech("بقولكم قصة عن شخص كان يلعب كل يوم").kind, "story");
@@ -37,3 +47,16 @@ assert.equal(interpretSpeech("النسبة من 30% إلى 70% إلى 90%")?.kin
 assert.equal(interpretSpeech("النسبة من 30% إلى 70% عفواً أقصد 80%")?.kind, "stat",
   "Existing explicit correction path is preserved");
 console.log("director-core: all checks passed");
+
+// a comparison left hanging is completed by the next sentence that carries one number
+{
+  let t = 1e6; const brain = createDirectorBrain({ now: () => t });
+  const a = brain.observe("وبناء على الدراسة او الاحصائية فهناك ٢٥٪ مقارنة مع", { slide: { index: 1 } });
+  assert.equal(a.kind, "stat"); t += 4000;
+  const b = brain.observe("ستين بالمية في المحاضرة التقليدية", { slide: { index: 1 } });
+  assert.equal(b.kind, "bars"); assert.equal(b.action, "auto");
+  assert.deepEqual(b.spec.lines, ["النسبة الأولى | 25%", "في المحاضرة التقليدية | 60%"]);
+  t += 40000; brain.observe("وبناء على الدراسة فهناك ٢٥٪ مقارنة مع", { slide: { index: 2 } }); t += 30000;
+  assert.notEqual(brain.observe("ستين بالمية في المحاضرة", { slide: { index: 2 } }).kind, "bars", "too late: no pairing after 25 s");
+}
+console.log("director: stat captions, comparisons and hanging comparisons passed");
