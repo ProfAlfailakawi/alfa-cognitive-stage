@@ -1,11 +1,19 @@
 // Shared drawing kit for the vector scenes: theme palette, text wrapping, the animated frame and motion wrappers.
 // Motion is CSS only (see style.css, ".info-layer svg .m-*"): text content is always the exact final text, so
 // nothing is ever shown "counting up" to a number the lecturer did not say. Reduced-motion users get a still scene.
-import { THEMES, themeName } from "./scene-theme.js";
+import { themeFor } from "./scene-theme.js";
 
 /** The live palette. renderInfographic() calls useTheme() before it draws; drawing is synchronous so this is safe. */
-export const C = { ...THEMES.warm };
-export function useTheme(name) { Object.assign(C, THEMES[themeName(name)]); return C; }
+export const C = {};
+// `st` = style tokens (background pattern, title style, corner radius, flatness, motion); only the design worlds set them.
+const PLAIN = { bg: "dots", title: "center", rad: 1, flat: false, motion: "", post: "" };
+export function useTheme(name) {
+  for (const k of Object.keys(C)) delete C[k];
+  Object.assign(C, themeFor(name));
+  C.st = { ...PLAIN, ...(C.st || {}) };
+  return C;
+}
+useTheme("warm");
 
 export const FONT = { display: "Cairo, Tahoma, sans-serif", hero: "Lalezar, Cairo, sans-serif", hand: "'Aref Ruqaa', Cairo, serif" };
 
@@ -79,19 +87,60 @@ const defs = () => `<defs>
   <filter id="sk-shadow" x="-12%" y="-12%" width="124%" height="140%"><feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="${C.shadow}" flood-opacity="${C.shadowOpacity}"/></filter>
 </defs>`;
 
-/** The scene frame: themed background, a heavy title whose last word carries the accent, a drawn underline, then the content. */
+// Motion character of a design world: how far, how fast and how springy things arrive. CSS reads these as custom properties.
+const MOTION = {
+  breathe: { dur: ".95s", ease: "cubic-bezier(.45,0,.25,1)", stag: "150ms", dy: "10px", dx: "20px", sc: ".92", rot: "0deg" },
+  grow: { dur: ".7s", ease: "cubic-bezier(.2,.8,.2,1)", stag: "120ms", dy: "22px", dx: "30px", sc: ".55", rot: "0deg" },
+  connect: { dur: ".55s", ease: "cubic-bezier(.3,.7,.2,1)", stag: "85ms", dy: "14px", dx: "36px", sc: ".8", rot: "0deg" },
+  split: { dur: ".6s", ease: "cubic-bezier(.2,.7,.2,1)", stag: "100ms", dy: "8px", dx: "64px", sc: ".85", rot: "0deg" },
+  rise: { dur: ".7s", ease: "cubic-bezier(.16,.8,.2,1)", stag: "110ms", dy: "38px", dx: "30px", sc: ".85", rot: "0deg" },
+  orbit: { dur: ".8s", ease: "cubic-bezier(.25,.8,.25,1)", stag: "130ms", dy: "18px", dx: "34px", sc: ".72", rot: "-9deg" },
+  weave: { dur: ".65s", ease: "cubic-bezier(.3,.6,.3,1)", stag: "95ms", dy: "20px", dx: "52px", sc: ".9", rot: "3deg" },
+  reveal: { dur: "1s", ease: "cubic-bezier(.4,0,.2,1)", stag: "160ms", dy: "0px", dx: "0px", sc: ".96", rot: "0deg" },
+  balance: { dur: ".7s", ease: "cubic-bezier(.35,.1,.25,1)", stag: "100ms", dy: "12px", dx: "44px", sc: ".9", rot: "0deg" },
+  pulse: { dur: ".6s", ease: "cubic-bezier(.3,1.5,.4,1)", stag: "105ms", dy: "16px", dx: "30px", sc: ".5", rot: "0deg" },
+};
+const motionAttrs = () => {
+  const m = MOTION[C.st.motion];
+  return m ? ` data-motion="${C.st.motion}" style="${Object.entries(m).map(([k, v]) => `--${k}:${v}`).join(";")}"` : "";
+};
+
+/** A faint, static background pattern that belongs to the world's geometry. Never carries text. */
+function decor() {
+  const a = C.blue, o = C.dark ? 0.1 : 0.075;
+  switch (C.st.bg) {
+    case "rings": return [190, 320, 450].map((r) => `<circle cx="480" cy="300" r="${r}" fill="none" stroke="${a}" stroke-opacity="${o}" stroke-width="2"/>`).join("");
+    case "rays": return Array.from({ length: 9 }, (_, i) => `<line x1="${60 + i * 105}" y1="0" x2="${60 + i * 105}" y2="540" stroke="${a}" stroke-opacity="${o * 0.8}" stroke-width="2"/>`).join("");
+    case "grid": return Array.from({ length: 9 }, (_, i) => `<line x1="0" y1="${60 + i * 60}" x2="960" y2="${60 + i * 60}" stroke="${a}" stroke-opacity="${o * 0.7}"/>`).join("") +
+      Array.from({ length: 15 }, (_, i) => `<line x1="${60 + i * 60}" y1="0" x2="${60 + i * 60}" y2="540" stroke="${a}" stroke-opacity="${o * 0.7}"/>`).join("");
+    case "blobs": return `<ellipse cx="820" cy="150" rx="230" ry="150" fill="${a}" fill-opacity="${o}"/><ellipse cx="150" cy="470" rx="260" ry="120" fill="${a}" fill-opacity="${o}"/>`;
+    case "blocks": return `<rect x="650" y="0" width="310" height="540" fill="${a}" fill-opacity="${o * 0.8}"/><rect x="0" y="420" width="420" height="120" fill="${a}" fill-opacity="${o * 0.8}"/>`;
+    case "stars": { let x = 7; const rnd = () => (x = (x * 48271) % 2147483647) / 2147483647;
+      return Array.from({ length: 46 }, () => `<circle cx="${(rnd() * 960).toFixed(0)}" cy="${(rnd() * 540).toFixed(0)}" r="${(0.8 + rnd() * 1.6).toFixed(1)}" fill="${C.ink}" fill-opacity="${(0.15 + rnd() * 0.3).toFixed(2)}"/>`).join(""); }
+    default: return "";
+  }
+}
+
+/** The scene frame: themed background, a heavy title (style follows the world), a drawn rule, then the content. */
 export function frame(title, inside, extraDefs = "") {
+  const mode = C.st.title;
   const fit = fitText(title, { size: 40, limit: 34, rows: 1, lh: 46 });
   const underlineY = 84 + (fit.lines.length - 1) * fit.lh + 24;
-  return `<svg viewBox="0 0 960 540" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="${E(title)}" data-theme="${C.dark ? "dark" : "light"}">` +
+  const head = mode === "band"
+    ? motion("rise", 0, `<rect x="0" y="22" width="960" height="92" fill="${C.gold}"/>` + label(title, 480, 84, { size: 40, color: C.onAccent, limit: 34, rows: 1, weight: 900, lh: 46, family: FONT.display })) +
+      drawLine(0, 118, 960, 118, { color: C.blue, width: 5, i: 1 })
+    : motion("rise", 0, label(title, 480, 84, { size: 40, color: C.ink, limit: 34, rows: 1, weight: 900, lh: 46, family: FONT.display, accent: C.blue })) +
+      (mode === "rule" ? drawLine(250, underlineY, 710, underlineY, { color: C.edge, width: 2, i: 1 }) : "") +
+      drawLine(436, underlineY, 524, underlineY, { color: C.blue, width: 5, i: mode === "rule" ? 2 : 1 });
+  return `<svg viewBox="0 0 960 540" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="${E(title)}" data-theme="${C.dark ? "dark" : "light"}"${motionAttrs()}>` +
     defs().replace("</defs>", extraDefs + "</defs>") +
     `<rect width="960" height="540" fill="url(#sk-bg)"/><rect width="960" height="540" fill="url(#sk-pat)"/>` +
     `<circle cx="120" cy="40" r="260" fill="url(#sk-g1)"/><circle cx="880" cy="520" r="300" fill="url(#sk-g2)"/>` +
-    motion("rise", 0, label(title, 480, 84, { size: 40, color: C.ink, limit: 34, rows: 1, weight: 900, lh: 46, family: FONT.display, accent: C.blue })) +
-    drawLine(436, underlineY, 524, underlineY, { color: C.blue, width: 5, i: 1 }) +
-    inside + "</svg>";
+    decor() + head + inside + "</svg>";
 }
 
 /** A card with a soft shadow. */
 export const card = (x, y, w, h, { fill = C.paper, r = 20, stroke = C.edge } = {}) =>
-  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}" stroke="${stroke}" filter="url(#sk-shadow)"/>`;
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius(r)}" fill="${fill}" stroke="${stroke}"${C.st.flat ? ' stroke-width="2.5"' : ' filter="url(#sk-shadow)"'}/>`;
+/** A corner radius scaled by the world's material (glass is round, stone and ink are crisp). */
+export const radius = (r) => Math.max(2, Math.round(r * C.st.rad));

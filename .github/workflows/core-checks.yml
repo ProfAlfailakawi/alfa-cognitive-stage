@@ -54,6 +54,11 @@ jobs:
           node --check web/guest.js
           node --check web/voice-nav.js
           node --check web/scene-kit.js
+          node --check web/color-math.js
+          node --check web/design-worlds.js
+          node --check web/world-theme.js
+          node --check web/scene-variants.js
+          node --check web/scene-stylist.js
           node --check web/scene-icons.js
           node --check web/scene-theme.js
           node --check web/insight-ui.js

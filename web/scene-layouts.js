@@ -1,7 +1,7 @@
 // Icon-led, animated vector scenes (concept, flow, timeline, story, bars, cycle, activity).
 // Each item is a clear icon plus a FEW of the lecturer's own words; the full text stays in the item (<title>, data-full).
 // Items run right-to-left, the Arabic reading order. Nothing is invented: icons come from keywords, words from the text.
-import { C, FONT, label, labelMid, motion, item, drawLine, rtlX, frame, card } from "./scene-kit.js";
+import { C, FONT, label, labelMid, motion, item, drawLine, rtlX, frame, card, radius } from "./scene-kit.js";
 import { pickIcon, iconSvg, shortLabel } from "./scene-icons.js";
 
 export const ORD_F = ["الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة", "السابعة", "الثامنة"];
@@ -9,7 +9,7 @@ export const ORD_M = ["الأول", "الثاني", "الثالث", "الراب�
 
 /** A round or rounded-square badge holding an icon. */
 export const bubble = (cx, cy, r, key, { fill = C.solid, color = C.blue, shadow = true, square = false } = {}) =>
-  (square ? `<rect x="${cx - r}" y="${cy - r}" width="${r * 2}" height="${r * 2}" rx="${Math.round(r * 0.5)}" fill="${fill}" stroke="${C.edge}" stroke-width="2"${shadow ? ' filter="url(#sk-shadow)"' : ""}/>`
+  (square ? `<rect x="${cx - r}" y="${cy - r}" width="${r * 2}" height="${r * 2}" rx="${radius(r * 0.5)}" fill="${fill}" stroke="${C.edge}" stroke-width="2"${shadow && !C.st.flat ? ' filter="url(#sk-shadow)"' : ""}/>`
     : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${C.edge}" stroke-width="2"${shadow ? ' filter="url(#sk-shadow)"' : ""}/>`) + iconSvg(key, cx, cy, r * 1.08, color);
 
 // Shapes that carry text are solid: a gradient's light end could fall below the contrast the theme test guarantees.

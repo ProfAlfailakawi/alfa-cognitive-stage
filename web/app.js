@@ -21,7 +21,8 @@ import { runRehearsal } from "./rehearsal.js";
 import { mountInsight } from "./insight-ui.js";
 import { mountFieldTools } from "./field-ui.js";
 import { interpretNav } from "./voice-nav.js";
-import { THEMES, themeName } from "./scene-theme.js";
+import { THEMES } from "./scene-theme.js";
+import { styleScene } from "./scene-stylist.js";
 import { createFieldRecorder } from "./field-recorder.js";
 import { createResume } from "./resume-state.js";
 import { createNumberWitness } from "./number-witness.js";
@@ -344,6 +345,7 @@ function renderPresenter() {
             <option value="bars">أعمدة نسب (التسمية | 40%)</option>
             <option value="cycle">دورة (مراحل متكررة)</option>
             <option value="activity">نشاط (تعليماتك ثم المدة: …)</option>
+            <option value="quote">اقتباس (جملتك كاملة ثم اسم القائل اختيارياً)</option>
           </select>
           <input id="info-title" type="text" maxlength="120" placeholder="العنوان" />
           <textarea id="info-lines" rows="3" placeholder="البطاقة: الرقم في السطر الأول ثم الوصف&#10;المقارنة: سطر لكل مقارنة&#10;الخطوات: خطوة في كل سطر"></textarea>
@@ -366,7 +368,7 @@ function renderPresenter() {
             <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
           <label class="director-cloud"><input type="checkbox" id="director-nav" checked /> التنقل بالصوت («الشريحة التالية»، «السابقة»، «روح للشريحة خمسة»)</label>
-          <label class="director-cloud">ألوان المشاهد <select id="scene-theme" aria-label="ألوان المشاهد">${Object.entries(THEMES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}</select></label>
+          <label class="director-cloud">ألوان المشاهد <select id="scene-theme" aria-label="ألوان المشاهد"><option value="auto">تنويع تلقائي — عوالم فاتحة (موصى به)</option><option value="auto-all">تنويع تلقائي — فاتحة وداكنة</option>${Object.entries(THEMES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}</select></label>
           <button type="button" id="nav-undo" hidden>تراجع عن آخر انتقال صوتي</button>
           <label class="director-cloud"><input type="checkbox" id="director-cloud" /> تحليل سحابي اختياري (قد يتكلف)</label>
           <p class="meta" id="director-usage">السحابة مغلقة. المشاهد المحلية بلا API.</p>
@@ -632,27 +634,28 @@ async function fillLecturePicker() {
   };
 }
 
-// The colour theme travels inside the scene, so the audience window draws exactly what the lecturer chose.
-function sceneTheme() {
+// The look (colours and layout) travels inside the scene, so the audience window draws exactly what the lecturer sees.
+// "auto" lets the stylist pick a light design world per scene and avoid repeating recent ones; a fixed theme keeps its colours.
+const sceneMode = () => {
   const box = document.getElementById("scene-theme");
   const chosen = box?.value || (() => { try { return localStorage.getItem("alfa-scene-theme"); } catch { return null; } })();
-  return themeName(chosen);
-}
+  return chosen === "auto-all" || Object.hasOwn(THEMES, chosen) ? chosen : "auto";
+};
+const styledScene = (spec) => styleScene(spec, { mode: sceneMode() });
 function setupSceneTheme() {
   const box = document.getElementById("scene-theme");
   if (!box) return;
-  try { box.value = themeName(localStorage.getItem("alfa-scene-theme")); } catch {}
+  try { box.value = (() => { const v = localStorage.getItem("alfa-scene-theme"); return v === "auto-all" || Object.hasOwn(THEMES, v) ? v : "auto"; })(); } catch {}
   box.onchange = () => { try { localStorage.setItem("alfa-scene-theme", box.value); } catch {} };
 }
 function showInfographicFromForm() {
   const msg = document.getElementById("info-msg");
   try {
-    const spec = {
+    const spec = styledScene({
       type: document.getElementById("info-type").value,
       title: document.getElementById("info-title").value,
       lines: document.getElementById("info-lines").value.split("\n"),
-      theme: sceneTheme(),
-    };
+    });
     renderInfographic(spec); // validates before sending
     beginDigression();
     renderLayer(spec);
@@ -847,7 +850,7 @@ function revealDirectorScene(proposal, source = "approved") {
       Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
   try {
     beginDigression();
-    proposal.spec.theme = sceneTheme();
+    proposal.spec = styledScene(proposal.spec);
     renderLayer(proposal.spec);
     currentOverlay = proposal.spec;
     sessionLog.scene({ slide: state.index, type: proposal.spec.type, title: proposal.spec.title, lines: proposal.spec.lines, source });

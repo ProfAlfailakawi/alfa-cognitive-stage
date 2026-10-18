@@ -1,17 +1,22 @@
 import { renderStructuredScene, bubble, numChip, ORD_F } from "./scene-layouts.js";
 import { C, E, FONT, label, labelMid, motion, item, drawLine, rtlX, frame, card, useTheme } from "./scene-kit.js";
-import { THEMES } from "./scene-theme.js";
+import { themeKnown } from "./scene-theme.js";
+import { renderVariant, VARIANTS } from "./scene-variants.js";
 import { pickIcon, iconSvg, shortLabel } from "./scene-icons.js";
 // Light, vector infographics built from a small spec. No images, no AI calls.
 // Every number and word comes from the lecturer's input; nothing is invented here.
 
-export function validateSpec(spec) {
-  const theme = Object.hasOwn(THEMES, spec?.theme) ? spec.theme : undefined; // a lecturer-chosen colour theme travels with the scene
-  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity"].includes(spec?.type) ? spec.type : null;
+function validateBase(spec) {
+  const theme = themeKnown(spec?.theme) ? spec.theme : undefined; // a lecturer-chosen colour theme travels with the scene
+  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity", "quote"].includes(spec?.type) ? spec.type : null;
   if (!type) throw new Error("نوع الإنفوجرافيك غير معروف");
   const title = String(spec.title ?? "").trim().slice(0, 120); // Renderers escape at the HTML boundary.
   const lines = (Array.isArray(spec.lines) ? spec.lines : [])
-    .map((l) => String(l ?? "").trim().slice(0, 120)).filter(Boolean);
+    .map((l) => String(l ?? "").trim().slice(0, type === "quote" ? 260 : 120)).filter(Boolean);
+  if (type === "quote") {
+    if (lines.length < 1 || lines.length > 2) throw new Error("الاقتباس: جملة المحاضر ثم (اسم القائل) اختيارياً");
+    return { type, title, theme, lines };
+  }
   if (type === "stat") {
     if (lines.length < 1 || lines.length > 2) throw new Error("البطاقة الإحصائية تحتاج رقماً ووصفاً فقط");
     if (!/^[\d.,%+\-٠-٩ ]+$/.test(lines[0]) && lines[0].length > 12) throw new Error("الرقم يجب أن يكون قصيراً");
@@ -40,6 +45,13 @@ export function validateSpec(spec) {
   if (type !== "steps" && type !== "cycle" && (lines.length < 2 || lines.length > (type === "story" ? 4 : 6)))
     throw new Error("المشهد يحتاج من 2 إلى 6 عناصر (القصة حتى 4)");
   return { type, title, theme, lines };
+}
+
+/** A scene also carries which of its layouts to use (0 = the original). Unknown or out-of-range values mean the original. */
+export function validateSpec(spec) {
+  const out = validateBase(spec);
+  const v = spec?.variant;
+  return Number.isInteger(v) && v > 0 && v < (VARIANTS[out.type] || 1) ? { ...out, variant: v } : out;
 }
 
 const AR_DIGITS = { "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9" };
@@ -100,5 +112,7 @@ function stepsSvg(spec) {
 export function renderInfographic(input) {
   const spec = validateSpec(input);
   useTheme(spec.theme);
+  const varied = spec.type === "quote" || spec.variant ? renderVariant(spec.type, spec.variant || 0, spec) : null;
+  if (varied) return varied;
   return spec.type === "stat" ? statSvg(spec) : spec.type === "compare" ? compareSvg(spec) : spec.type === "steps" ? stepsSvg(spec) : renderStructuredScene(spec.type, spec.title, spec.lines);
 }

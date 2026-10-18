@@ -2,6 +2,7 @@
 // `solid` is an opaque stand-in for `paper` where lines must not show through (nodes, chips).
 //   blue = the main accent, blue2 = its lighter partner, gold = the second emphasis, onAccent = text on those.
 // "warm" is the default (cream, terracotta and ink); "deep" is a dark teal-and-green stage; "calm" is the quiet blue-grey original.
+import { worldTheme, isWorldName } from "./world-theme.js";
 export const THEMES = {
   warm: { label: "دافئ", dark: false,
     bg: "#f6eee2", bg2: "#efe1cf", glow1: "#f0b095", glow2: "#f7d9b4", dots: "#26241e", dotsOpacity: 0.07,
@@ -18,18 +19,9 @@ export const THEMES = {
 };
 export const DEFAULT_THEME = "warm";
 export const themeName = (value) => (Object.hasOwn(THEMES, value) ? value : DEFAULT_THEME);
+// A scene may also name one of the 64 design worlds ("world:<id>"), chosen by the stylist (scene-stylist.js).
+export const themeKnown = (value) => Object.hasOwn(THEMES, value) || isWorldName(value);
+export const themeFor = (value) => (Object.hasOwn(THEMES, value) ? THEMES[value] : isWorldName(value) ? worldTheme(value.slice(6)) : THEMES[DEFAULT_THEME]);
 
 // ---- contrast (WCAG 2.1), used by tests/scene-themes.mjs so colours are measured, not guessed ----
-function rgbOf(color) {
-  const m = String(color).match(/^#([0-9a-f]{6})$/i);
-  if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
-  const r = String(color).match(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/);
-  return r ? [Number(r[1]), Number(r[2]), Number(r[3])] : null;
-}
-const lum = ([r, g, b]) => [r, g, b].map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
-export function contrast(fg, bg) {
-  const a = rgbOf(fg), b = rgbOf(bg);
-  if (!a || !b) return null;
-  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
+export { contrast } from "./color-math.js";
