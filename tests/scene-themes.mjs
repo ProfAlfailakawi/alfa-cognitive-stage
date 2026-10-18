@@ -27,6 +27,16 @@ for (const name of Object.keys(THEMES)) for (const spec of specs) {
   assert.ok(svg.includes(THEMES[name].bg), `${spec.type} uses the ${name} background`);
   assert.ok(!svg.includes("undefined") && !svg.includes("NaN"), `${spec.type}/${name}: no undefined or NaN in the drawing`);
 }
+// No text may sit on a gradient: contrast is only guaranteed against the solid accent colours.
+for (const name of Object.keys(THEMES)) for (const spec of specs.concat([{ type: "stat", title: "x", lines: ["7", "y"] }, { type: "activity", title: "x", lines: ["أ", "المدة: 3 دقائق"] }])) {
+  const svg = renderInfographic({ ...spec, theme: name });
+  const on = THEMES[name].onAccent;
+  for (const m of svg.matchAll(new RegExp(`<text[^>]*fill="${on}"`, "g"))) {
+    const before = svg.slice(0, m.index);
+    const shape = [...before.matchAll(/<(?:circle|rect)\b[^>]*>/g)].at(-1)?.[0] || "";
+    assert.ok(!/fill="url\(#sk-(?:blue|gold)\)"/.test(shape), `${spec.type}/${name}: text on a gradient-filled shape: ${shape.slice(0, 80)}`);
+  }
+}
 // themes never leak into one another (the palette is reset on every render)
 const warm = renderInfographic({ ...specs[0], theme: "warm" });
 renderInfographic({ ...specs[0], theme: "deep" });

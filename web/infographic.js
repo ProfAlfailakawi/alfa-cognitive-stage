@@ -70,7 +70,7 @@ function statSvg(spec) {
 
 function compareSvg(spec) {
   const n = spec.lines.length, rowH = n <= 3 ? 78 : 58, gap = 12;
-  const head = motion("rise", 1, `<rect x="510" y="140" width="330" height="42" rx="21" fill="url(#sk-blue)"/><rect x="120" y="140" width="330" height="42" rx="21" fill="url(#sk-gold)"/>` +
+  const head = motion("rise", 1, `<rect x="510" y="140" width="330" height="42" rx="21" fill="${C.blue}"/><rect x="120" y="140" width="330" height="42" rx="21" fill="${C.gold}"/>` +
     label("الأول", 675, 170, { size: 22, color: C.onAccent, limit: 10, rows: 1, weight: 900, family: FONT.display, ui: true }) + label("الثاني", 285, 170, { size: 22, color: C.onAccent, limit: 10, rows: 1, weight: 900, family: FONT.display, ui: true }));
   const cell = (text, x0, i, color, dir) => {
     const y = 200 + i * (rowH + gap), cx = x0 + 165, cy = y + rowH / 2;

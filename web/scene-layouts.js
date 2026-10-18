@@ -12,7 +12,8 @@ export const bubble = (cx, cy, r, key, { fill = C.solid, color = C.blue, shadow 
   (square ? `<rect x="${cx - r}" y="${cy - r}" width="${r * 2}" height="${r * 2}" rx="${Math.round(r * 0.5)}" fill="${fill}" stroke="${C.edge}" stroke-width="2"${shadow ? ' filter="url(#sk-shadow)"' : ""}/>`
     : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${C.edge}" stroke-width="2"${shadow ? ' filter="url(#sk-shadow)"' : ""}/>`) + iconSvg(key, cx, cy, r * 1.08, color);
 
-export const numChip = (cx, cy, n, r = 15) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#sk-blue)"/>` +
+// Shapes that carry text are solid: a gradient's light end could fall below the contrast the theme test guarantees.
+export const numChip = (cx, cy, n, r = 15) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${C.blue}"/>` +
   label(String(n), cx, Number(cy) + r * 0.38, { size: r * 1.15, color: C.onAccent, limit: 3, rows: 1, weight: 900, family: FONT.display, ui: true });
 
 export function renderStructuredScene(type, title, lines) {
@@ -90,7 +91,7 @@ export function renderStructuredScene(type, title, lines) {
     const dur = lines[1] || "";
     return frame(title, motion("rise", 1, card(130, 160, 700, 290, { r: 28 }) + bubble(480, 220, 36, pickIcon(lines[0]), { fill: C.wash, color: C.blue, shadow: false, square: true }) +
       labelMid(lines[0], 480, 340, { size: 28, limit: 32, rows: 4, lh: 38, weight: 800, family: FONT.display })) +
-      (dur ? motion("pop", 3, `<rect x="350" y="398" width="260" height="48" rx="24" fill="url(#sk-gold)"/>` + label(dur, 480, 430, { size: 22, color: C.onAccent, limit: 24, rows: 1, weight: 900, family: FONT.display })) : ""));
+      (dur ? motion("pop", 3, `<rect x="350" y="398" width="260" height="48" rx="24" fill="${C.gold}"/>` + label(dur, 480, 430, { size: 22, color: C.onAccent, limit: 24, rows: 1, weight: 900, family: FONT.display })) : ""));
   }
   throw new Error("نوع المشهد غير مدعوم");
 }
