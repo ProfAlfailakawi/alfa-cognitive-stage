@@ -15,6 +15,25 @@ if [[ "$NODE_MAJOR" -lt 22 ]]; then
   read "?اضغط Enter لإنهاء التشغيل..."
   exit 1
 fi
+
+# Keep lecture-import Python packages isolated from macOS/Homebrew Python. The
+# server and the installer always use this exact environment.
+PYTHON_ENV="$PWD/.venv"
+if [[ ! -x "$PYTHON_ENV/bin/python" ]] || ! "$PYTHON_ENV/bin/python" -c 'import pptx, lxml, PIL' >/dev/null 2>&1; then
+  echo "تجهيز أدوات استيراد المحاضرات تلقائياً (مرة واحدة)..."
+  python3 -m venv "$PYTHON_ENV" || {
+    echo "تعذر إنشاء بيئة Python. ثبّت Python 3 من python.org أو Homebrew ثم أعد التشغيل."
+    read "?اضغط Enter لإنهاء التشغيل..."
+    exit 1
+  }
+  "$PYTHON_ENV/bin/python" -m pip install --upgrade pip || exit 1
+  "$PYTHON_ENV/bin/python" -m pip install python-pptx lxml Pillow || {
+    echo "تعذر تجهيز مكتبات Python. تحقق من اتصال الإنترنت ثم أعد فتح Start ALFA.command."
+    read "?اضغط Enter لإنهاء التشغيل..."
+    exit 1
+  }
+fi
+export ALFA_PYTHON="$PYTHON_ENV/bin/python"
 echo "افتح http://localhost:4173/#presenter"
 echo "رمز المحاضر يظهر أدناه؛ لا تشاركه مع الطلبة."
 (sleep 2; open "http://localhost:4173/#presenter" >/dev/null 2>&1) &

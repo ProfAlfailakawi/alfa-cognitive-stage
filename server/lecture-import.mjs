@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 const exec = promisify(execFile);
 const LIMIT = 80 * 1024 * 1024;
 let busy = false;
+const python = () => process.env.ALFA_PYTHON || "python3";
 const prerequisites = ["python3", "soffice", "pdftoppm", "pdftotext", "pdfinfo", "ffmpeg", "ffprobe"];
 function toolEnvironment() {
   const macSoffice = "/Applications/LibreOffice.app/Contents/MacOS/soffice";
@@ -35,7 +36,7 @@ export async function prerequisitesStatus() {
     try { await exec("which", [cmd], { timeout: 4000, env: toolEnvironment() }); }
     catch { missing.push(cmd); }
   }
-  try { await exec("python3", ["-c", "import pptx, lxml, PIL"], { timeout: 10000, env: toolEnvironment() }); }
+  try { await exec(python(), ["-c", "import pptx, lxml, PIL"], { timeout: 10000, env: toolEnvironment() }); }
   catch { missing.push("python-pptx/lxml/Pillow"); }
   return { ready: missing.length === 0, missing };
 }
@@ -78,7 +79,7 @@ export async function importLecture(req, { root, bundlesRoot }) {
     directory = await fs.mkdtemp(join(tmpdir(), "alfa-import-"));
     const file = join(directory, filename);
     await receivePptx(req, file);
-    const { stdout } = await exec("python3", [resolve(root, "tools/build_bundle.py"), file,
+    const { stdout } = await exec(python(), [resolve(root, "tools/build_bundle.py"), file,
       "--bundles", bundlesRoot], { timeout: 12 * 60 * 1000, maxBuffer: 512 * 1024, env: toolEnvironment() });
     const produced = stdout.trim().split(/\r?\n/).at(-1);
     const id = basename(produced);
