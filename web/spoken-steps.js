@@ -34,6 +34,6 @@ export function extractSpokenSteps(utterance) {
       !/[\p{L}]/u.test(line))) return null;
   if (new Set(lines).size !== lines.length) return null;
   return {
-    type: "steps", title: "خطوات من شرح المحاضر", lines
+    type: "steps", title: "الخطوات", lines
   };
 }

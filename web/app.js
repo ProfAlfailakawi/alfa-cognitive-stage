@@ -1053,7 +1053,7 @@ function receiveDirectorSpeech(text, meta = {}) {
       else { showDirectorProposal(proposal, decision.reason || "راجع المشهد قبل إظهاره."); timed("proposal"); }
     } else {
       showDirectorProposal(proposal, decision.reason || (decision.kind === "stat"
-        ? "إحصائية التقطت من حديث المحاضر — تأكد من الرقم."
+        ? "التقطتُ إحصائية — تأكد من الرقم قبل العرض."
         : "اقتراح من حديثك كما نطقته؛ راجعه قبل إظهاره."));
       timed("proposal");
     }

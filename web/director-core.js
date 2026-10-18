@@ -66,7 +66,7 @@ export function interpretSpeech(utterance) {
       const a = first[1].replace(",", ".") + "%";
       const b = second[1].replace(",", ".") + "%";
       return { kind: "compare", confidence: 0.96, utterance: raw,
-        spec: { type: "compare", title: "مقارنة النسب كما ذكرها المحاضر",
+        spec: { type: "compare", title: "مقارنة النسب",
           lines: [fromTo ? `من ${a} | إلى ${b}` : `كانت ${a} | صارت ${b}`] } };
     }
     // "25% يفضلون X مقارنة مع 60% يفضلون Y": two percentages with an explicit comparison word, each followed by
@@ -80,7 +80,7 @@ export function interpretSpeech(utterance) {
       if (values.every((v) => Number(v) >= 0 && Number(v) <= 100)) {
         const names = [label1 || "النسبة الأولى", label2 && label2 !== label1 ? label2 : "النسبة الثانية"];
         return { kind: "bars", confidence: 0.96, utterance: raw,
-          spec: { type: "bars", title: "مقارنة النسب كما ذكرها المحاضر", lines: [`${names[0]} | ${values[0]}%`, `${names[1]} | ${values[1]}%`] } };
+          spec: { type: "bars", title: "مقارنة النسب", lines: [`${names[0]} | ${values[0]}%`, `${names[1]} | ${values[1]}%`] } };
       }
     }
   }
@@ -92,13 +92,12 @@ export function interpretSpeech(utterance) {
     const value = Number(mention[1].replace(",", "."));
     if (Number.isFinite(value) && value >= 0 && value <= 100) {
       // The caption is the lecturer's own words right after the number ("25% من الطلاب يذاكرون بالليل").
-      // Without any, a plain note of where the number came from (never an invented description).
+      // Without any, the number stands alone: nothing is added that the lecturer did not say.
       const after = labelWords(norm, mention.index + mention[0].length, clauseEnd(text, mention.index + mention[0].length), 9, 60);
-      const caption = after && after.split(" ").length >= 2 ? after
-        : /دراس/.test(text) ? "حسب دراسة ذكرها المحاضر" : /احصائ/.test(text) ? "حسب إحصائية ذكرها المحاضر" : "من حديث المحاضر — المصدر غير معروض";
+      const caption = after && after.split(" ").length >= 2 ? after : "";
       return {
         kind: "stat", confidence: 0.97, utterance: raw, dangling: /(?:مقارنه|بالمقارنه|مقابل)(?:\s+(?:مع|ب))?\s*[.،]?\s*$/.test(text),
-        spec: { type: "stat", title: "إحصائية ذكرها المحاضر", lines: [number, caption] },
+        spec: { type: "stat", title: "إحصائية", lines: caption ? [number, caption] : [number] },
       };
     }
   }
@@ -106,6 +105,14 @@ export function interpretSpeech(utterance) {
     return { kind: "story", confidence: 0.89, utterance: raw };
   }
   if (/(الفرق بين|نقارن بين|مقارنه بين|يختلف عن|الاختلاف بين)/.test(text)) {
+    // "الفرق بين X والمحاضرة Y": the two sides are the lecturer's own words around the first "و"; nothing is added.
+    const m = text.match(/(?:الفرق بين|نقارن بين|مقارنه بين|الاختلاف بين)\s+(.+?)\s+و(?=\S)(.+?)(?=[.،,؛!؟?]|\s(?:وبين|ولماذا|لان|حيث|يعني)\s|$)/);
+    if (m) {
+      const a = labelWords(norm, m.index + m[0].indexOf(m[1]), m.index + m[0].indexOf(m[1]) + m[1].length, 5, 40);
+      const bStart = m.index + m[0].lastIndexOf(m[2]);
+      const b = labelWords(norm, bStart, bStart + m[2].length, 5, 40);
+      if (a && b && a !== b) return { kind: "compare", confidence: 0.82, utterance: raw, spec: { type: "compare", title: "مقارنة", lines: [`${a} | ${b}`] } };
+    }
     return { kind: "compare", confidence: 0.82, utterance: raw };
   }
   if (/(تتوقعون|شنو رايكم|ما رايكم|منو يعتقد|هل تعتقدون)/.test(text)) {

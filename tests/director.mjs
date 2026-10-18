@@ -7,10 +7,17 @@ const stat = interpretSpeech("في دراسة ذكرت أن ٦٨٪ من الطل
 assert.equal(stat.kind, "stat");
 assert.equal(stat.spec.lines[0], "68%");
 assert.equal(stat.spec.lines[1], "من الطلبة استفادوا", "the caption is the lecturer's own words after the number, in their spelling");
-// no words after the number: a plain note of the source the lecturer named, never an invented description
-assert.equal(interpretSpeech("وبناء على الدراسة او الاحصائية فهناك ٢٥٪ مقارنة مع").spec.lines[1], "حسب دراسة ذكرها المحاضر");
+// no words after the number: the number stands alone; no source note and no "from the lecturer" filler is ever added
+assert.deepEqual(interpretSpeech("وبناء على الدراسة او الاحصائية فهناك ٢٥٪ مقارنة مع").spec.lines, ["25%"]);
 assert.equal(interpretSpeech("وبناء على الدراسة او الاحصائية فهناك ٢٥٪ مقارنة مع").dangling, true);
-assert.equal(interpretSpeech("نسبة الناجحين 40%").spec.lines[1], "من حديث المحاضر — المصدر غير معروض");
+assert.deepEqual(interpretSpeech("نسبة الناجحين 40%").spec.lines, ["40%"]);
+for (const said of ["نسبة الناجحين 40%", "في دراسة ذكرت أن ٦٨٪ من الطلبة استفادوا", "وبناء على الدراسة فهناك ٢٥٪ من الطلاب يفضلون التعلم النشط مقارنة مع ٦٠٪ يفضلون المحاضرة", "الخطوة الأولى نجمع البيانات والخطوة الثانية نحللها والخطوة الثالثة نكتب النتيجة", "الفرق بين الألعاب التعليمية والترفيهية"]) {
+  const spec = interpretSpeech(said)?.spec;
+  assert.ok(spec && !/(?<![\p{L}])المحاضر(?![\p{L}])|المصدر غير معروض/u.test(spec.title + " " + spec.lines.join(" ")), "no filler wording on the student screen: " + said);
+}
+// "الفرق بين X و Y" becomes a two-sided scene made only of the lecturer's own words
+assert.deepEqual(interpretSpeech("الفرق بين الألعاب التعليمية والترفيهية").spec.lines, ["الألعاب التعليمية | الترفيهية"]);
+assert.equal(interpretSpeech("يختلف عن غيره")?.spec, undefined);
 // two percentages joined by an explicit comparison word -> two bars labelled with the lecturer's words
 const versus = interpretSpeech("وبناء على الدراسة فهناك ٢٥٪ من الطلاب يفضلون التعلم النشط مقارنة مع ٦٠٪ يفضلون المحاضرة");
 assert.equal(versus.kind, "bars");
