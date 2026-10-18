@@ -49,15 +49,16 @@ export function fitText(value, { size = 21, limit = 24, rows = 3, lh = 28 } = {}
 }
 
 /** Centred, wrapped, RTL text. `accent` colours the last word (the title style). `ui` marks fixed scene captions (numbers, ordinals) that are not the lecturer's words. */
-export function label(value, x, y, { size = 21, color = C.ink, limit = 24, rows = 3, weight = 400, lh = 28, family = "", accent = "", ui = false } = {}) {
+export function label(value, x, y, { size = 21, color = C.ink, limit = 24, rows = 3, weight = 400, lh = 28, family = "", accent = "", ui = false, accentFirst = false } = {}) {
   const f = fitText(value, { size, limit, rows, lh });
-  const row = (t, last) => {
-    if (!accent || !last) return E(t);
+  const row = (t, last, first) => {
+    if (accentFirst && accent && first) { const w = t.split(" "); return w.length > 1 ? `<tspan fill="${accent}">${E(w[0])}</tspan> ${E(w.slice(1).join(" "))}` : `<tspan fill="${accent}">${E(t)}</tspan>`; }
+    if (!accent || !last || accentFirst) return E(t);
     const w = t.split(" ");
     return w.length > 1 ? `${E(w.slice(0, -1).join(" "))} <tspan fill="${accent}">${E(w.at(-1))}</tspan>` : `<tspan fill="${accent}">${E(t)}</tspan>`;
   };
   return `<text${ui ? ' class="ui"' : ""} x="${x}" y="${y}" fill="${color}" font-size="${f.size}" font-weight="${weight}"${family ? ` font-family="${family}"` : ""} text-anchor="middle" direction="rtl">` +
-    f.lines.map((t, i) => `<tspan x="${x}" dy="${i ? f.lh : 0}">${row(t, i === f.lines.length - 1)}</tspan>`).join("") + "</text>";
+    f.lines.map((t, i) => `<tspan x="${x}" dy="${i ? f.lh : 0}">${row(t, i === f.lines.length - 1, i === 0)}</tspan>`).join("") + "</text>";
 }
 
 /** Like label(), but `cy` is the vertical CENTRE of the text block, whatever the number of rows. */
@@ -122,11 +123,11 @@ function decor() {
 }
 
 /** The scene frame: themed background, a heavy title (style follows the world), a drawn rule, then the content. */
-export function frame(title, inside, extraDefs = "") {
+export function frame(title, inside, extraDefs = "", { bare = false } = {}) {
   const mode = C.st.title;
   const fit = fitText(title, { size: 40, limit: 34, rows: 1, lh: 46 });
   const underlineY = 84 + (fit.lines.length - 1) * fit.lh + 24;
-  const head = mode === "band"
+  const head = bare ? "" : mode === "band"
     ? motion("rise", 0, `<rect x="0" y="22" width="960" height="92" fill="${C.gold}"/>` + label(title, 480, 84, { size: 40, color: C.onAccent, limit: 34, rows: 1, weight: 900, lh: 46, family: FONT.display })) +
       drawLine(0, 118, 960, 118, { color: C.blue, width: 5, i: 1 })
     : motion("rise", 0, label(title, 480, 84, { size: 40, color: C.ink, limit: 34, rows: 1, weight: 900, lh: 46, family: FONT.display, accent: C.blue })) +

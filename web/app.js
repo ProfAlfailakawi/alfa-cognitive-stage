@@ -345,6 +345,7 @@ function renderPresenter() {
             <option value="bars">أعمدة نسب (التسمية | 40%)</option>
             <option value="cycle">دورة (مراحل متكررة)</option>
             <option value="activity">نشاط (تعليماتك ثم المدة: …)</option>
+            <option value="kinetic">كلمات متتابعة (سطر لكل عبارة، وتمهيد اختياري: تمهيد | العبارة)</option>
             <option value="quote">اقتباس (جملتك كاملة ثم اسم القائل اختيارياً)</option>
           </select>
           <input id="info-title" type="text" maxlength="120" placeholder="العنوان" />

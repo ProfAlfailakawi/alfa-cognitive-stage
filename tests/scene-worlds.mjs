@@ -33,9 +33,10 @@ const samples = {
   concept: [["الدافعية", "الانتباه"], ["أ", "ب", "ج", "د", "هـ", "و"], ["الدافعية", "الانتباه", "الذاكرة", "الفهم"]],
   compare: [["محاضرة | تفاعل", "حفظ | فهم"], ["أ | ب", "ج | د", "هـ | و", "ز | ح", "ط | ي"]],
   quote: [[long, "د. أحمد"], ["جملة قصيرة"]],
+  kinetic: [["أول شي | ادخل Claude", "أو ارفع | ملف البوربوينت", "وبعدها | انسخ البرومبت"], ["أ", "ب"], ["١ | " + long, "٢", "٣", "٤", "٥", "٦"]],
 };
 const picks = ["copper-eclipse", "ivory-thesis", "lunar-glass", "emerald-atlas", "desert-bloom", "black-margin", ...WORLDS.filter((_, i) => i % 5 === 0).map((w) => w.id)];
-for (const id of picks) for (const [type, sets] of Object.entries(samples)) for (let variant = 0; variant < VARIANTS[type]; variant++) for (const lines of sets) {
+for (const id of picks) for (const [type, sets] of Object.entries(samples)) for (let variant = 0; variant < (VARIANTS[type] || 1); variant++) for (const lines of sets) {
   const svg = renderInfographic({ type, title: "عنوان المشهد", lines, theme: worldName(id), variant });
   const where = `${type}/v${variant}/${id}`;
   assert.ok(!/NaN|undefined/.test(svg), `${where}: no NaN or undefined`);
@@ -46,6 +47,7 @@ for (const id of picks) for (const [type, sets] of Object.entries(samples)) for 
     const shape = [...svg.slice(0, m.index).matchAll(/<(?:circle|rect)\b[^>]*>/g)].at(-1)?.[0] || "";
     assert.ok(!/fill="url\(#sk-(?:blue|gold)\)"/.test(shape), `${where}: text on a gradient`);
   }
+  if (type === "kinetic") { for (const l of lines) assert.ok(svg.includes(`data-full="${l}"`), `${where}: phrase kept`); assert.ok(svg.includes("k-static") && svg.includes("k-last")); continue; }
   if (type === "quote") assert.ok(svg.includes(`data-full`) || svg.includes(lines[0].split(" ")[0]), `${where}: the sentence is drawn`);
   else for (const raw of lines.flatMap((l) => (type === "compare" ? l.split("|").map((x) => x.trim()) : [l]))) {
     if (type === "stat") continue;
@@ -56,12 +58,17 @@ for (const id of picks) for (const [type, sets] of Object.entries(samples)) for 
 const all = renderInfographic({ type: "quote", title: "t", lines: [long], theme: "world:ivory-thesis" });
 for (const word of long.split(" ")) assert.ok(all.includes(word), `quote keeps "${word}"`);
 
+// the ember theme (from the lecturer's reference video) is a normal fixed theme and passes the same contrast rules in scene-themes.mjs
+assert.equal(validateSpec({ type: "kinetic", title: "x", lines: ["أ", "ب"], theme: "ember" }).theme, "ember");
+assert.throws(() => validateSpec({ type: "kinetic", title: "x", lines: ["أ"] }));
+assert.throws(() => validateSpec({ type: "kinetic", title: "x", lines: ["1", "2", "3", "4", "5", "6", "7"] }));
+
 // 3. a scene's look travels in the spec and is validated
 assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], theme: "world:copper-eclipse" }).theme, "world:copper-eclipse");
 assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], theme: "world:no-such-world" }).theme, undefined);
 assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], theme: "world:__proto__" }).theme, undefined);
-assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], variant: 2 }).variant, 2);
-for (const bad of [3, -1, 1.5, "1", null, NaN]) assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], variant: bad }).variant, undefined, `variant ${bad} is ignored`);
+assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], variant: 3 }).variant, 3);
+for (const bad of [4, -1, 1.5, "1", null, NaN]) assert.equal(validateSpec({ type: "steps", title: "x", lines: ["أ", "ب"], variant: bad }).variant, undefined, `variant ${bad} is ignored`);
 assert.equal(validateSpec({ type: "bars", title: "x", lines: ["أ | 10%", "ب | 20%"], variant: 1 }).variant, undefined, "types with one layout ignore variant");
 assert.equal(validateSpec({ type: "quote", title: "x", lines: ["ا".repeat(300)] }).lines[0].length, 260);
 assert.throws(() => validateSpec({ type: "quote", title: "x", lines: [] }));

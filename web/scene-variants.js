@@ -6,7 +6,7 @@ import { pickIcon, iconSvg, shortLabel } from "./scene-icons.js";
 import { bubble, numChip, ORD_F } from "./scene-layouts.js";
 
 /** How many layouts exist for each scene type (including variant 0). */
-export const VARIANTS = { steps: 3, concept: 3, stat: 2, compare: 2, quote: 2 };
+export const VARIANTS = { steps: 4, concept: 3, stat: 2, compare: 2, quote: 2 };
 
 const AR_DIGITS = { "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9" };
 
@@ -32,6 +32,36 @@ function path(spec) {
   const nodes = spec.lines.map((text, i) => item("pop", i + 1, text, bubble(xs[i], ys[i], 38, pickIcon(text)) + numChip(xs[i] + 30, ys[i] - 30, i + 1, 14) +
     labelMid(shortLabel(text, 4), xs[i], ys[i] + 82, { size: n > 4 ? 21 : 24, limit: Math.max(9, Math.floor(700 / Math.max(1, n - 1) / 13)), rows: 2, lh: 27, weight: 800, family: FONT.display }))).join("");
   return frame(spec.title, curve + nodes);
+}
+
+// A fan of floating cards on a gentle arc, each slightly tilted. Same content as the original cards, never overlapping.
+function fan(spec) {
+  const n = spec.lines.length, w = Math.min(200, Math.floor(760 / n) - 14), small = n > 4, mid = (n - 1) / 2;
+  const items = spec.lines.map((text, i) => {
+    const cx = rtlX(i, n, 480 - ((n - 1) * (w + 14)) / 2, 480 + ((n - 1) * (w + 14)) / 2), x = cx - w / 2, d = i - mid, dy = Math.round(d * d * 9), tilt = (-d * 4.5).toFixed(1);
+    return item("pop", i + 1, text, `<g class="fl" style="--i:${i}"><g transform="translate(0 ${dy}) rotate(${tilt} ${cx} 330)">` + card(x, 190, w, 270, { r: 24 }) +
+      label("الخطوة " + ORD_F[i], cx, 246, { size: small ? 18 : 23, color: C.blue, limit: 14, rows: 1, weight: 700, family: FONT.hand, ui: true }) +
+      bubble(cx, 312, 38, pickIcon(text), { fill: C.wash, shadow: false, square: true }) + numChip(cx + 32, 278, i + 1, 14) +
+      labelMid(shortLabel(text, small ? 3 : 4), cx, 408, { size: small ? 20 : 25, limit: Math.max(8, Math.floor(w / 13)), rows: 3, lh: 29, weight: 800, family: FONT.display }) + "</g></g>");
+  }).join("");
+  return frame(spec.title, items);
+}
+
+// ---- kinetic: the phrases arrive one after another, big and heavy, a small grey lead line above ("lead | phrase") ----
+export function kinetic(spec) {
+  const parts = spec.lines.map((l) => { const [a, b] = l.split("|").map((x) => x.trim()); return b ? { lead: a, big: b, full: l } : { lead: "", big: a, full: l }; });
+  const n = parts.length;
+  const one = (p, i) => {
+    const lead = p.lead ? label(p.lead, 480, 238, { size: 26, color: C.mute, limit: 40, rows: 1, weight: 700, family: FONT.display }) : "";
+    const big = labelMid(p.big, 480, 330, { size: 78, color: C.ink, limit: 17, rows: 2, lh: 92, weight: 900, family: FONT.display, accent: C.blue, accentFirst: i % 2 === 0 });
+    return `<g class="k-item${i === n - 1 ? " k-last" : ""}" style="--k:${i}" data-full="${E(p.full)}"><title>${E(p.full)}</title>${lead}${big}</g>`;
+  };
+  // Reduced motion shows every phrase at once instead, as a calm list (CSS swaps the two layers).
+  const rowH = 330 / n;
+  const list = parts.map((p, i) => `<g data-full="${E(p.full)}"><title>${E(p.full)}</title>` +
+    (p.lead ? label(p.lead, 480, 168 + i * rowH, { size: 18, color: C.mute, limit: 50, rows: 1, weight: 700, family: FONT.display }) : "") +
+    labelMid(p.big, 480, 168 + i * rowH + rowH * 0.38, { size: Math.min(44, rowH * 0.52), color: C.ink, limit: 30, rows: 1, weight: 900, family: FONT.display, accent: C.blue, accentFirst: i % 2 === 0 }) + "</g>").join("");
+  return frame(spec.title, `<g class="k-seq">${parts.map(one).join("")}</g><g class="k-static">${list}</g>`, "", { bare: true });
 }
 
 // ---- concept ----
@@ -107,8 +137,9 @@ export const quoteScene = (spec) => quote(spec, 0);
 
 /** Returns the drawing for variant >= 1 of a type, or null when that type has only the original layout. */
 export function renderVariant(type, variant, spec) {
+  if (type === "kinetic") return kinetic(spec);
   if (type === "quote") return quote(spec, variant ? 1 : 0);
-  const table = { steps: [null, stairs, path], concept: [null, tiles, orbit], stat: [null, statBand], compare: [null, versus] }[type];
+  const table = { steps: [null, stairs, path, fan], concept: [null, tiles, orbit], stat: [null, statBand], compare: [null, versus] }[type];
   const fn = table?.[variant];
   return fn ? fn(spec) : null;
 }

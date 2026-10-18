@@ -8,11 +8,15 @@ import { pickIcon, iconSvg, shortLabel } from "./scene-icons.js";
 
 function validateBase(spec) {
   const theme = themeKnown(spec?.theme) ? spec.theme : undefined; // a lecturer-chosen colour theme travels with the scene
-  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity", "quote"].includes(spec?.type) ? spec.type : null;
+  const type = ["stat", "compare", "steps", "concept", "flow", "timeline", "story", "bars", "cycle", "activity", "quote", "kinetic"].includes(spec?.type) ? spec.type : null;
   if (!type) throw new Error("نوع الإنفوجرافيك غير معروف");
   const title = String(spec.title ?? "").trim().slice(0, 120); // Renderers escape at the HTML boundary.
   const lines = (Array.isArray(spec.lines) ? spec.lines : [])
     .map((l) => String(l ?? "").trim().slice(0, type === "quote" ? 260 : 120)).filter(Boolean);
+  if (type === "kinetic") {
+    if (lines.length < 2 || lines.length > 6) throw new Error("الكلمات المتتابعة: من 2 إلى 6 عبارات (اختيارياً: تمهيد | العبارة)");
+    return { type, title, theme, lines };
+  }
   if (type === "quote") {
     if (lines.length < 1 || lines.length > 2) throw new Error("الاقتباس: جملة المحاضر ثم (اسم القائل) اختيارياً");
     return { type, title, theme, lines };
@@ -112,7 +116,7 @@ function stepsSvg(spec) {
 export function renderInfographic(input) {
   const spec = validateSpec(input);
   useTheme(spec.theme);
-  const varied = spec.type === "quote" || spec.variant ? renderVariant(spec.type, spec.variant || 0, spec) : null;
+  const varied = spec.type === "quote" || spec.type === "kinetic" || spec.variant ? renderVariant(spec.type, spec.variant || 0, spec) : null;
   if (varied) return varied;
   return spec.type === "stat" ? statSvg(spec) : spec.type === "compare" ? compareSvg(spec) : spec.type === "steps" ? stepsSvg(spec) : renderStructuredScene(spec.type, spec.title, spec.lines);
 }
