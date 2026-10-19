@@ -26,8 +26,8 @@ export function interpretNaturalNav(utterance) {
     // A named slide is an explicit slide transition, never an animation/build click.
     // The standalone "التالية"/"السابقة" keeps the established single-build behavior.
     const spoken = clean(utterance);
-    if (strict.kind === "next" || strict.kind === "prev")
-      return { ...strict, skipBuilds: /(?:شريحه|صفحه|سلايد)/.test(spoken) };
+    if ((strict.kind === "next" || strict.kind === "prev") && /(?:شريحه|صفحه|سلايد)/.test(spoken))
+      return { ...strict, skipBuilds: true };
     return strict;
   }
   let t = clean(utterance);
