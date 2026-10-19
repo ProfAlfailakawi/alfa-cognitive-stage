@@ -75,7 +75,8 @@ export function renderStructuredScene(type, title, lines) {
     // Bars are scaled to the largest spoken value; every number is exactly what the lecturer said. Right to left.
     const rows = lines.map((l) => l.split("|").map((x) => x.trim()));
     const values = rows.map(([, v]) => parsePercentValue(v));
-    if (values.some((v) => v === null) || !values.length) throw new Error("قيمة نسبة غير صالحة للمخطط");\n    const top = Math.max(...values, 1);
+    if (values.some((v) => v === null) || !values.length) throw new Error("قيمة نسبة غير صالحة للمخطط");
+    const top = Math.max(...values, 1);
     const rowH = Math.min(58, (360 - (rows.length - 1) * 12) / rows.length), small = rowH < 56;
     const nodes = rows.map(([name, value], i) => {
       const y = 158 + i * (rowH + 12), w = (values[i] / top) * 430;
