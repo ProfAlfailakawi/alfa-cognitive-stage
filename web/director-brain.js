@@ -4,7 +4,7 @@
 // This is NOT neural language understanding: it is explicit Kuwaiti/Gulf/MSA patterns plus
 // context (rolling window, topic tracking, slide grounding, pacing). Measured by tests/director-corpus.mjs.
 import { interpretSpeech, normalizeArabic, percentMention } from "./director-core.js";
-import { lecturerComparison, lecturerTakeaway, lecturerTeachingMove } from "./lecturer-profile.js";
+import { lecturerComparison, lecturerRealityContrast, lecturerTakeaway, lecturerTeachingMove } from "./lecturer-profile.js";
 
 const WINDOW_MS = 60000;
 const MAX_WINDOW = 8;
@@ -304,7 +304,11 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       story = null;
       return { ...d, action: direct.kind, kind: direct.kind, confidence: direct.confidence, reason: "عودة مطلوبة من المحاضر" };
     }
-    if (ctx.mediaPlaying) return status(d, "الفيديو يعمل؛ الصمت أفضل");
+    if (ctx.mediaPlaying) {
+      // Video speech must never be stitched to the first subsequent lecturer sentence.
+      window = []; story = null; pendingStat = null;
+      return status(d, "الفيديو يعمل؛ الصمت أفضل");
+    }
 
     // 2. Retractions and corrections are handled carefully: never auto-replace a visible scene.
     if (RETRACT.test(normalized) && ctx.overlay) {
@@ -356,7 +360,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
 
     // 4. Local structure detectors without an API.
     let found = moment;
-    const exactDifference = lecturerComparison(raw);
+    const exactDifference = lecturerComparison(raw) || lecturerRealityContrast(raw);
     if (exactDifference && (!found || found.kind === "compare"))
       found = { kind: "compare", confidence: 0.86, spec: exactDifference, utterance: raw };
     if (!found || (found.kind === "compare" && !found.spec)) {

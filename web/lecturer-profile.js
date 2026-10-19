@@ -82,3 +82,20 @@ export function lecturerComparison(current, previous = "") {
   if (![...significantWords(right)].some((w) => words.has(w))) return null;
   return { type: "compare", title: "مقارنة", lines: [left + " | " + right] };
 }
+
+
+/**
+ * Explicit "X لكن هي بالأصل Y" educational distinction. Both complete
+ * statements are the lecturer's exact words, not inferred facts.
+ */
+export function lecturerRealityContrast(utterance) {
+  const raw = String(utterance || "").trim();
+  if (raw.length > 235 || /[|؟?]/u.test(raw)) return null;
+  const hit = raw.match(/^(.+?)\s+(?:لكن|بس)\s+((?:هي|هو|هذا|هذي)\s+(?:(?:في\s+)?(?:الأصل|الاصل|الحقيقة|الحقيقه)|بالأصل|بالاصل|بالواقع)\s+.+)$/u);
+  if (!hit) return null;
+  const left = hit[1].trim(), right = hit[2].trim();
+  const eligible = (s) => s.length >= 24 && s.length <= 115 && s.split(/\s+/).length >= 5 &&
+    s.split(/\s+/).length <= 22 && !/^(?:ليش|شنو|منو|هل|كيف)\s/u.test(normalizeArabic(s));
+  if (!eligible(left) || !eligible(right)) return null;
+  return { type: "compare", title: "مقارنة", lines: [left + " | " + right] };
+}
