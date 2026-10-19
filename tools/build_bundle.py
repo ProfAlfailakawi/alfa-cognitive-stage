@@ -69,6 +69,40 @@ def iter_shapes(shapes):
             yield from iter_shapes(shape.shapes)
 
 
+def slide_elements(slide, slide_width, slide_height, index):
+    """Only trustworthy, unrotated, ungrouped top-level PowerPoint rectangles.
+    Click-build visibility is guarded at runtime: no unsafe guess about a hidden element.
+    No OCR; a picture's text is never invented.
+    """
+    result = []
+    for shape in slide.shapes:
+        try:
+            typ = int(shape.shape_type)
+            # Skip grouped shapes and unsupported SmartArt/Chart/Media hosts.
+            if typ == 6 or typ not in (1, 13, 14, 17, 19):
+                continue
+            if abs(float(getattr(shape, "rotation", 0) or 0)) > 0.01:
+                continue
+            x, y, w, h = [float(v) for v in (shape.left, shape.top, shape.width, shape.height)]
+            if w <= 0 or h <= 0 or x < 0 or y < 0:
+                continue
+            if x + w > float(slide_width) + 1 or y + h > float(slide_height) + 1:
+                continue
+            value = shape.text_frame.text.strip() if getattr(shape, "has_text_frame", False) else ""
+            kind = "picture" if typ == 13 else "table" if typ == 19 else "text" if value else "shape"
+            # Images do not produce fictitious selectable text.
+            result.append({
+                "id": f"s{index}-e{int(shape.shape_id)}",
+                "type": kind,
+                "text": value[:180],
+                "x": round(x / slide_width, 6), "y": round(y / slide_height, 6),
+                "w": round(w / slide_width, 6), "h": round(h / slide_height, 6),
+            })
+        except (ValueError, AttributeError, TypeError, OverflowError):
+            continue
+    return result[:120]
+
+
 def slide_text(slide):
     """Collect ordinary slide text for contextual teaching assistance, without AI."""
     texts = []
@@ -399,6 +433,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
         deck = Presentation(str(pptx))
         for entry, slide in zip(manifest["slides"], deck.slides):
             entry["text"] = slide_text(slide)
+            entry["elements"] = slide_elements(slide, deck.slide_width, deck.slide_height, entry.get("index", 1))
         legacy = ("powerpoint animations are not preserved in PNG rendering",
                   "potentially animated PowerPoint chart: visual compatibility review required")
         manifest["problems"] = [x for x in manifest.get("problems", [])
@@ -483,6 +518,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
             "image": f"slides/{index:03d}.png",
             "notes": notes,
             "text": slide_text(slide),
+            "elements": slide_elements(slide, slide_w, slide_h, index),
             "videos": videos,
             "compatibility": compatibility,
         })
