@@ -153,10 +153,24 @@ export function mountLivingIntelligence(mount, context) {
     compare:"مقارنة",step:"خطوة",question:"سؤال",summary:"خلاصة"})) {
     const o = make("option", label); o.value = id; type.append(o);
   }
-  living.append(type, proposalLine);
+  const parentNode = make("select"); parentNode.setAttribute("aria-label", "العقدة المرتبطة");
+  const relation = make("select"); relation.setAttribute("aria-label", "نوع العلاقة");
+  for (const [value, label] of Object.entries({
+    "related":"مرتبط بـ", "part-of":"جزء من", "example-of":"مثال على",
+    "compared-with":"مقارنة مع", "precedes":"يسبق", "explains":"يشرح"
+  })) { const o = make("option", label); o.value = value; relation.append(o); }
+  living.append(type, parentNode, relation, proposalLine);
   const actions = make("div", "", "cognitive-actions"); living.append(actions);
   function summaryGraph() {
     graphSummary.textContent = "عناصر معتمدة: " + graph.nodes.length + " · علاقات معتمدة: " + graph.edges.length;
+    const selected = parentNode.value;
+    parentNode.replaceChildren();
+    const none = make("option", graph.nodes.length ? "العقدة الرئيسية (افتراضي)" : "لا علاقة — أول عنصر");
+    none.value = graph.nodes[0]?.id || ""; parentNode.append(none);
+    for (const n of graph.nodes) {
+      const o = make("option", n.text.slice(0, 70)); o.value = n.id; parentNode.append(o);
+    }
+    parentNode.value = graph.nodes.some((n) => n.id === selected) ? selected : (graph.nodes[0]?.id || "");
   }
   btn(actions, "أضف للمشهد", () => {
     if (!text.value.trim()) { say("أدخل نصاً صريحاً أو اختر اقتراحاً"); return; }
@@ -166,7 +180,7 @@ export function mountLivingIntelligence(mount, context) {
       const source = sourceRecord({ bundle, slide: context.getSlide(), originalText: original,
         kind: suggestion && suggestion.text === raw ? "speech" : "lecturer", approved: true });
       const result = appendKnowledge(graph, { type: type.value, text: raw, source,
-        parentId: graph.nodes[0]?.id || null, relation: "related" });
+        parentId: parentNode.value || null, relation: relation.value });
       graph = result.graph; saveKnowledge(graph); summaryGraph(); suggestion = null; proposalLine.textContent = "";
       graphPage = Math.ceil(graph.nodes.length / 6) - 1;
       if (!safeProject(audienceGraph(graph, graphPage))) return;
@@ -310,6 +324,9 @@ export function mountLivingIntelligence(mount, context) {
           make("p", hit.excerpt), make("p", hit.reason, "meta"));
         btn(item, "اعرض التذكير", () => safeProject({ kind:"bridge", title:"تذكّر من المحاضرة السابقة",
           lecture: hit.lecture, fromSlide: hit.slide, excerpt: hit.excerpt }));
+        btn(item, "افتح الشريحة الأصلية في نافذة مستقلة", () =>
+          window.open("/?bundle=" + encodeURIComponent(hit.bundle) + "&start=" + hit.slide,
+            "alfa-reference-" + hit.bundle, "noopener"));
         results.append(item);
       }
       say("عُرضت اقتراحات للمحاضر فقط؛ لا يُنشر شيء حتى تختار «اعرض التذكير».");
