@@ -1,5 +1,5 @@
-// Authenticated PPTX import. Uploaded source is temporary and never served to students.
-// Requires Python, python-pptx, LibreOffice, poppler and ffmpeg installed on the lecturer's Mac.
+// Authenticated local lecture import. Uploaded source is temporary and never served to students.
+// Requires Python, python-pptx, LibreOffice, poppler and ffmpeg; PowerPoint improves PPTX fidelity on macOS.
 import { createWriteStream, existsSync, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, basename, dirname, delimiter } from "node:path";
@@ -9,7 +9,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const exec = promisify(execFile);
-const LIMIT = 80 * 1024 * 1024;
+const LIMIT = 2 * 1024 * 1024 * 1024;
 let busy = false;
 const python = () => process.env.ALFA_PYTHON || "python3";
 const prerequisites = ["python3", "soffice", "pdftoppm", "pdftotext", "pdfinfo", "ffmpeg", "ffprobe"];
@@ -46,7 +46,7 @@ async function receivePptx(req, path) {
   const limiter = new Transform({
     transform(chunk, _encoding, callback) {
       size += chunk.length;
-      if (size > LIMIT) return callback(Object.assign(new Error("حجم الملف يتجاوز 80 MB"), { status: 413 }));
+      if (size > LIMIT) return callback(Object.assign(new Error("حجم الملف يتجاوز 2 GB"), { status: 413 }));
       callback(null, chunk);
     }
   });
@@ -70,7 +70,7 @@ export async function importLecture(req, { root, bundlesRoot }) {
   const filename = lectureFileName(req.headers["x-lecture-filename"]);
   if (!filename) throw Object.assign(new Error("اختر ملف PowerPoint أو PDF أو Keynote باسم صالح"), { status: 400 });
   const length = Number(req.headers["content-length"]);
-  if (Number.isFinite(length) && length > LIMIT) throw Object.assign(new Error("حجم الملف أكبر من 80 MB"), { status: 413 });
+  if (Number.isFinite(length) && length > LIMIT) throw Object.assign(new Error("حجم الملف أكبر من 2 GB"), { status: 413 });
   busy = true;
   let directory;
   try {
@@ -80,7 +80,7 @@ export async function importLecture(req, { root, bundlesRoot }) {
     const file = join(directory, filename);
     await receivePptx(req, file);
     const { stdout } = await exec(python(), [resolve(root, "tools/build_bundle.py"), file,
-      "--bundles", bundlesRoot], { timeout: 12 * 60 * 1000, maxBuffer: 512 * 1024, env: toolEnvironment() });
+      "--bundles", bundlesRoot], { timeout: 45 * 60 * 1000, maxBuffer: 512 * 1024, env: toolEnvironment() });
     const produced = stdout.trim().split(/\r?\n/).at(-1);
     const id = basename(produced);
     if (!/^[a-f0-9]{12}$/.test(id)) throw new Error("لم يتم إنتاج حزمة محاضرة صحيحة");
