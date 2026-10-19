@@ -68,6 +68,9 @@ try {
   await living.getByRole("button",{name:"أضف للمشهد"}).click();
   await audience.waitForFunction(()=>document.querySelectorAll(".cognitive-node").length===2);
   check("new concept is incrementally shown",await audience.locator(".cognitive-node").count()===2);
+  await audience.waitForSelector(".cognitive-links .cognitive-link-path");
+  check("actual approved conceptual relation is drawn",
+    await audience.locator(".cognitive-links .cognitive-link-path").count()===1);
   check("original PowerPoint slide image is unchanged",await presenter.locator("#slide-img").getAttribute("src") === slideBefore);
   await wait(480); // capture the finished fade, not a mid-transition frame
   if (shots) await audience.locator("#stage").screenshot({path:join(shots,"living-1366.png")});
@@ -80,16 +83,18 @@ try {
   const xray = await open(1);
   await xray.locator(".cognitive-shape-choice input").first().check();
   await xray.getByRole("button",{name:"ركّز على الاختيار"}).click();
-  await audience.waitForSelector(".cognitive-xray .cognitive-focus-box");
-  const focus = await audience.locator(".cognitive-focus-box").first()
-    .evaluate((el)=>({left:parseFloat(el.style.left),width:parseFloat(el.style.width)}));
+  await audience.waitForSelector(".cognitive-xray .cognitive-focus-outline");
+  const focus = await audience.locator(".cognitive-focus-outline").first()
+    .evaluate((el)=>({left:Number(el.getAttribute("x"))/10,width:Number(el.getAttribute("width"))/10}));
   check("X-Ray focuses original slide coordinates without moving image",
     Math.abs(focus.left - 12)<.1 && Math.abs(focus.width - 40)<.1 &&
       await presenter.locator("#slide-img").getAttribute("src")===slideBefore);
   await xray.locator(".cognitive-shape-choice input").nth(1).check();
   await xray.getByRole("button",{name:"ركّز على الاختيار"}).click();
-  await audience.waitForFunction(()=>document.querySelectorAll(".cognitive-focus-box").length===2);
-  check("X-Ray supports two original elements",await audience.locator(".cognitive-focus-box").count()===2);
+  await audience.waitForFunction(()=>document.querySelectorAll(".cognitive-focus-outline").length===2);
+  check("X-Ray supports two original elements",await audience.locator(".cognitive-focus-outline").count()===2);
+  check("X-Ray uses a single even-odd dimming surface for both clear regions",
+    await audience.locator(".cognitive-focus-mask path[fill-rule='evenodd']").count()===1);
   await wait(480);
   if(shots) await audience.locator("#stage").screenshot({path:join(shots,"xray-16x9.png")});
   await presenter.locator("#home").click();
@@ -98,7 +103,7 @@ try {
   const stageSize=await presenter.locator("#stage").boundingBox();
   await presenter.locator("#stage").click({position:{x:stageSize.width*.2,y:stageSize.height*.43}});
   await audience.waitForSelector(".cognitive-xray .cognitive-focus-box");
-  check("X-Ray preview click selects a safely mapped shape",await audience.locator(".cognitive-focus-box").count()===1);
+  check("X-Ray preview click selects a safely mapped shape",await audience.locator(".cognitive-focus-outline").count()===1);
   await presenter.locator("#home").click();
 
   // Recover approved knowledge after a presenter refresh; no transcript is exported.
@@ -117,7 +122,14 @@ try {
   const whatif = await open(4);
   await whatif.locator('input[type="text"]').first().fill("قرار النشاط");
   await whatif.locator("textarea").first().fill("أي أسلوب مناسب؟");
-  await whatif.locator("textarea").nth(1).fill("نشاط تعاوني | نقاش مجموعات | سيناريو كتبه المحاضر\nنشاط فردي | مهمة فردية | سيناريو كتبه المحاضر");
+  const choices=whatif.locator(".cognitive-choice-editor");
+  await choices.nth(0).locator("input").first().fill("نشاط تعاوني");
+  await choices.nth(0).locator("textarea").nth(0).fill("نقاش مجموعات");
+  await choices.nth(0).locator("textarea").nth(1).fill("سيناريو كتبه المحاضر");
+  await choices.nth(1).locator("input").first().fill("نشاط فردي");
+  await choices.nth(1).locator("textarea").nth(0).fill("مهمة فردية");
+  await choices.nth(1).locator("textarea").nth(1).fill("سيناريو كتبه المحاضر");
+  check("scenario uses accessible separate fields", await choices.count()===2);
   await whatif.getByRole("button",{name:"احفظ السيناريو"}).click();
   await whatif.getByRole("button",{name:"اعرض السؤال"}).click();
   await audience.waitForFunction(()=>document.querySelector(".cognitive-card-stage")?.textContent?.includes("أي أسلوب مناسب"));

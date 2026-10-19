@@ -4,7 +4,7 @@ import { sourceRecord, createKnowledgeGraph, appendKnowledge, graphPage,
   eligibleShape, xrayProjection, canEnterStage, findTimeBridge,
   validateScenario, calculateScenario, comparePulse, validateKnowledgeSnapshot,
   exportLivingArchive, importLivingArchive, evaluateScenarioFormula,
-  suggestXrayFromSpeech } from "../web/living-intelligence.js";
+  suggestXrayFromSpeech, cognitiveSpeechCue } from "../web/living-intelligence.js";
 import { validCognitivePacket } from "../web/living-intelligence-ui.js";
 
 const bundle = "abcdef123456";
@@ -117,4 +117,10 @@ assert.equal(suggestXrayFromSpeech("الألعاب التعليمية تعزز �
 assert.equal(suggestXrayFromSpeech("الألعاب التعليمية تعزز الدافعية",
   {elements:[spokenSlide.elements[0],{...spokenSlide.elements[0],id:"s1-e3"}]}),null);
 
+
+assert.equal(cognitiveSpeechCue("كلام اعتيادي في سياق المحاضرة بدون طلب محدد"),null);
+assert.equal(cognitiveSpeechCue("تذكرون لما شرحنا الألعاب التعليمية في المحاضرة السابقة؟")?.kind,"bridge");
+assert.match(cognitiveSpeechCue("تذكرون لما شرحنا الألعاب التعليمية في المحاضرة السابقة؟")?.query||"",/الألعاب التعليمية/);
+assert.equal(cognitiveSpeechCue("الخلاصة أن الألعاب التعليمية تعزز الدافعية")?.kind,"knowledge");
+assert.equal(cognitiveSpeechCue("تذكرون المحاضرة السابقة؟"),null,"vague recall has no anchor");
 console.log("Living Intelligence unit tests passed");
