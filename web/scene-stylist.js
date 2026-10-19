@@ -132,8 +132,11 @@ export function styleScene(spec, { mode = "auto", storage, history, sourceSpeech
   const picked = auto ? pickStyle({ type: spec.type, text, allowDark: mode === "auto-all", history: past })
     : { theme: mode, world: null, variant: pickVariant(spec.type, text, past) };
   const out = { ...spec, theme: picked.theme };
-  if (picked.variant) out.variant = picked.variant; else delete out.variant;
+  if (Number.isInteger(spec.variant)) out.variant = spec.variant;
+  else if (picked.variant) out.variant = picked.variant;
+  else delete out.variant;
   const refined = refineVisualStyle(spec, out, { explicitTheme: !auto, explicitVariant: Number.isInteger(spec.variant) });
-  saveHistory(entryOf(picked, spec.type), storage, past);
+  // Remember the layout actually displayed, not the discarded candidate.
+  saveHistory(entryOf({ ...picked, variant: refined.variant ?? 0 }, spec.type), storage, past);
   return refined;
 }
