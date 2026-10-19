@@ -68,7 +68,7 @@ export function renderStructuredScene(type, title, lines) {
     const top = Math.max(...values, 1);
     const rowH = Math.min(58, (360 - (rows.length - 1) * 12) / rows.length), small = rowH < 56;
     const nodes = rows.map(([name, value], i) => {
-      const y = 158 + i * (rowH + 12), w = Math.max(4, (values[i] / top) * 430);
+      const y = 158 + i * (rowH + 12), w = (values[i] / top) * 430;
       return motion("rise", i, labelMid(name, 830, y + rowH / 2, { size: small ? 17 : 21, limit: small ? 18 : 14, rows: 2, lh: small ? 20 : 24, weight: 800, family: FONT.display }) +
         `<rect x="250" y="${y}" width="430" height="${rowH}" rx="14" fill="${C.track}"/>`) +
         `<g class="m-grow-r" style="--i:${i + 1}"><rect class="bar-fill" x="${680 - w}" y="${y}" width="${w}" height="${rowH}" rx="14" fill="url(#${i % 2 ? "sk-gold" : "sk-blue"})"/></g>` +
