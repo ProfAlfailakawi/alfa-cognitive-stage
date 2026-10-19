@@ -76,6 +76,24 @@ class ManifestTests(unittest.TestCase):
             deck.save(good)
             build_bundle.validate_pptx_container(good)
 
+    def test_movie_with_two_relationships_is_one_video_overlay(self):
+        # python-pptx writes an a:videoFile + p14:media pair for the same clip.
+        # Both point to one embedded file and must not create two overlays.
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = Path(tmp) / "lecture.mp4"
+            clip.write_bytes(b"fake video bytes; decoding is tested by import-real")
+            deck = Presentation()
+            slide = deck.slides.add_slide(deck.slide_layouts[6])
+            movie = slide.shapes.add_movie(
+                str(clip), Inches(1), Inches(1), Inches(3), Inches(2),
+                mime_type="video/mp4")
+            self.assertEqual(len(build_bundle.video_targets(movie)), 2)
+            targets = list(build_bundle.unique_embedded_video_targets(movie, slide))
+            self.assertEqual(len(targets), 1)
+            self.assertEqual(
+                Path(str(slide.part.rels[targets[0][0]].target_part.partname)).suffix,
+                ".mp4")
+
     def test_video_source_is_recognised_by_extension(self):
         self.assertIn(".mov", build_bundle.VIDEO_EXTS)
         self.assertIn(".mp4", build_bundle.VIDEO_EXTS)
