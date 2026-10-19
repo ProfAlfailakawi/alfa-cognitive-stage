@@ -1,4 +1,4 @@
-import { renderStructuredScene, bubble, numChip, ORD_F } from "./scene-layouts.js";
+import { renderStructuredScene, bubble, numChip, ORD_F, parsePercentValue } from "./scene-layouts.js";
 import { C, E, FONT, label, labelMid, motion, item, drawLine, rtlX, frame, card, useTheme } from "./scene-kit.js";
 import { themeKnown } from "./scene-theme.js";
 import { renderVariant, VARIANTS } from "./scene-variants.js";
@@ -31,7 +31,7 @@ function validateBase(spec) {
   }
   if (type === "stat") {
     if (lines.length < 1 || lines.length > 2) throw new Error("البطاقة الإحصائية تحتاج رقماً ووصفاً فقط");
-    if (!/^[\d.,٫%٪+\-٠-٩ ]+$/.test(lines[0]) && lines[0].length > 12) throw new Error("الرقم يجب أن يكون قصيراً");
+    if (!/^[\d.,٫%٪+\-٠-٩۰-۹ ]+$/.test(lines[0]) && lines[0].length > 12) throw new Error("الرقم يجب أن يكون قصيراً");
     return { type, title, theme, lines };
   }
   if (type === "compare") {
@@ -43,7 +43,7 @@ function validateBase(spec) {
   }
   if (type === "bars") {
     const rows = lines.map((l) => l.split("|").map((x) => x.trim()));
-    const valid = rows.every((r) => r.length === 2 && r[0] && r[0].length <= 40 && /^\d{1,3}(?:[.,]\d+)?%$/.test(r[1]) && Number(r[1].slice(0, -1).replace(",", ".")) <= 100);
+    const valid = rows.every((r) => r.length === 2 && r[0] && r[0].length <= 40 && parsePercentValue(r[1]) !== null);
     if (rows.length < 2 || rows.length > 6 || !valid) throw new Error("الأعمدة: من 2 إلى 6 سطور بصيغة (التسمية | 40%) والنسبة بين 0 و100");
     return { type, title, theme, lines: rows.map((r) => r[0] + " | " + r[1]) };
   }
@@ -70,10 +70,10 @@ const AR_DIGITS = { "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥":
 
 function statSvg(spec) {
   const [number, text] = [spec.lines[0], spec.lines[1] || ""];
-  const ascii = number.replace(/[٠-٩]/g, (d) => AR_DIGITS[d]).replace(/٪/g, "%").replace(/٫/g, ".").replace(/\s/g, "");
+  const ascii = number.replace(/[٠-٩]/g, (d) => AR_DIGITS[d]).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0)).replace(/٪/g, "%").replace(/٫/g, ".").replace(/\s/g, "");
   const pct = ascii.match(/^(\d{1,3}(?:[.,]\d+)?)%$/);
   const count = /^\d{1,2}$/.test(ascii) && Number(ascii) >= 1 && Number(ascii) <= 12 ? Number(ascii) : null;
-  const value = pct ? Number(pct[1].replace(",", ".")) : null;
+  const value = pct ? parsePercentValue(number) : null;
   const caption = (y) => (text ? motion("rise", 3, label(text, 480, y, { size: 32, color: C.blue, limit: 36, rows: 2, lh: 38, weight: 900, family: FONT.display })) : "");
   if (value !== null && value <= 100) {
     // A ring filled to exactly the spoken percentage (only for 0-100).

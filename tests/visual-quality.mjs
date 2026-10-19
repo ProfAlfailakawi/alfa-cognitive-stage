@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { assessVisualDensity, refineVisualStyle } from "../web/visual-quality.js";
 import { styleScene } from "../web/scene-stylist.js";
-import { renderInfographic } from "../web/infographic.js";
+import { renderInfographic, validateSpec } from "../web/infographic.js";
+import { parsePercentValue } from "../web/scene-layouts.js";
 const long = "هذه جملة طويلة من كلام المحاضر يجب ألا تختفي أو تتبدل كلماتها مهما كانت كثافة المشهد البصري";
 const dense = { type: "steps", title: "تسلسل تربوي", lines: [long, long, long, long, long] };
 assert.equal(assessVisualDensity(dense).dense, true);
@@ -43,4 +44,18 @@ const zeroBars = renderInfographic({ type: "bars", title: "المشاركة", li
 assert.ok(zeroBars.includes('width="0"'), "zero percent must produce a genuinely empty bar");
 const selectedTheme = styleScene({ ...dense, theme: "ember" }, { storage: { getItem: () => null, setItem: () => {} } });
 assert.equal(selectedTheme.theme, "ember", "explicit scene theme survives automatic mode and density gate");
+// Multilingual bar data: exact arithmetic, untouched on-screen labels, strict bounds.
+for (const [raw, expected] of [["٣٧٫٥٪", 37.5], ["۳۷٫۵٪", 37.5], ["٣٧ ٪", 37], ["0%", 0], ["100%", 100]]) {
+  assert.equal(parsePercentValue(raw), expected, "numeric interpretation: " + raw);
+}
+for (const raw of ["101%", "-2%", "غير معروف", "40%%", ""]) assert.equal(parsePercentValue(raw), null, "reject invalid percent: " + raw);
+const arabicBars = { type: "bars", title: "نتائج", lines: ["المجموعة الأولى | ٣٧٫٥٪", "المجموعة الثانية | ٧٥٪"] };
+assert.deepEqual(validateSpec(arabicBars).lines, arabicBars.lines, "original Arabic bar labels survive validation");
+const arabicBarsSvg = renderInfographic(arabicBars);
+assert.ok(arabicBarsSvg.includes('width="215"'), "37.5 relative to 75 must render at half the maximum bar width");
+assert.ok(arabicBarsSvg.includes("٣٧٫٥٪") && arabicBarsSvg.includes("٧٥٪"), "Arabic bar values remain visible verbatim");
+assert.throws(() => validateSpec({ ...arabicBars, lines: ["الفئة | ١٠١٪", "الفئة | ٥٠٪"] }), "percentages above 100 must be rejected");
+const persianStat = renderInfographic({ type: "stat", title: "مشاركة", lines: ["۳۷٫۵٪", "من المشاركين"] });
+assert.ok(persianStat.includes('style="--v:37.5"'), "Persian numerals preserve precise stat rings");
+assert.ok(persianStat.includes(">۳۷٫۵٪</text>"), "Persian stat remains visible verbatim");
 console.log("visual quality: dense layouts restrained, lecturer content intact");
