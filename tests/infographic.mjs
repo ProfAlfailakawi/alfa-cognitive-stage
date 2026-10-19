@@ -22,7 +22,7 @@ ok("stat card has no invented source text", !/دراسة|باحث|سنة|عين�
 const statLong = renderInfographic({ type: "stat", title: "إحصائية", lines: ["20%", "من الناس ما يستخدم الاصطناعي ولا الذكاء"] });
 ok("stat ring moved above the long caption's safe zone", statLong.includes('cy="283" r="112"') && statLong.includes('x="480" y="'));
 const barLong = renderInfographic({ type: "bars", title: "مقارنة النسب", lines: ["خسرت Netflix من X | 20%", "ربحت Amazon | 60%"] });
-ok("mixed Arabic/English comparison labels stay away from right edge", barLong.includes('x="790"') && barLong.includes("خسرت Netflix") && barLong.includes('x="288"'));
+ok("mixed Arabic/English comparison labels stay away from right edge", barLong.includes('x="790"') && barLong.includes("خسرت Netflix") && barLong.includes('x="250"'));
 const cmp = renderInfographic({ type: "compare", title: "فرق", lines: ["هدف تعليمي | هدف ترفيهي", "تغذية راجعة | تغذية مختلفة"] });
 ok("compare renders both columns", cmp.includes("هدف تعليمي") && cmp.includes("هدف ترفيهي"));
 
