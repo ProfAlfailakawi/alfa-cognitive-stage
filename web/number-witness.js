@@ -26,7 +26,9 @@ export function numberFacts(text) {
     while (start > clauseStart && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[start - 1].norm) && !/^\d/.test(tokens[start - 1].raw)) start--;
     let end = i + 1;
     while (end < tokens.length && end - i <= CONTEXT_REACH && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[end].norm) && !/^\d/.test(tokens[end].raw)) end++;
-    const near = [...tokens.slice(start, i), ...tokens.slice(i + 1, end)]
+    const preceding = tokens.slice(start, i);
+    // Do not attach the next metric label to a previous percentage (e.g. 90% ونسبة الرضا 68%).
+    const near = (preceding.some((t) => contentWords(t.raw).length) ? preceding : tokens.slice(i + 1, end))
       .filter((t) => !/^\d/.test(t.raw) && !PERCENT_AFTER.test(t.norm)).map((t) => t.raw).join(" ");
     const subject = new Set(contentWords(near).map((w) => w.stem).filter((w) => !["نسب", "عدد", "قيم", "معدل"].includes(w)));
     facts.push({ value, unit: percent ? "%" : "", subject });
