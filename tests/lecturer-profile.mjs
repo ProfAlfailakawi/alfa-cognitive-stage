@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { lecturerTeachingMove, lecturerTakeaway, lecturerComparison } from "../web/lecturer-profile.js";
+import { lecturerTeachingMove, lecturerTakeaway, lecturerComparison, lecturerRealityContrast } from "../web/lecturer-profile.js";
 import { createDirectorBrain } from "../web/director-brain.js";
 
 assert.equal(lecturerTeachingMove("كنا نعتقد كذا لكن في المقابل عندنا خيار ثاني").kind, "contrast");
@@ -47,4 +47,28 @@ assert.deepEqual(lecturerComparison("لكن في المقابل دمج التك�
   assert.equal(decision.action, "none", "a spoken question cannot hallucinate its answer");
 }
 
-console.log("curated lecturer teaching moves and explicit comparisons passed");
+
+const reality = "كثير من المعلمين يفهمون تكنولوجيا التعليم أنها استخدام الأجهزة لكن هي بالأصل دمج التكنولوجيا في التعليم";
+assert.deepEqual(lecturerRealityContrast(reality)?.lines, [
+  "كثير من المعلمين يفهمون تكنولوجيا التعليم أنها استخدام الأجهزة | هي بالأصل دمج التكنولوجيا في التعليم"
+]);
+assert.equal(lecturerRealityContrast("استخدام الأجهزة لكن هذا مجرد كلام"), null);
+assert.equal(lecturerRealityContrast("هل استخدام الأجهزة صحيح لكن هي بالأصل دمج التكنولوجيا في التعليم؟"), null);
+{
+  const b = createDirectorBrain();
+  const d = b.observe(reality, { slide: { index: 9 }, mode: "creative" });
+  assert.equal(d.action, "propose", "misconception correction must never auto-interrupt");
+  assert.deepEqual(d.spec?.lines, lecturerRealityContrast(reality).lines);
+}
+{
+  let t = 300000;
+  const b = createDirectorBrain({ now: () => t });
+  const slide = { index: 9 };
+  b.observe("استخدام التكنولوجيا في التعليم يحتاج معرفة الأدوات", { slide });
+  t += 3000;
+  b.observe("استخدام التكنولوجيا في التعليم يحتاج معرفة الأدوات", { slide, mediaPlaying: true });
+  t += 3000;
+  const d = b.observe("لكن في المقابل دمج التكنولوجيا في التعليم يحتاج تخطيط مسبق", { slide });
+  assert.equal(d.action, "none", "video playback clears adjacent speech");
+}
+console.log("curated lecturer teaching moves, corrections, and video guard passed");
