@@ -212,6 +212,28 @@ export function mountLivingIntelligence(mount, context) {
     try { safeProject(xrayProjection(chosen, slide, context.getStep())); } catch (e) { say(e.message); }
   }, "primary");
   btn(xray, "ألغِ التركيز", () => context.hide());
+  let picking = false;
+  btn(xray, "تحديد بالنقر على معاينة الشريحة", () => {
+    const stage = context.getStage();
+    if (!stage || context.videoPlaying()) { say("لا يمكن تحديد عناصر أثناء تشغيل الفيديو."); return; }
+    if (picking) return;
+    picking = true; say("انقر على العنصر في معاينة الشريحة مرة واحدة.");
+    stage.classList.add("cognitive-pick-mode");
+    const selectAtPoint = (event) => {
+      event.preventDefault(); event.stopImmediatePropagation();
+      picking = false; stage.classList.remove("cognitive-pick-mode");
+      const rect = stage.getBoundingClientRect(),
+        x = (event.clientX - rect.left) / rect.width, y = (event.clientY - rect.top) / rect.height;
+      const slide = activeSlide();
+      const matches = (slide.elements || []).filter((s) => eligibleShape(s, slide, context.getStep()) &&
+        x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h)
+        .sort((a, b) => a.w * a.h - b.w * b.h);
+      if (!matches.length) { say("لا يوجد عنصر موثوق في الموضع المحدد."); return; }
+      try { safeProject(xrayProjection([matches[0]], slide, context.getStep())); }
+      catch (e) { say(e.message); }
+    };
+    stage.addEventListener("click", selectAtPoint, { capture: true, once: true });
+  });
 
   const pulse = section("03 · نبض الفهم: قبل وبعد");
   pulse.append(make("p", "استخدم التصويت الحالي: أنشئ سؤالاً قبل الشرح، أغلق الجولة، ثم أعد السؤال نفسه بالخيارات والترتيب نفسيهما. تظهر المقارنة المجمّعة في لوحة التصويت.", "meta"));
@@ -254,7 +276,7 @@ export function mountLivingIntelligence(mount, context) {
       const entries = await loadReferences();
       if (stamp !== referenceStamp) return;
       const matches = findTimeBridge(bridgeInput.value, entries, bundle,
-        { courseId: entries[0]?.courseId, allCourses: acrossBox.checked });
+        { allCourses: true }); // The course restriction was enforced when loading authorized manifests.
       referenceResults = matches;
       if (!matches.length) { say("لا يوجد تطابق موثوق؛ لن يُخترع مرجع."); return; }
       for (const hit of matches) {
@@ -304,7 +326,8 @@ export function mountLivingIntelligence(mount, context) {
       currentScenario = s;
       scenarios = scenarios.filter((x) => x.title !== s.title).concat(s).slice(-30);
       if (!storeScenarios(bundle, scenarios)) throw Error("تعذّر الحفظ المحلي");
-      refreshScenarioList(); say("حُفظ السيناريو الذي ألفته، دون توليد نتائج.");
+      refreshScenarioList(); storedList.value = String(scenarios.findIndex((item) => item.title === s.title));
+      refreshBranch(); say("حُفظ السيناريو الذي ألفته، دون توليد نتائج.");
     } catch (e) { say(e.message); }
   }, "primary");
   btn(scenarioActions, "اعرض السؤال", () => {
@@ -359,6 +382,13 @@ export function mountLivingIntelligence(mount, context) {
   return {
     onSpeech(raw) {
       if (context.videoPlaying() || !raw || !root.isConnected) return;
+      const candidates = (activeSlide().elements || []).filter((s) =>
+        eligibleShape(s, activeSlide(), context.getStep()) && s.text && s.text.length >= 6 &&
+        String(raw).includes(s.text));
+      if (candidates.length === 1) {
+        xrayMessage.textContent = "ذُكر عنصر موجود بالشريحة: " + candidates[0].text.slice(0, 100) +
+          ". يمكنك اختياره يدوياً للتركيز؛ لم يُفعّل تلقائياً.";
+      }
       const phrase = String(raw).trim().slice(0, 300);
       if (phrase.length < 12) return;
       // Voice can suggest but never approve, modify a slide or activate a scenario.
