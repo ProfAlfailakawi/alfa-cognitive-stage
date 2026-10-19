@@ -28,7 +28,7 @@ export function numberFacts(text) {
     while (end < tokens.length && end - i <= CONTEXT_REACH && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[end].norm) && !/^\d/.test(tokens[end].raw)) end++;
     const near = [...tokens.slice(start, i), ...tokens.slice(i + 1, end)]
       .filter((t) => !/^\d/.test(t.raw) && !PERCENT_AFTER.test(t.norm)).map((t) => t.raw).join(" ");
-    const subject = new Set(contentWords(near).map((w) => w.stem));
+    const subject = new Set(contentWords(near).map((w) => w.stem).filter((w) => !["نسب", "عدد", "قيم", "معدل"].includes(w)));
     facts.push({ value, unit: percent ? "%" : "", subject });
   });
   return facts;
