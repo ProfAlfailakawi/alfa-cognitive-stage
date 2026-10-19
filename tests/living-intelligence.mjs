@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { sourceRecord, createKnowledgeGraph, appendKnowledge, graphPage,
   audienceGraph, saveKnowledge, loadKnowledge, clearKnowledge,
   eligibleShape, xrayProjection, canEnterStage, findTimeBridge,
-  validateScenario, calculateScenario, comparePulse } from "../web/living-intelligence.js";
+  validateScenario, calculateScenario, comparePulse, validateKnowledgeSnapshot,
+  exportLivingArchive, importLivingArchive, evaluateScenarioFormula,
+  suggestXrayFromSpeech } from "../web/living-intelligence.js";
 import { validCognitivePacket } from "../web/living-intelligence-ui.js";
 
 const bundle = "abcdef123456";
@@ -77,4 +79,42 @@ const comparison=comparePulse(first,after,0);
 assert.equal(comparison.values[0].points,30);
 assert.deepEqual(comparison.totals,[10,10]);
 assert.throws(()=>comparePulse(first,{...after,options:["ب","أ"]}));
+
+const portable = exportLivingArchive(bundle, graph, [scenario]);
+const restored = importLivingArchive(portable, bundle);
+assert.deepEqual(restored.graph.nodes.map((n) => n.text), graph.nodes.map((n) => n.text));
+assert.equal(restored.scenarios[0].title, scenario.title);
+assert.equal(validateKnowledgeSnapshot(graph, bundle).revision, 2);
+assert.throws(() => importLivingArchive(portable, "other123"), /المحاضرة/);
+assert.throws(() => importLivingArchive("{}", bundle), /المحاضرة/);
+assert.throws(() => importLivingArchive(portable.slice(1), bundle), /JSON/);
+assert.throws(() => importLivingArchive(JSON.stringify({
+  ...JSON.parse(portable), graph:{...graph, nodes:[{...graph.nodes[0], status:"pending"},graph.nodes[1]]}
+}), bundle), /غير معتمدة/);
+assert.throws(() => importLivingArchive(JSON.stringify({
+  ...JSON.parse(portable), graph:{...graph, nodes:[{...graph.nodes[0], source:{...source,approved:false}},graph.nodes[1]]}
+}), bundle), /غير معتمدة/);
+assert.throws(() => importLivingArchive(JSON.stringify({
+  ...JSON.parse(portable), graph:{...graph, edges:[{from:"n1",to:"bad",relation:"related",approved:true}]}
+}), bundle), /غير موثوقة/);
+assert.throws(() => importLivingArchive(JSON.stringify({
+  ...JSON.parse(portable), scenarios:[{...scenario,options:[{text:"مكسور"}]}]
+}), bundle));
+assert.equal(evaluateScenarioFormula("120*(1+15%)", "طالب").result, 138);
+assert.equal(evaluateScenarioFormula("12+(5-3)*4").result, 20);
+assert.equal(evaluateScenarioFormula("-(4+2)/3").result, -2);
+assert.equal(evaluateScenarioFormula(".5*2").result, 1);
+for (const malformed of ["0/0", "3/(2-2)", "1+abc", "Math.random()", "2**3",
+  "1;", "", "1+(2", "10/(-0)", "2<3", "9".repeat(141)]) {
+  assert.throws(() => evaluateScenarioFormula(malformed), undefined, malformed);
+}
+assert.throws(() => evaluateScenarioFormula("1+2", "<script>"));
+const spokenSlide={elements:[{...box, text:"الألعاب التعليمية تعزز الدافعية"}]};
+assert.equal(suggestXrayFromSpeech("الألعاب التعليمية تعزز الدافعية",spokenSlide)?.id,"s1-e2");
+assert.equal(suggestXrayFromSpeech("الألعاب التعليمية لا تعزز الدافعية",spokenSlide),null);
+assert.equal(suggestXrayFromSpeech("الألعاب التعليمية تعزز الدافعية",
+  {...spokenSlide,build:{steps:[{},{}]}}),null);
+assert.equal(suggestXrayFromSpeech("الألعاب التعليمية تعزز الدافعية",
+  {elements:[spokenSlide.elements[0],{...spokenSlide.elements[0],id:"s1-e3"}]}),null);
+
 console.log("Living Intelligence unit tests passed");
