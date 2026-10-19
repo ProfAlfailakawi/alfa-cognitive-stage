@@ -36,6 +36,7 @@ jobs:
           node --check web/semantic-index.js
           node --check web/director-taste.js
           node --check web/director-brain.js
+          node --check web/lecturer-profile.js
           node --check web/speech-director.js
           node --check web/latency-meter.js
           node --check web/vote-admin.js
