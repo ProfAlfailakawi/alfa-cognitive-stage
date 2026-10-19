@@ -85,6 +85,8 @@ export function renderCognitiveProjection(stage, value) {
   }
   layer.querySelector("h2").textContent = value.title || "المسرح المعرفي";
   const body = layer.querySelector(".cognitive-stage-body"), foot = layer.querySelector(".cognitive-stage-foot");
+  body.dataset.count = String(value.kind === "living" ? value.nodes.length :
+    value.kind === "whatif" ? value.options.length : 1);
   if (value.kind === "living") {
     const ids = new Set(value.nodes.map((node) => node.id));
     body.querySelectorAll("[data-node]").forEach((el) => { if (!ids.has(el.dataset.node)) el.remove(); });
