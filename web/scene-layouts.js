@@ -1,3 +1,13 @@
+// Normalize for arithmetic only: displayed Arabic/Persian digits and percent glyphs stay unchanged.
+export function parsePercentValue(input) {
+  const normalized = String(input ?? "").replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/٪/g, "%").replace(/٫/g, ".").replace(/\s/g, "");
+  if (!/^\d{1,3}(?:[.,]\d+)?%$/.test(normalized)) return null;
+  const n = Number(normalized.slice(0, -1).replace(",", "."));
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+}
+
 // Icon-led, animated vector scenes (concept, flow, timeline, story, bars, cycle, activity).
 // Each item is a clear icon plus a FEW of the lecturer's own words; the full text stays in the item (<title>, data-full).
 // Items run right-to-left, the Arabic reading order. Nothing is invented: icons come from keywords, words from the text.
@@ -64,7 +74,7 @@ export function renderStructuredScene(type, title, lines) {
   if (type === "bars") {
     // Bars are scaled to the largest spoken value; every number is exactly what the lecturer said. Right to left.
     const rows = lines.map((l) => l.split("|").map((x) => x.trim()));
-    const values = rows.map(([, v]) => Number(v.slice(0, -1).replace(",", ".")));
+    const values = rows.map(([, v]) => parsePercentValue(v));
     const top = Math.max(...values, 1);
     const rowH = Math.min(58, (360 - (rows.length - 1) * 12) / rows.length), small = rowH < 56;
     const nodes = rows.map(([name, value], i) => {
