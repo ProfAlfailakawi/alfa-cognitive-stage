@@ -176,12 +176,22 @@ export function createVoteStore({ file = null } = {}) {
 
   function setStatus(code, id, status) {
     const p = poll(code, id);
+    // Keep linked pulse data aggregate-only once the round closes: no cross-round device tokens.
+    const seal = (item) => {
+      if (item.pulsePhase && !Array.isArray(item.archive)) {
+        item.archive = counts(item);
+        item.votes = {};
+      }
+      item.status = "closed";
+      item.closedAt = Date.now();
+    };
     if (status === "open") {
+      if (p.pulsePhase && Array.isArray(p.archive)) throw new VoteError("لا يمكن إعادة فتح جولة قياس مؤرشفة", 409);
       // Only one question is open at a time, so students always see the active one.
-      for (const other of session(code).polls) if (other.status === "open") other.status = "closed";
+      for (const other of session(code).polls) if (other.status === "open" && other !== p) seal(other);
     }
-    p.status = status;
-    if (status === "closed") p.closedAt = Date.now();
+    if (status === "closed") seal(p);
+    else p.status = status;
     persist();
     return p;
   }
