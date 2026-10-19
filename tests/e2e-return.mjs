@@ -111,6 +111,23 @@ try {
   check("spoken return restores the original state",
     (await presenter.locator(".info-layer").count()) === 0 && (await meta(presenter)).includes("حركة 2 من 3"));
 
+  // The most common phrasing must restore the EXACT PowerPoint build state,
+  // without forcing the lecturer to memorize an unnatural command.
+  await showScene("مشهد الرجوع", "32%");
+  await presenter.fill("#director-test-text", "نرجع للشريحة الأصلية");
+  await presenter.click("#director-test-run");
+  await presenter.waitForTimeout(300);
+  check("natural return to original slide restores click 2 and removes overlay",
+    (await presenter.locator(".info-layer").count()) === 0 && (await meta(presenter)).includes("حركة 2 من 3"));
+  // Explicit next slide skips any remaining click builds; audience must follow.
+  await presenter.click("#next-slide");
+  await settle(presenter);
+  check("dedicated next-slide button bypasses last PowerPoint build click",
+    (await meta(presenter)).includes("4 من"), await meta(presenter));
+  await presenter.keyboard.press("ArrowLeft");
+  await presenter.keyboard.press("ArrowLeft"); // back to build 2 on slide 3, for the existing checks
+  await settle(presenter);
+
   // --- Navigation order around builds. ---
   await presenter.keyboard.press("ArrowRight");
   await presenter.keyboard.press("ArrowRight");
