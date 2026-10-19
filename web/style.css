@@ -351,3 +351,158 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
  .cognitive-pulse-item h3 { font-size: 11px; }
  .cognitive-pulse-line { grid-template-columns: 45% 55%; font-size: 9px; }
 }
+
+
+/* ALFA PREMIERE: projector-grade Arabic typography and cinematic spatial hierarchy.
+ * Keep every rendered Arabic glyph unscaled and source-exact. No infinite animations.
+ */
+.cognitive-card-stage {
+  background:
+    radial-gradient(ellipse 70% 52% at 78% 8%,rgba(125,176,158,.11),transparent 75%),
+    linear-gradient(137deg,#0b212b 0%,#103039 54%,#163b3e 100%);
+  padding: 3.5% 5.5% 4.5%;
+  gap: 1%;
+  isolation: isolate;
+}
+.cognitive-card-stage::after {
+  content:"";position:absolute;right:5.5%;left:5.5%;bottom:6%;
+  height:1px;background:linear-gradient(90deg,transparent,rgba(230,208,163,.3),transparent);
+  pointer-events:none;
+}
+.cognitive-eyebrow {
+  flex:none;margin:0;letter-spacing:.085em;color:#e6cd9b;
+  font-size:clamp(12px,1.05vw,18px);font-weight:700;line-height:1.25;
+}
+.cognitive-card-stage .cognitive-stage-heading {
+  font-size:clamp(24px,2.7vw,48px);text-align:start;
+  font-weight:900;line-height:1.28;margin:0 0 1.3%;
+}
+.cognitive-card-stage .cognitive-stage-body { gap: 2.5%; min-height: 0; }
+.cognitive-card-stage .cognitive-stage-foot {
+  font-size:clamp(12px,1.05vw,17px);line-height:1.45;
+  margin:0;padding-top:.7%;color:#d4e6dd;
+}
+.cognitive-card-stage .cognitive-stage-body.cognitive-living-map {
+  width:100%!important;align-self:stretch!important;
+  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
+  grid-auto-rows:minmax(0,1fr);
+  align-items:stretch;justify-items:stretch;
+  gap:2.4%; overflow:visible;
+}
+.cognitive-living-map > .cognitive-node {
+  grid-column:span 2;padding:2.5% 4%;
+  background:linear-gradient(150deg,rgba(243,247,239,.105),rgba(213,233,221,.045));
+  border-color:rgba(210,233,216,.27);border-radius:18px;
+  min-height:0;max-width:100%;box-sizing:border-box;
+  box-shadow:0 8px 22px rgba(4,19,22,.10);
+}
+.cognitive-living-map > .cognitive-node[data-kind="topic"] {
+  background:linear-gradient(125deg,rgba(231,194,131,.18),rgba(229,199,141,.055));
+  border:1.5px solid rgba(245,213,158,.58);
+}
+.cognitive-living-map[data-count="1"] > .cognitive-node {grid-column:2/span 4;}
+.cognitive-living-map[data-count="2"] > .cognitive-node {grid-column:span 3;}
+.cognitive-living-map:is([data-count="3"],[data-count="4"],[data-count="5"],[data-count="6"]) >
+  .cognitive-node[data-kind="topic"]:first-of-type {grid-column:1/-1;}
+.cognitive-living-map[data-count="3"] > .cognitive-node:not([data-kind="topic"]),
+.cognitive-living-map[data-count="5"] > .cognitive-node:not([data-kind="topic"]) {grid-column:span 3;}
+.cognitive-living-map > .cognitive-node small {
+  font-size:clamp(13px,1.05vw,17px);letter-spacing:.015em;line-height:1.35;
+  font-weight:700;color:#e8d4af;
+}
+.cognitive-living-map > .cognitive-node p {
+  font-size:clamp(21px,1.82vw,35px);line-height:1.45;
+  font-weight:750;margin:.3em 0 0;overflow-wrap:anywhere;
+  text-wrap:pretty;max-width:100%;
+}
+.cognitive-living-map[data-count="1"] > .cognitive-node p {font-size:clamp(28px,2.65vw,46px);}
+.cognitive-living-map[data-count="2"] > .cognitive-node p {font-size:clamp(23px,2.05vw,39px);}
+.cognitive-living-map[data-count="6"] > .cognitive-node p {font-size:clamp(19px,1.6vw,30px);}
+.cognitive-card-stage .cognitive-link-path {
+  stroke:#e4c992;stroke-width:3.5;opacity:.87;stroke-linecap:round;
+}
+/* What If is a branching decision composition, not a dashboard grid. */
+.cognitive-card-stage .cognitive-branches {
+  width:100%!important;align-self:stretch!important;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:2%;align-content:stretch;
+}
+.cognitive-branches[data-revealed="false"] {grid-template-rows:minmax(0,.68fr) minmax(0,1.32fr);}
+.cognitive-branches[data-revealed="true"] {grid-template-rows:minmax(0,.65fr) minmax(0,1.15fr) minmax(0,1.2fr);}
+.cognitive-branches > .cognitive-question {
+  grid-column:1/-1;place-self:stretch;align-self:center;
+  font-size:clamp(25px,2.65vw,45px);font-weight:850;
+  line-height:1.35;text-align:center;max-height:100%;overflow-wrap:anywhere;
+  display:grid;place-items:center;
+}
+.cognitive-branches[data-count="2"] > .cognitive-branch {grid-column:span 3;}
+.cognitive-branches[data-count="3"] > .cognitive-branch {grid-column:span 2;}
+.cognitive-branches > .cognitive-branch {
+  min-height:0;padding:7% 5%;border-radius:20px;
+  font-size:clamp(21px,2vw,35px);line-height:1.4;
+  font-weight:750;
+  background:linear-gradient(145deg,rgba(238,246,237,.105),rgba(228,236,222,.05));
+  border-color:rgba(225,230,210,.35);
+}
+.cognitive-branches > .cognitive-branch::before {
+  right:7%;top:7%;width:1.85em;height:1.85em;
+  background:rgba(4,20,24,.25);font-size:clamp(12px,1vw,17px);
+}
+.cognitive-branches[data-revealed="true"] > .cognitive-branch:not(.cognitive-chosen) {
+  opacity:.58;
+}
+.cognitive-branches > .cognitive-branch.cognitive-chosen {
+  border-color:#f0d5a3;
+  background:linear-gradient(135deg,rgba(241,205,148,.21),rgba(228,202,154,.09));
+}
+.cognitive-card-stage .cognitive-outcome {
+  grid-column:1/-1;min-height:0;
+  border-radius:18px;gap:1%;
+  background:linear-gradient(100deg,rgba(222,186,127,.15),rgba(226,199,152,.075));
+  padding:2% 4%;
+}
+.cognitive-card-stage .cognitive-outcome small {font-size:clamp(13px,1.2vw,20px);}
+.cognitive-card-stage .cognitive-revealed-result {
+  font-size:clamp(21px,1.9vw,34px);line-height:1.42;
+  font-weight:750;
+}
+/* Real measured risk => rebalance whitespace, not silent character deletion. */
+.cognitive-card-stage.room-fit-tight {padding-top:2.8%;padding-bottom:3%;}
+.room-fit-tight .cognitive-living-map {gap:1.4%;}
+.room-fit-tight .cognitive-living-map > .cognitive-node {padding:1.5% 3%;}
+.room-fit-tight .cognitive-branches {gap:1.2%;}
+@media (max-width:600px) {
+  .cognitive-card-stage .cognitive-stage-heading {font-size:clamp(16px,3.8vw,24px);}
+  .cognitive-eyebrow {font-size:10px;}
+  .cognitive-living-map {gap:1%;}
+  .cognitive-living-map > .cognitive-node {border-radius:7px;padding:2%;}
+  .cognitive-living-map > .cognitive-node p,
+  .cognitive-living-map[data-count="2"] > .cognitive-node p,
+  .cognitive-living-map[data-count="1"] > .cognitive-node p {font-size:clamp(12px,2.9vw,18px);line-height:1.28;}
+  .cognitive-living-map > .cognitive-node small {font-size:10px;}
+  .cognitive-branches > .cognitive-question {font-size:clamp(14px,3.2vw,22px);}
+  .cognitive-branches > .cognitive-branch {font-size:clamp(13px,2.9vw,20px);border-radius:8px;}
+  .cognitive-card-stage .cognitive-revealed-result {font-size:clamp(13px,2.7vw,19px);}
+}
+@media (prefers-reduced-motion:reduce) {
+  .cognitive-card-stage *, .cognitive-branches > .cognitive-branch {
+    animation:none!important;transition:none!important;
+  }
+}
+
+/* Protect the full Arabic baseline and exact letters from flex shrinking.
+   Legibility is achieved with fewer cards per page, not shortened citations. */
+.cognitive-card-stage .cognitive-living-map > .cognitive-node p {
+  flex: 0 0 auto;
+  min-height: max-content;
+}
+.cognitive-card-stage .cognitive-outcome > .cognitive-revealed-result {
+  flex: 0 0 auto;
+  min-height: max-content;
+  font-size: clamp(21px, 1.76vw, 30px);
+  line-height: 1.4;
+}
+.cognitive-card-stage .cognitive-outcome > small { flex: 0 0 auto; }
+.cognitive-card-stage .cognitive-branches[data-revealed="true"] {
+  grid-template-rows: minmax(0,.6fr) minmax(0,1fr) minmax(0,1.4fr);
+}
