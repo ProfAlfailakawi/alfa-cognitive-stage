@@ -19,11 +19,13 @@ export function splitVerbatim(value, limit = ROOM_LIMITS.maxCharsPerFragment) {
     flush();
     if (token.length <= max) { buffer = token; continue; }
     // A long non-breaking sequence must be displayed in successive frames, never clipped.
-    for (let at = 0; at < token.length; at += max) {
-      const part = token.slice(at, at + max);
-      if (part.length === max) pieces.push(part);
-      else buffer = part;
+    // Iterate Unicode code points so a projector never sees half an emoji surrogate pair.
+    let part = "";
+    for (const point of token) {
+      if (part.length + point.length > max) {pieces.push(part);part = "";}
+      part += point;
     }
+    buffer = part;
   }
   flush();
   return pieces;
