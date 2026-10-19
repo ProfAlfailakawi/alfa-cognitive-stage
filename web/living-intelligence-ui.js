@@ -212,16 +212,20 @@ export function mountLivingIntelligence(mount, context) {
     try { safeProject(xrayProjection(chosen, slide, context.getStep())); } catch (e) { say(e.message); }
   }, "primary");
   btn(xray, "ألغِ التركيز", () => context.hide());
-  let picking = false;
+  let picking = false, stopPicking = null;
   btn(xray, "تحديد بالنقر على معاينة الشريحة", () => {
     const stage = context.getStage();
     if (!stage || context.videoPlaying()) { say("لا يمكن تحديد عناصر أثناء تشغيل الفيديو."); return; }
-    if (picking) return;
+    if (picking) { stopPicking?.(); say("أُلغي تحديد العنصر."); return; }
     picking = true; say("انقر على العنصر في معاينة الشريحة مرة واحدة.");
     stage.classList.add("cognitive-pick-mode");
+    const cancel = () => {
+      stage.removeEventListener("click", selectAtPoint, true);
+      stage.classList.remove("cognitive-pick-mode"); picking = false; stopPicking = null;
+    };
     const selectAtPoint = (event) => {
       event.preventDefault(); event.stopImmediatePropagation();
-      picking = false; stage.classList.remove("cognitive-pick-mode");
+      cancel();
       const rect = stage.getBoundingClientRect(),
         x = (event.clientX - rect.left) / rect.width, y = (event.clientY - rect.top) / rect.height;
       const slide = activeSlide();
@@ -232,7 +236,8 @@ export function mountLivingIntelligence(mount, context) {
       try { safeProject(xrayProjection([matches[0]], slide, context.getStep())); }
       catch (e) { say(e.message); }
     };
-    stage.addEventListener("click", selectAtPoint, { capture: true, once: true });
+    stage.addEventListener("click", selectAtPoint, true);
+    stopPicking = cancel;
   });
 
   const pulse = section("03 · نبض الفهم: قبل وبعد");
@@ -444,10 +449,11 @@ export function mountLivingIntelligence(mount, context) {
       // A voice reference does not trigger a library search without lecturer action.
     },
     onSlideChange() {
+      stopPicking?.();
       ++referenceStamp; suggestion = null; proposalLine.textContent = ""; text.value = "";
       if (xray.open) refreshShapes();
     },
     graph: () => graph,
-    dispose() { ++referenceStamp; root.remove(); },
+    dispose() { stopPicking?.(); ++referenceStamp; root.remove(); },
   };
 }
