@@ -75,3 +75,27 @@ export function exportAggregateCsv(polls) {
   }
   return "\ufeff"+rows.map(row=>row.map(escapeCsv).join(",")).join("\r\n");
 }
+
+/** Only explicitly paired rounds, no assumed student-level matching or causal inference. */
+export function compareLinkedBeforeAfter(polls) {
+  const list = Array.isArray(polls) ? polls : [];
+  const pairs = [];
+  for (const before of list.filter((p) => p.pulsePhase === "before")) {
+    const after = list.find((p) => p.pulsePair === before.id && p.pulsePhase === "after");
+    if (!after || before.question !== after.question ||
+        JSON.stringify(before.options) !== JSON.stringify(after.options)) continue;
+    const a = before.total || 0, b = after.total || 0;
+    pairs.push({ beforeId: before.id, afterId: after.id, question: before.question, firstTotal: a,
+      lastTotal: b, correctIndex: before.correctIndex ?? null,
+      values: before.options.map((option, i) => {
+        const first = a ? 100 * (before.counts?.[i] || 0) / a : 0;
+        const last = b ? 100 * (after.counts?.[i] || 0) / b : 0;
+        return { option, firstPercent: +first.toFixed(1), lastPercent: +last.toFixed(1),
+          deltaPoints: +(last - first).toFixed(1) };
+      }),
+      warning: Math.min(a, b) < 8
+        ? "حجم المشاركات محدود؛ لا تعمم النتيجة. لا يوجد ربط بين هويات المشاركين."
+        : "التغير في توزيع الإجابات ليس دليلاً سببياً على أثر الشرح، وقد يختلف المشاركون." });
+  }
+  return pairs;
+}

@@ -378,6 +378,7 @@ async function handleApi(req, res, path) {
   if (action === "polls" && pollId && req.method === "POST") {
     requireAdmin(req);
     if (verb === "repeat") return sendJson(res, 201, { poll: store.repeatPoll(upper, Number(pollId)) });
+    if (verb === "pulse-after") return sendJson(res, 201, { poll: store.repeatBeforeAfterPoll(upper, Number(pollId)) });
     const id = Number(pollId);
     if (verb === "hide-word") return sendJson(res, 200, store.hideWord(upper, id, (await readBody(req)).key, true));
     if (verb === "show-word") return sendJson(res, 200, store.hideWord(upper, id, (await readBody(req)).key, false));

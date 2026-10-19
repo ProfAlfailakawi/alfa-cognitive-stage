@@ -2,6 +2,10 @@ name: Core regression checks
 on:
   push:
   pull_request:
+# Repeated feature commits must not exhaust runners; keep push/PR checks independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   unit:
     runs-on: ubuntu-latest
@@ -20,6 +24,10 @@ jobs:
           node --check server/security.mjs
           node --check server/director-quota.mjs
           node --check web/app.js
+          node --check web/living-intelligence.js
+          node --check web/living-intelligence-ui.js
+          node --check tests/living-intelligence.mjs
+          node --check tests/pulse-linked.mjs
           node --check web/build-steps.js
           node --check web/return-stack.js
           node --check web/import-ui.js
@@ -84,6 +92,7 @@ jobs:
           npm run test:field-trial
           npm run test:readiness
           npm run test:poll-analytics
+          npm run test:living
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -135,6 +144,17 @@ jobs:
         run: npm run test:e2e-voicenav
       - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
         run: npm run test:e2e-speech
+      - name: Living Intelligence interactive presenter and audience integration
+        env:
+          LIVING_SHOTS: /tmp/alfa-living-shots
+        run: npm run test:e2e-living
+      - name: Upload Living Intelligence browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alfa-living-visual-checks
+          path: /tmp/alfa-living-shots/
+          if-no-files-found: ignore
       - name: Long-session stability, leaks, idle CPU and CSP violations
         run: npm run test:e2e-stress
       - name: Five-phone browser voting and persistence test

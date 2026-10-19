@@ -1,4 +1,4 @@
-import { compareRounds, exportAggregateCsv, summarizePollDistribution } from "./poll-analytics.js";
+import { compareRounds, compareLinkedBeforeAfter, exportAggregateCsv, summarizePollDistribution } from "./poll-analytics.js";
 import { clusterQuestions, recurringTerms, reexplainSuggestions, groupByObjective, compareSections } from "./engagement-insights.js";
 // Lecturer's voting console: create a session, add questions, open/close/reveal, see results.
 const $ = (id) => document.getElementById(id);
@@ -49,7 +49,9 @@ function drawQr(url) {
 
 function renderPolls(state) {
   latestPollState = state;
-  const changes = compareRounds(state.polls);
+  const linked = compareLinkedBeforeAfter(state.polls);
+  const changes = [...linked.map((g) => ({ ...g, firstId: g.beforeId, lastId: g.afterId })),
+    ...compareRounds(state.polls).filter((g) => !linked.some((p) => p.beforeId === g.firstId && p.afterId === g.lastId))];
   const container = $("round-comparisons");
   if (container) {
     container.replaceChildren();
@@ -59,6 +61,8 @@ function renderPolls(state) {
       const title = document.createElement("strong");
       title.textContent = "تغير التوزيع بين الجولتين " + group.firstId + " و" + group.lastId + ": " + group.question;
       item.append(title);
+      item.append(Object.assign(document.createElement("p"), { className: "meta", textContent:
+        "عدد المشاركات: قبل " + group.firstTotal + "، بعد " + group.lastTotal }));
       for (const value of group.values) {
         const line = document.createElement("p");
         const change = (value.deltaPoints > 0 ? "+" : "") + value.deltaPoints + " نقطة مئوية";
@@ -67,8 +71,30 @@ function renderPolls(state) {
       }
       const warning = document.createElement("p");
       warning.className = "meta";
-      warning.textContent = "هذه مقارنة لتوزيع الإجابات، وليست إثباتاً لتحسّن التعلم أو مشاركة الطلاب أنفسهم.";
+      warning.textContent = group.warning || "هذه مقارنة لتوزيع الإجابات، وليست إثباتاً لتحسّن التعلم أو مشاركة الطلاب أنفسهم.";
       item.append(warning);
+      if (group.correctIndex !== null && group.correctIndex !== undefined && group.values[group.correctIndex]) {
+        const correct = group.values[group.correctIndex];
+        item.append(Object.assign(document.createElement("p"), { className: "meta",
+          textContent: "الإجابة التي اعتمدها المحاضر: " + correct.option + " — " +
+          correct.firstPercent + "% قبل، " + correct.lastPercent + "% بعد. ليست دليلاً سببياً." }));
+      }
+      if (group.beforeId) {
+        const add = document.createElement("button");
+        add.type = "button"; add.textContent = "أضف توزيع التصويت للمسرح المعرفي";
+        add.onclick = () => {
+          const actual = compareLinkedBeforeAfter(latestPollState?.polls || [])
+            .find((x) => x.beforeId === group.beforeId && x.afterId === group.afterId);
+          if (!actual) { $("poll-msg").textContent = "تعذّر التحقق من الجولتين."; return; }
+          window.parent.postMessage({ alfaPulseSummary: {
+            code, question: actual.question, totals: actual.firstTotal && actual.lastTotal ?
+              [actual.firstTotal, actual.lastTotal] : [actual.firstTotal, actual.lastTotal],
+            values: actual.values, beforeId: actual.beforeId, afterId: actual.afterId
+          } }, location.origin);
+          $("poll-msg").textContent = "أرسلت المقارنة الفعلية إلى أدوات المحاضر.";
+        };
+        item.append(add);
+      }
       container.append(item);
     }
   }
@@ -98,12 +124,14 @@ function renderPolls(state) {
     const insight = summarizePollDistribution(p);
     return `<div class="poll">
       <strong>${esc(p.question)}</strong>
+      ${p.pulsePhase ? `<div class="meta">قياس ${p.pulsePhase === "before" ? "قبلي" : "بعدي"} — زوج ${p.pulsePair}</div>` : ""}
       <div class="meta">${state_} — الإجابات: ${total}${p.allowChange ? " — يسمح بالتغيير" : ""}</div>
       ${rows}
       ${p.objective ? `<div class="meta">الهدف: ${esc(p.objective)}</div>` : ""}
       ${insight ? `<p class="meta poll-insight">${esc(insight.text)}</p>` : ""}
       <div class="actions">
-        ${p.status !== "open" ? `<button data-act="open" data-id="${p.id}" class="primary">فتح</button>` : `<button data-act="close" data-id="${p.id}">إغلاق</button>`}
+        ${p.status !== "open" ? (p.pulsePhase === "before" && p.status === "closed" ? "" : `<button data-act="open" data-id="${p.id}" class="primary">فتح</button>`) : `<button data-act="close" data-id="${p.id}">إغلاق</button>`}
+        ${p.pulsePhase === "before" && p.status === "closed" && !state.polls.some((x) => x.pulsePair === p.id && x.pulsePhase === "after") ? `<button data-act="pulse-after" data-id="${p.id}" class="primary">ابدأ الجولة البعدية</button>` : ""}
         ${p.reveal ? `<button data-act="hide" data-id="${p.id}">إخفاء النتائج</button>` : `<button data-act="reveal" data-id="${p.id}">إظهار النتائج</button>`}
         <button data-act="repeat" data-id="${p.id}">جولة جديدة (نتائج منفصلة)</button>
       </div>
@@ -296,7 +324,11 @@ async function addPoll() {
     const { poll } = await call("POST", `/sessions/${code}/polls`, {
       question: $("q-text").value, options, allowChange: $("q-change").checked,
       kind: $("q-kind").value, objective: $("q-objective").value,
+      beforeAfter: $("q-before-after").checked,
+      correctIndex: $("q-correct").value ? Number($("q-correct").value) - 1 : null,
     });
+    $("q-before-after").checked = false;
+    $("q-correct").value = "";
     $("q-objective").value = "";
     $("q-text").value = "";
     $("q-opts").value = "";
@@ -351,6 +383,25 @@ if (adminToken) {
 
 window.addEventListener("message", (event) => {
   if (event.origin !== location.origin || event.source !== window.parent) return;
+  const scenario = event.data?.alfaScenarioPoll;
+  if (scenario && typeof scenario.question === "string" && Array.isArray(scenario.options)) {
+    void (async () => {
+      try {
+        if (!code) throw Error("أنشئ جلسة تصويت أولاً");
+        if (!scenario.question.trim() || scenario.question.length > 200 || scenario.options.length < 2 || scenario.options.length > 3 ||
+            scenario.options.some((o) => typeof o !== "string" || !o.trim() || o.length > 200)) throw Error("خيارات السيناريو غير صالحة");
+        const state = await call("GET", `/sessions/${code}/presenter`);
+        if (state.polls.some((p) => p.status === "open")) throw Error("أغلق التصويت النشط أولاً");
+        const { poll } = await call("POST", `/sessions/${code}/polls`, { question: scenario.question,
+          options: scenario.options, kind: "choice" });
+        await call("POST", `/sessions/${code}/polls/${poll.id}/open`);
+        await refresh();
+        window.parent.postMessage({ alfaScenarioPollReady: true }, location.origin);
+        $("poll-msg").textContent = "فُتح سيناريو ماذا لو على جلسة التصويت الحالية.";
+      } catch (e) { $("poll-msg").textContent = e.message; }
+    })();
+    return;
+  }
   const voice = event.data?.alfaVoicePoll;
   if (typeof voice === "string" && /^poll-(?:open|close|reveal)$/.test(voice)) { void voicePoll(voice); return; }
   const text = event.data?.alfaQuestionDraft;

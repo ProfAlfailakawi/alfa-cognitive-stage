@@ -14,6 +14,7 @@ import { testLectureMedia, probeMedia } from "./media-preflight.js";
 import { buildSteps, clampStep, imageFor, lastStep, nextPosition, prevPosition, autoDelay, fadeMs } from "./build-steps.js";
 import { recordDecision, tasteFor, summarizeTaste, clearTaste } from "./director-taste.js";
 import { createReturnStack } from "./return-stack.js";
+import { mountLivingIntelligence, renderCognitiveProjection, validCognitivePacket } from "./living-intelligence-ui.js";
 import { createSessionLog } from "./session-log.js";
 import { mountLibraryPanel } from "./library-ui.js";
 import { clockState, PLANNED_CHOICES } from "./lecture-clock.js";
@@ -51,6 +52,8 @@ let slideGeneration = 0;
 let autoStepTimer = null;
 let currentOverlay = null; // spec of the scene now on screen, for return snapshots
 const returnStack = createReturnStack();
+let cognitive = null;
+let cognitiveProjection = null;
 const brain = createDirectorBrain();
 const meter = createLatencyMeter();
 let lastVoiceHealth = null;
@@ -80,7 +83,7 @@ function currentVideoSnapshot() {
 function broadcastSnapshot(requestId) {
   if (typeof requestId !== "string" || !/^[a-f0-9]{16}$/.test(requestId)) return;
   send({ type: "snapshot", requestId, index: state.index, step: state.step, main: state.main,
-    videos: currentVideoSnapshot() });
+    videos: currentVideoSnapshot(), cognitive: cognitiveProjection });
 }
 function adjustAudienceMediaTime(el, time, force = false) {
   if (!el || !validMediaTime(time)) return;
@@ -151,6 +154,8 @@ function placeVideo(slide) {
         sessionLog.video({ slide: state.index, clip: i, action: "play", at: el.currentTime });
         for (const other of videoEls) if (other !== el && !other.paused) other.pause();
         directorRuntime.speech?.setMediaPlaying(true);
+        if (cognitiveProjection) { cognitiveProjection = null; renderCognitiveProjection(stage, null);
+          send({ type: "cognitive", data: null, index: state.index, step: state.step }); }
         relay("play");
       });
       el.addEventListener("pause", () => {
@@ -247,6 +252,9 @@ function setStep(step, { broadcast = true } = {}) {
   const target = clampStep(slide, step);
   if (!slide || !buildSteps(slide) || target === state.step) return;
   state.step = target;
+  if (cognitiveProjection && role === "presenter") send({ type: "cognitive", data: null, index: state.index, step: state.step });
+  cognitiveProjection = null;
+  renderCognitiveProjection(document.getElementById("stage"), null);
   if (role === "presenter") sessionLog.slide(state.index, target);
   const img = document.getElementById("slide-img");
   if (img) swapStepImage(img, slideImageUrl(slide, target), `الشريحة ${state.index}`, slideGeneration, fadeMs(slide, target));
@@ -260,8 +268,10 @@ function setStep(step, { broadcast = true } = {}) {
 function showSlide(index, step = 0) {
   const slide = state.slides[index - 1];
   if (!slide) return;
+  const changed = state.index !== index;
   state.index = index;
   state.step = clampStep(slide, step);
+  if (changed) { cognitiveProjection = null; renderCognitiveProjection(document.getElementById("stage"), null); cognitive?.onSlideChange(); }
   clearTimeout(autoStepTimer);
   if (role === "presenter") sessionLog.slide(index, state.step);
   if (role === "presenter") insight?.slideChanged();
@@ -324,6 +334,7 @@ function renderPresenter() {
         <div id="library-mount"></div>
         <div id="insight-mount"></div>
         <div id="field-mount"></div>
+        <div id="cognitive-mount"></div>
         <details class="readiness-drawer" id="readiness-drawer">
           <summary>جاهزية العرض وتوافق PowerPoint</summary>
           <div id="readiness-content" aria-live="polite"></div>
@@ -425,7 +436,13 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
       document.getElementById("project-poll").textContent = "سجّل دخولك وأنشئ جلسة أولاً";
       return;
     }
+    if (videoEls.some((el) => !el.paused && !el.ended)) { setDirectorStatus("التصويت لا يغطي الفيديو أثناء تشغيله."); return; }
     if (!pollScreen.visible) beginDigression();
+    if (cognitiveProjection) {
+      cognitiveProjection = null;
+      renderCognitiveProjection(document.getElementById("stage"), null);
+      send({ type: "cognitive", data: null, index: state.index, step: state.step });
+    }
     pollScreen.visible = true;
     renderPollScreen(pollScreen);
     send({ type: "poll-projection", data: pollScreen });
@@ -470,6 +487,34 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
     getToken: directorAdminToken, getBundle: () => state.bundle, getSlides: () => state.slides,
     goToSlide: (index) => go(index),
     recorder, resume: resumeStore, restoreStage: restoreStageState, noteFeature: (name) => recorder.note(name),
+  });
+  cognitive = mountLivingIntelligence(document.getElementById("cognitive-mount"), {
+    getBundle: () => state.bundle, getSlide: () => state.index, getStep: () => state.step,
+    getSlides: () => state.slides, getStage: () => document.getElementById("stage"), getToken: directorAdminToken,
+    videoPlaying: () => videoEls.some((v) => !v.paused && !v.ended),
+    currentMode: () => pollScreen.visible ? "poll" : cognitiveProjection?.kind || (currentOverlay ? "visual" : "slide"),
+    project(data) {
+      if (videoEls.some((v) => !v.paused && !v.ended)) return;
+      if (!cognitiveProjection) beginDigression();
+      if (pollScreen.visible) { pollScreen.visible = false; clearPollScreen(); send({ type: "poll-projection", data: { visible: false } }); }
+      if (currentOverlay) { currentOverlay = null; hideInfographic(true); }
+      cognitiveProjection = data;
+      renderCognitiveProjection(document.getElementById("stage"), data);
+      send({ type: "cognitive", data, index: state.index, step: state.step });
+    },
+    hide() { if (returnStack.active()) backOneLevel(); else {
+      cognitiveProjection = null; renderCognitiveProjection(document.getElementById("stage"), null);
+      send({ type: "cognitive", data: null, index: state.index, step: state.step });
+    } },
+    openVoting() { document.getElementById("open-vote")?.click(); },
+    openScenarioVote(scenario) {
+      document.getElementById("open-vote")?.click();
+      const frame = document.getElementById("vote-iframe");
+      if (!frame) return;
+      const submit = () => frame.contentWindow?.postMessage({ alfaScenarioPoll: scenario }, location.origin);
+      if (frame.contentDocument?.readyState === "complete") submit();
+      else frame.addEventListener("load", submit, { once: true });
+    },
   });
   setInterval(() => { if (role === "presenter") resumeStore.save(captureStageState()); }, 2500);
   if (globalThis.__alfaGuest) document.body.append(Object.assign(document.createElement("div"), { className: "guest-badge", id: "guest-badge", textContent: "وضع الضيف: لا يُحفظ شيء في هذا المتصفح" }));
@@ -692,6 +737,7 @@ function hideInfographic(notify) {
 // Normal navigation: the lecturer is resuming the lecture, so any digression anchor is obsolete.
 function resumeLecture() {
   returnStack.clear();
+  if (cognitiveProjection) { cognitiveProjection = null; renderCognitiveProjection(document.getElementById("stage"), null); send({ type: "cognitive", data: null, index: state.index, step: state.step }); }
   currentOverlay = null;
   hideInfographic(true);
 }
@@ -719,7 +765,7 @@ function captureStageState() {
   return { index: state.index, step: state.step,
     videos: videoEls.map((el) => ({ time: validMediaTime(el.currentTime) ? el.currentTime : 0,
       playing: !el.paused && !el.ended })),
-    overlay: currentOverlay, poll: pollScreen.visible };
+    overlay: currentOverlay, poll: pollScreen.visible, cognitive: cognitiveProjection };
 }
 // Call right before any scene/poll goes on screen so one "return" can restore everything.
 function beginDigression() { returnStack.enter(captureStageState); sessionLog.digression("enter"); }
@@ -739,6 +785,8 @@ function restoreStageState(snapshot) {
   }
   pollScreen.visible = Boolean(snapshot.poll);
   if (pollScreen.visible) renderPollScreen(pollScreen);
+  cognitiveProjection = snapshot.cognitive || null;
+  renderCognitiveProjection(document.getElementById("stage"), cognitiveProjection);
   videoEls.forEach((el, i) => {
     const wanted = snapshot.videos?.[i];
     if (!wanted) return;
@@ -747,7 +795,7 @@ function restoreStageState(snapshot) {
     if (wanted.playing) el.play()?.catch?.(() => {});
   });
   send({ type: "restore", index: state.index, step: state.step, main: state.main,
-    infographic: currentOverlay, poll: pollScreen.visible ? pollScreen : { visible: false },
+    infographic: currentOverlay, cognitive: cognitiveProjection, poll: pollScreen.visible ? pollScreen : { visible: false },
     videos: snapshot.videos?.length === videoEls.length ? snapshot.videos : currentVideoSnapshot() });
 }
 
@@ -760,6 +808,9 @@ function goMain() {
   // No digression recorded: stop clips, hide scenes, stay on the current slide and click state.
   for (const el of videoEls) el.pause();
   hideInfographic(true);
+  cognitiveProjection = null;
+  renderCognitiveProjection(document.getElementById("stage"), null);
+  send({ type: "cognitive", data: null, index: state.index, step: state.step });
   if (state.index !== state.main) showSlide(state.main);
   send({ type: "slide", index: state.main, step: state.step, main: state.main, emergency: true });
 }
@@ -980,6 +1031,7 @@ function receiveDirectorSpeech(text, meta = {}) {
     }
     return;
   }
+  cognitive?.onSpeech(raw);
   const finalAt = Number.isFinite(meta.finalAt) ? meta.finalAt : Date.now();
   const timed = (kind) => {
     const decidedAt = Date.now();
@@ -1239,6 +1291,13 @@ function receiveVoteAdminMessage(event) {
   const iframe = document.getElementById("vote-iframe");
   if (!iframe || event.source !== iframe.contentWindow) return;
   const data = event.data;
+  if (data?.alfaPulseSummary && typeof data.alfaPulseSummary === "object") {
+    let currentCode = null;
+    try { currentCode = new URL(pollScreen.url).searchParams.get("s"); } catch {}
+    if (currentCode && data.alfaPulseSummary.code === currentCode) cognitive?.addPollSummary(data.alfaPulseSummary);
+    return;
+  }
+  if (data?.alfaScenarioPollReady === true) { document.getElementById("project-poll")?.click(); return; }
   if (data?.alfaVoicePollResult) {
     const { action, ok, note } = data.alfaVoicePollResult;
     setDirectorStatus(String(note || (ok ? "تم." : "تعذّر تنفيذ الأمر.")).slice(0, 160));
@@ -1258,6 +1317,10 @@ function receiveVoteAdminMessage(event) {
 }
 
 function renderLayer(spec) {
+  if (role === "presenter" && cognitiveProjection) {
+    cognitiveProjection = null;
+    send({ type: "cognitive", data: null, index: state.index, step: state.step });
+  }
   const stage = document.getElementById("stage");
   if (!stage) return;
   stage.querySelectorAll(".info-layer").forEach((el) => el.remove());
@@ -1290,6 +1353,8 @@ function applyRemote(message) {
     hideInfographic(false);
     if (message.infographic) { try { renderLayer(message.infographic); } catch {} }
     renderPollScreen(message.poll);
+    renderCognitiveProjection(document.getElementById("stage"),
+      validCognitivePacket(message.cognitive, { bundle: state.bundle, index: state.index, step: state.step }) ? message.cognitive : null);
     if (Array.isArray(message.videos) && message.videos.length === videoEls.length &&
         message.videos.every((item) => item && validMediaTime(item.time) && typeof item.playing === "boolean")) {
       message.videos.forEach((item, i) => {
@@ -1309,6 +1374,8 @@ function applyRemote(message) {
     if (message.index !== state.index) showSlide(message.index, wanted);
     else if (wanted !== state.step) setStep(wanted, { broadcast: false });
     if (!validSnapshot(message, state.bundle, videoEls.length)) return;
+    renderCognitiveProjection(document.getElementById("stage"),
+      validCognitivePacket(message.cognitive, { bundle: state.bundle, index: state.index, step: state.step }) ? message.cognitive : null);
     message.videos.forEach((item, i) => {
       const el = videoEls[i];
       if (!item.playing) el.pause();
@@ -1320,16 +1387,23 @@ function applyRemote(message) {
     });
     return;
   }
+  if (message.type === "cognitive") {
+    if (message.index === state.index && message.step === state.step) renderCognitiveProjection(document.getElementById("stage"),
+      message.data === null ? null : validCognitivePacket(message.data, { bundle: state.bundle, index: state.index, step: state.step }) ? message.data : null);
+    return;
+  }
   if (message.type === "infographic") {
+    renderCognitiveProjection(document.getElementById("stage"), null);
     hideInfographic(false);
     renderLayer(message.spec);
   }
   if (message.type === "infographic-hide") hideInfographic(false);
-  if (message.type === "poll-projection") renderPollScreen(message.data);
+  if (message.type === "poll-projection") { if (message.data?.visible) renderCognitiveProjection(document.getElementById("stage"), null); renderPollScreen(message.data); }
   if (message.type === "video") {
     if (!validVideoPacket(message, state.bundle, state.index, videoEls.length)) return;
     const target = videoEls[message.clip];
     if (message.action === "play") {
+      renderCognitiveProjection(document.getElementById("stage"), null);
       for (const el of videoEls) if (el !== target) el.pause();
       adjustAudienceMediaTime(target, message.time);
       playAudienceMedia(target);
@@ -1425,6 +1499,13 @@ async function boot() {
   state.slides = manifest.slides;
   state.count = manifest.slideCount;
   state.aspect = manifest.aspect;
+  // An earlier lecture may be viewed in a separate lecturer-only window,
+  // without changing the running classroom deck or its return stack.
+  const startAt = Number(params.get("start"));
+  if (role === "presenter" && Number.isSafeInteger(startAt) && startAt >= 1 && startAt <= state.count) {
+    state.index = startAt;
+    state.main = startAt;
+  }
 
   // Install listeners before the first hello to avoid missing a fast snapshot reply.
   channel.onmessage = (event) => {
