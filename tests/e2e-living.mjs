@@ -102,7 +102,7 @@ try {
   await xray.getByRole("button",{name:"تحديد بالنقر على معاينة الشريحة"}).click();
   const stageSize=await presenter.locator("#stage").boundingBox();
   await presenter.locator("#stage").click({position:{x:stageSize.width*.2,y:stageSize.height*.43}});
-  await audience.waitForSelector(".cognitive-xray .cognitive-focus-box");
+  await audience.waitForSelector(".cognitive-xray .cognitive-focus-outline");
   check("X-Ray preview click selects a safely mapped shape",await audience.locator(".cognitive-focus-outline").count()===1);
   await presenter.locator("#home").click();
 
@@ -185,6 +185,8 @@ try {
     .evaluate((element)=>getComputedStyle(element).animationName);
   check("reduced motion accepted", motion === "none", motion);
 
+  // Open the knowledge section again: one tool section intentionally stays open at a time.
+  await open(0);
   // Browser download keeps approved lecturer data private; importing it requires
   // explicit confirmation, validates bundle ID, and never projects automatically.
   check("private backup import picker is hidden until explicitly invoked",
