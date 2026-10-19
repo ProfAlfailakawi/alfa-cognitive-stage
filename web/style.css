@@ -296,3 +296,21 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Keep every lecturer tool reachable without changing the stage or projector size. */
 .presenter .side { overflow-y: auto; grid-template-rows: none; align-content: start; }
+
+/* Density-based composition: a two-idea topic should not reserve a phantom third column. */
+.cognitive-stage-body[data-count="1"] { grid-template-columns: minmax(0,1fr); width: 76%; align-self: center; }
+.cognitive-stage-body[data-count="2"], .cognitive-stage-body[data-count="4"] {
+  grid-template-columns: repeat(2,minmax(0,1fr)); width: 90%; align-self: center;
+}
+.cognitive-stage-body[data-count="2"] .cognitive-node { padding: 3.5%; }
+.cognitive-node p { font-size: clamp(17px,1.95vw,32px); }
+.cognitive-node small { color: #efdbad; }
+@media (max-width: 600px) {
+  .cognitive-stage-heading { font-size: clamp(13px, 3.2vw, 19px); }
+  .cognitive-stage-body { gap: 1%; }
+  .cognitive-node { border-radius: 5px; padding: 3%; }
+  .cognitive-node p { font-size: clamp(10px,2.65vw,15px); line-height: 1.35; }
+  .cognitive-node small { font-size: 9px; }
+  .cognitive-question,.cognitive-revealed-result { font-size: clamp(11px,3vw,15px); line-height:1.35; }
+  .cognitive-stage-foot { font-size: 9px; }
+}
