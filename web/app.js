@@ -154,6 +154,8 @@ function placeVideo(slide) {
         sessionLog.video({ slide: state.index, clip: i, action: "play", at: el.currentTime });
         for (const other of videoEls) if (other !== el && !other.paused) other.pause();
         directorRuntime.speech?.setMediaPlaying(true);
+        if (cognitiveProjection) { cognitiveProjection = null; renderCognitiveProjection(stage, null);
+          send({ type: "cognitive", data: null, index: state.index, step: state.step }); }
         relay("play");
       });
       el.addEventListener("pause", () => {
@@ -250,7 +252,9 @@ function setStep(step, { broadcast = true } = {}) {
   const target = clampStep(slide, step);
   if (!slide || !buildSteps(slide) || target === state.step) return;
   state.step = target;
-  if (cognitiveProjection) { cognitiveProjection = null; renderCognitiveProjection(document.getElementById("stage"), null); if (role === "presenter") send({ type: "cognitive", data: null, index: state.index, step: target }); }
+  if (cognitiveProjection && role === "presenter") send({ type: "cognitive", data: null, index: state.index, step: state.step });
+  cognitiveProjection = null;
+  renderCognitiveProjection(document.getElementById("stage"), null);
   if (role === "presenter") sessionLog.slide(state.index, target);
   const img = document.getElementById("slide-img");
   if (img) swapStepImage(img, slideImageUrl(slide, target), `الشريحة ${state.index}`, slideGeneration, fadeMs(slide, target));
@@ -499,7 +503,11 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
     openVoting() { document.getElementById("open-vote")?.click(); },
     openScenarioVote(scenario) {
       document.getElementById("open-vote")?.click();
-      document.getElementById("vote-iframe")?.contentWindow?.postMessage({ alfaScenarioPoll: scenario }, location.origin);
+      const frame = document.getElementById("vote-iframe");
+      if (!frame) return;
+      const submit = () => frame.contentWindow?.postMessage({ alfaScenarioPoll: scenario }, location.origin);
+      if (frame.contentDocument?.readyState === "complete") submit();
+      else frame.addEventListener("load", submit, { once: true });
     },
   });
   setInterval(() => { if (role === "presenter") resumeStore.save(captureStageState()); }, 2500);
@@ -1277,6 +1285,7 @@ function receiveVoteAdminMessage(event) {
   const iframe = document.getElementById("vote-iframe");
   if (!iframe || event.source !== iframe.contentWindow) return;
   const data = event.data;
+  if (data?.alfaScenarioPollReady === true) { document.getElementById("project-poll")?.click(); return; }
   if (data?.alfaVoicePollResult) {
     const { action, ok, note } = data.alfaVoicePollResult;
     setDirectorStatus(String(note || (ok ? "تم." : "تعذّر تنفيذ الأمر.")).slice(0, 160));
@@ -1296,6 +1305,10 @@ function receiveVoteAdminMessage(event) {
 }
 
 function renderLayer(spec) {
+  if (role === "presenter" && cognitiveProjection) {
+    cognitiveProjection = null;
+    send({ type: "cognitive", data: null, index: state.index, step: state.step });
+  }
   const stage = document.getElementById("stage");
   if (!stage) return;
   stage.querySelectorAll(".info-layer").forEach((el) => el.remove());
@@ -1378,6 +1391,7 @@ function applyRemote(message) {
     if (!validVideoPacket(message, state.bundle, state.index, videoEls.length)) return;
     const target = videoEls[message.clip];
     if (message.action === "play") {
+      renderCognitiveProjection(document.getElementById("stage"), null);
       for (const el of videoEls) if (el !== target) el.pause();
       adjustAudienceMediaTime(target, message.time);
       playAudienceMedia(target);
