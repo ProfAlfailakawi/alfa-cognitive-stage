@@ -25,7 +25,7 @@ C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
-BUNDLE_BUILD_VERSION = 2
+BUNDLE_BUILD_VERSION = 3
 
 
 
@@ -196,17 +196,18 @@ def video_targets(shape):
     extension as an embedded relationship. Prefer the embedded relationship
     in that case so these clips remain portable with the presentation.
     """
-    found = []
+    links = []
     for node in shape._element.iter(f"{{{A_NS}}}videoFile"):
         rid = node.get(f"{{{R_NS}}}link")
         if rid:
-            found.append((rid, True))
+            links.append((rid, True))
+    embedded = []
     for node in shape._element.iter():
         if node.tag.endswith("}media"):
             rid = node.get(f"{{{R_NS}}}embed")
             if rid:
-                found.append((rid, False))
-    return found
+                embedded.append((rid, False))
+    return embedded or links
 
 
 def unique_embedded_video_targets(shape, slide):
@@ -313,6 +314,8 @@ def render_slides(pptx: Path, out_dir: Path, width: int) -> tuple[int, str]:
     work = out_dir.parent / ".alfa-render"
     if work.exists():
         for child in work.iterdir():
+            if child.name == "deck.pptx":
+                continue
             if child.is_dir():
                 shutil.rmtree(child)
             else:
@@ -361,7 +364,9 @@ end run'''
     for index, page in enumerate(pages, start=1):
         shutil.move(str(page), slides_dir / f"{index:03d}.png")
     for child in work.iterdir():
-        if child.is_dir():
+        if child.name == "deck.pptx":
+            child.write_bytes(b"")
+        elif child.is_dir():
             shutil.rmtree(child)
         else:
             child.unlink()
