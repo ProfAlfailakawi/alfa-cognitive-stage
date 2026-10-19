@@ -4,7 +4,7 @@
 // This is NOT neural language understanding: it is explicit Kuwaiti/Gulf/MSA patterns plus
 // context (rolling window, topic tracking, slide grounding, pacing). Measured by tests/director-corpus.mjs.
 import { interpretSpeech, normalizeArabic, percentMention } from "./director-core.js";
-import { lecturerTakeaway, lecturerTeachingMove } from "./lecturer-profile.js";
+import { lecturerComparison, lecturerTakeaway, lecturerTeachingMove } from "./lecturer-profile.js";
 
 const WINDOW_MS = 60000;
 const MAX_WINDOW = 8;
@@ -280,7 +280,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
     const slideIndex = ctx.slide?.index ?? 0;
     const mode = ctx.mode || "balanced";
     const slideDigits = new Set([...digitsOf(ctx.slide?.text || ""), ...digitsOf(ctx.slide?.notes || "")]);
-    window.push({ text: raw, at: t, used: false });
+    window.push({ text: raw, at: t, used: false, slide: slideIndex });
     window = window.filter((w) => t - w.at < WINDOW_MS).slice(-MAX_WINDOW);
     const spoken = numeralizePercents(raw);
     const spoken0 = spoken;
@@ -296,7 +296,10 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
     if (d.topic.shifted) { d.why.push("تغيّر الموضوع؛ أُغلقت القصة المفتوحة"); }
 
     // 1. Returns are always honoured, even during video or quiet periods.
-    const direct = interpretSpeech(spoken);
+    let direct = interpretSpeech(spoken);
+    // A lecturer asking "شنو الفرق بين ...؟" has not supplied an answer yet.
+    if (direct?.kind === "compare" && /(?:شنو|ايش|وش)\s+(?:هو\s+)?الفرق|[؟?]$/.test(normalizeArabic(raw)))
+      direct = { kind: "question", confidence: 0.81, utterance: raw };
     if (direct?.kind === "return" || direct?.kind === "return-level") {
       story = null;
       return { ...d, action: direct.kind, kind: direct.kind, confidence: direct.confidence, reason: "عودة مطلوبة من المحاضر" };
@@ -353,11 +356,16 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
 
     // 4. Local structure detectors without an API.
     let found = moment;
+    const exactDifference = lecturerComparison(raw);
+    if (exactDifference && (!found || found.kind === "compare"))
+      found = { kind: "compare", confidence: 0.86, spec: exactDifference, utterance: raw };
     if (!found || (found.kind === "compare" && !found.spec)) {
       const timeline = detectTimeline(spoken);
       if (timeline) found = { kind: "timeline", confidence: 0.9, spec: timeline, utterance: raw };
       else {
-        const contrast = detectContrast(spoken) || detectHasContrast(spoken);
+        const prev = window.at(-2);
+        const earlier = prev && prev.slide === slideIndex && !prev.used && t - prev.at <= 16000 ? prev.text : "";
+        const contrast = detectContrast(spoken) || detectHasContrast(spoken) || lecturerComparison(raw, earlier);
         if (contrast) found = { kind: "compare", confidence: 0.86, spec: contrast, utterance: raw };
       }
     }
