@@ -39,7 +39,7 @@ export function checkSpoken(spoken, slideText) {
   if (!printed.length) return null;
   for (const s of said) {
     // If the slide also prints this exact number (with the same unit) the lecturer is simply quoting it.
-    if (printed.some((p) => p.unit === s.unit && p.value === s.value)) continue;
+    if (printed.some((p) => p.unit === s.unit && p.value === s.value && [...s.subject].some((w) => p.subject.has(w)))) continue;
     for (const p of printed) {
       if (p.unit !== s.unit || p.value === s.value) continue;
       const shared = [...s.subject].filter((w) => p.subject.has(w));
