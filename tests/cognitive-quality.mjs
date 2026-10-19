@@ -10,6 +10,9 @@ assert.equal(segments.join(""),original,"no original numeric, Arabic or whitespa
 assert.ok(segments.length>1 && segments.every((x)=>x.length<=ROOM_LIMITS.maxCharsPerFragment));
 const unspaced="م".repeat(330)+"📘"+"ن".repeat(40);
 assert.equal(splitVerbatim(unspaced).join(""),unspaced,"non-breaking tokens are still verbatim");
+const emojiBoundary="م".repeat(153)+"🙂"+"ن".repeat(170);
+assert.equal(splitVerbatim(emojiBoundary).join(""),emojiBoundary);
+assert.ok(splitVerbatim(emojiBoundary).every((s)=>!s.endsWith("\ud83d")&&!s.startsWith("\ude42")), "Unicode pairs must remain intact");
 const source=sourceRecord({bundle,slide:1,originalText:original,kind:"lecturer",approved:true});
 let graph=createKnowledgeGraph(bundle);
 graph=appendKnowledge(graph,{type:"topic",text:"الدافعية",source}).graph;
