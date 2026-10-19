@@ -80,6 +80,17 @@ function renderPolls(state) {
           correct.firstPercent + "% قبل، " + correct.lastPercent + "% بعد. ليست دليلاً سببياً." }));
       }
       if (group.beforeId) {
+        const show=document.createElement("button");
+        show.type="button";show.textContent="اعرض مقارنة الجولتين على البروجكتر";
+        show.onclick=()=>{
+          const actual=compareLinkedBeforeAfter(latestPollState?.polls||[])
+            .find((x)=>x.beforeId===group.beforeId&&x.afterId===group.afterId);
+          if(!actual){$("poll-msg").textContent="تعذّر التحقق من المقارنة.";return;}
+          window.parent.postMessage({alfaPulseProject:{code,question:actual.question,
+            totals:[actual.firstTotal,actual.lastTotal],values:actual.values}},location.origin);
+          $("poll-msg").textContent="أُرسلت المقارنة المعتمدة إلى شاشة العرض.";
+        };
+        item.append(show);
         const add = document.createElement("button");
         add.type = "button"; add.textContent = "أضف توزيع التصويت للمسرح المعرفي";
         add.onclick = () => {
