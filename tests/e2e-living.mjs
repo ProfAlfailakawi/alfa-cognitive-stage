@@ -69,6 +69,7 @@ try {
   await audience.waitForFunction(()=>document.querySelectorAll(".cognitive-node").length===2);
   check("new concept is incrementally shown",await audience.locator(".cognitive-node").count()===2);
   check("original PowerPoint slide image is unchanged",await presenter.locator("#slide-img").getAttribute("src") === slideBefore);
+  await wait(480); // capture the finished fade, not a mid-transition frame
   if (shots) await audience.locator("#stage").screenshot({path:join(shots,"living-1366.png")});
   await presenter.locator("#home").click();
   await audience.waitForFunction(()=>!document.querySelector(".cognitive-projection"));
@@ -97,11 +98,13 @@ try {
   await audience.waitForFunction(()=>document.querySelector(".cognitive-card-stage")?.textContent?.includes("أي أسلوب مناسب"));
   check("unrevealed scenario hides branch results",
     !(await audience.locator(".cognitive-card-stage").innerText()).includes("نقاش مجموعات"));
+  await wait(480);
   if (shots) await audience.locator("#stage").screenshot({path:join(shots,"whatif-hidden.png")});
   await whatif.getByRole("button",{name:"اكشف النتيجة المختارة"}).click();
   await audience.waitForFunction(()=>document.querySelector(".cognitive-card-stage")?.textContent?.includes("نقاش مجموعات"));
   check("explicit reveal exposes only selected predefined result",
     (await audience.locator(".cognitive-card-stage").innerText()).includes("نقاش مجموعات"));
+  await wait(480);
   if (shots) await audience.locator("#stage").screenshot({path:join(shots,"whatif-revealed.png")});
 
   // Late-join audience receives only approved projection via existing snapshot protocol.
