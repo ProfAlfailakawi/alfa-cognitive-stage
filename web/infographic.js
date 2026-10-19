@@ -74,22 +74,23 @@ function statSvg(spec) {
   const pct = ascii.match(/^(\d{1,3}(?:[.,]\d+)?)%$/);
   const count = /^\d{1,2}$/.test(ascii) && Number(ascii) >= 1 && Number(ascii) <= 12 ? Number(ascii) : null;
   const value = pct ? parsePercentValue(number) : null;
-  const caption = (y) => (text ? motion("rise", 3, label(text, 480, y, { size: 32, color: C.blue, limit: 36, rows: 2, lh: 38, weight: 900, family: FONT.display })) : "");
+  // Place the full caption block inside a safe bottom zone, rather than its first baseline at the page edge.
+  const caption = (cy) => (text ? motion("rise", 3, labelMid(text, 480, cy, { size: 29, color: C.blue, limit: 30, rows: 3, lh: 34, weight: 800, family: FONT.display })) : "");
   if (value !== null && value <= 100) {
     // A ring filled to exactly the spoken percentage (only for 0-100).
     const size = number.length <= 3 ? 112 : number.length === 4 ? 92 : 74;
     return frame(spec.title,
-      `<circle cx="480" cy="312" r="128" fill="none" stroke="${C.track}" stroke-width="24"/>` +
-      `<circle class="m-ring" style="--v:${value}" cx="480" cy="312" r="128" fill="none" stroke="url(#sk-blue)" stroke-width="24" stroke-linecap="round" pathLength="100"/>` +
-      motion("pop", 2, `<text x="480" y="${312 + size * 0.3}" text-anchor="middle" font-size="${size}" font-family="${FONT.hero}" fill="${C.ink}">${E(number)}</text>`) +
-      caption(494));
+      `<circle cx="480" cy="283" r="112" fill="none" stroke="${C.track}" stroke-width="22"/>` +
+      `<circle class="m-ring" style="--v:${value}" cx="480" cy="283" r="112" fill="none" stroke="url(#sk-blue)" stroke-width="22" stroke-linecap="round" pathLength="100"/>` +
+      motion("pop", 2, `<text x="480" y="${283 + size * 0.3}" text-anchor="middle" font-size="${size}" font-family="${FONT.hero}" fill="${C.ink}">${E(number)}</text>`) +
+      caption(467));
   }
   const size = Math.max(64, Math.min(180, 180 - Math.max(0, number.length - 4) * 16));
   // A small whole number also gets that many dots, one for each, so the picture is the number.
   const dots = count ? Array.from({ length: count }, (_, k) => motion("pop", 3 + k * 0.4, `<circle cx="${480 + (count - 1) * 20 - k * 40}" cy="478" r="13" fill="url(#sk-blue)"/>`)).join("") : "";
   return frame(spec.title,
     motion("pop", 1, `<text x="480" y="${300 + size * 0.12}" text-anchor="middle" font-size="${size}" font-family="${FONT.hero}" fill="${C.ink}">${E(number)}</text>`) +
-    drawLine(404, 372, 556, 372, { color: C.blue, width: 6, i: 2 }) + caption(count ? 426 : 436) + dots);
+    drawLine(404, 372, 556, 372, { color: C.blue, width: 6, i: 2 }) + caption(count ? 417 : 424) + dots);
 }
 
 function compareSvg(spec) {
