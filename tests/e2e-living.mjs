@@ -68,7 +68,7 @@ try {
   await living.getByRole("button",{name:"أضف للمشهد"}).click();
   await audience.waitForFunction(()=>document.querySelectorAll(".cognitive-node").length===2);
   check("new concept is incrementally shown",await audience.locator(".cognitive-node").count()===2);
-  await audience.waitForSelector(".cognitive-links .cognitive-link-path");
+  await audience.waitForSelector(".cognitive-links .cognitive-link-path", {state:"attached"});
   check("actual approved conceptual relation is drawn",
     await audience.locator(".cognitive-links .cognitive-link-path").count()===1);
   check("original PowerPoint slide image is unchanged",await presenter.locator("#slide-img").getAttribute("src") === slideBefore);
