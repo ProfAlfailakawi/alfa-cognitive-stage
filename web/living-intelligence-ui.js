@@ -2,7 +2,7 @@
 // No private notes, sources or unapproved options are broadcast to audience windows.
 import { sourceRecord, createKnowledgeGraph, appendKnowledge, loadKnowledge, saveKnowledge, clearKnowledge,
   audienceGraph, eligibleShape, xrayProjection, findTimeBridge, validateScenario, calculateScenario, canEnterStage,
-  exportLivingArchive, importLivingArchive, evaluateScenarioFormula, suggestXrayFromSpeech } from "./living-intelligence.js";
+  exportLivingArchive, importLivingArchive, evaluateScenarioFormula, suggestXrayFromSpeech, cognitiveSpeechCue } from "./living-intelligence.js";
 const make = (tag, text = "", className = "") => {
   const el = document.createElement(tag);
   if (text) el.textContent = text;
@@ -57,6 +57,53 @@ export function validCognitivePacket(value, { bundle, index, step, videoPlaying 
     (!value.revealed || (Number.isInteger(value.chosen) && value.chosen >= 0 &&
       value.chosen < value.options.length && typeof value.result === "string"));
 }
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const svgNode = (tag, attrs = {}) => {
+  const element = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, String(value));
+  return element;
+};
+/** Single even-odd overlay: neither of two selected shapes can darken the other. */
+function focusMask(boxes) {
+  const svg = svgNode("svg", {viewBox:"0 0 1000 1000", preserveAspectRatio:"none",
+    class:"cognitive-focus-mask", "aria-hidden":"true"});
+  const coords = boxes.map((b) => ({x:b.x*1000,y:b.y*1000,w:b.w*1000,h:b.h*1000}));
+  const holes = coords.map((b) => "M"+b.x+" "+b.y+"h"+b.w+"v"+b.h+"h"+(-b.w)+"Z").join(" ");
+  svg.append(svgNode("path",{d:"M0 0h1000v1000h-1000Z "+holes,fill:"rgba(0,0,0,.42)","fill-rule":"evenodd"}));
+  for (const b of coords) svg.append(svgNode("rect",{x:b.x,y:b.y,width:b.w,height:b.h,
+    rx:3,ry:3,fill:"none",stroke:"#f1d9a8","stroke-width":"3",class:"cognitive-focus-outline"}));
+  return svg;
+}
+/** Connect only lecturer-approved edges, measured using the actual rendered positions. */
+function paintLivingLinks(layer, value) {
+  if (!layer.isConnected || layer.dataset.kind !== "living") return;
+  const body = layer.querySelector(".cognitive-stage-body");
+  if (!body) return;
+  let svg = body.querySelector(".cognitive-links");
+  if (!svg) {svg = svgNode("svg",{class:"cognitive-links","aria-hidden":"true"});body.prepend(svg);}
+  svg.replaceChildren();
+  const w=body.clientWidth,h=body.clientHeight;
+  if (!w || !h) return;
+  svg.setAttribute("viewBox","0 0 "+w+" "+h);
+  const parent=body.getBoundingClientRect(), coords=new Map();
+  body.querySelectorAll(".cognitive-node[data-node]").forEach((el)=>{
+    const r=el.getBoundingClientRect();
+    coords.set(el.dataset.node,{x:r.left-parent.left+r.width/2,y:r.top-parent.top+r.height/2,w:r.width,h:r.height});
+  });
+  for (const edge of value.edges || []) {
+    const a=coords.get(edge.from),b=coords.get(edge.to);
+    if (!a || !b) continue;
+    const dx=b.x-a.x,dy=b.y-a.y;
+    if (Math.hypot(dx,dy)<1) continue;
+    const horizontal=Math.abs(dx/a.w)>Math.abs(dy/a.h);
+    const sx=a.x+(horizontal?Math.sign(dx)*a.w/2:0), sy=a.y+(horizontal?0:Math.sign(dy)*a.h/2);
+    const ex=b.x-(horizontal?Math.sign(dx)*b.w/2:0), ey=b.y-(horizontal?0:Math.sign(dy)*b.h/2);
+    svg.append(svgNode("path",{d:"M"+sx+" "+sy+" Q"+((sx+ex)/2)+" "+((sy+ey)/2)+" "+ex+" "+ey,
+      class:"cognitive-link-path",fill:"none"}));
+  }
+}
+
 export function renderCognitiveProjection(stage, value) {
   if (!stage) return;
   const prior = stage.querySelector(".cognitive-projection");
@@ -66,12 +113,7 @@ export function renderCognitiveProjection(stage, value) {
     prior?.remove();
     const overlay = make("div", "", "info-layer cognitive-projection cognitive-xray");
     overlay.dataset.kind = "xray";
-    for (const box of value.boxes) {
-      const mark = make("div", "", "cognitive-focus-box");
-      Object.assign(mark.style, { left: box.x * 100 + "%", top: box.y * 100 + "%",
-        width: box.w * 100 + "%", height: box.h * 100 + "%" });
-      overlay.append(mark);
-    }
+    overlay.append(focusMask(value.boxes));
     stage.append(overlay);
     return;
   }
@@ -86,6 +128,7 @@ export function renderCognitiveProjection(stage, value) {
   }
   layer.querySelector("h2").textContent = value.title || "المسرح المعرفي";
   const body = layer.querySelector(".cognitive-stage-body"), foot = layer.querySelector(".cognitive-stage-foot");
+  body.classList.toggle("cognitive-branches", value.kind === "whatif");
   body.dataset.count = String(value.kind === "living" ? value.nodes.length :
     value.kind === "whatif" ? value.options.length : 1);
   if (value.kind === "living") {
@@ -101,10 +144,25 @@ export function renderCognitiveProjection(stage, value) {
       }
       el.querySelector("small").textContent = ({ topic:"الفكرة الرئيسية",concept:"مفهوم",example:"مثال",
         stat:"إحصائية",compare:"مقارنة",step:"خطوة",question:"سؤال",summary:"خلاصة" })[node.type] || "عنصر";
-      el.querySelector("p").textContent = node.text;
+      el.querySelector("p").textContent = node.text.length > 156 ? node.text.slice(0,153).trimEnd() + "…" : node.text;
+      el.querySelector("p").title = node.text;
       el.classList.toggle("cognitive-topic", node.type === "topic");
     }
-    foot.textContent = "مجموعة " + (value.page + 1) + " من " + value.pages + " · محتوى اعتمده المحاضر";
+    const relationNames = {"related":"مرتبط بـ","part-of":"جزء من","example-of":"مثال على",
+      "compared-with":"مقارنة مع","precedes":"يسبق","explains":"يشرح"};
+    const names = new Map(value.nodes.map((node) => [node.id, node.text]));
+    const links = (value.edges || []).filter((edge) => names.has(edge.from) && names.has(edge.to));
+    foot.textContent = "مجموعة " + (value.page + 1) + " من " + value.pages +
+      " · " + links.length + " روابط معتمدة" +
+      (value.nodes.some((n) => n.text.length > 156) ? " · بعض العبارات مقتطفات" : "");
+    layer.setAttribute("aria-label", "روابط المعرفة: " +
+      links.map((e) => names.get(e.from) + " " + (relationNames[e.relation] || "مرتبط بـ") + " " + names.get(e.to)).join("؛ "));
+    layer._alfaRenderLinks = () => paintLivingLinks(layer, value);
+    if (!layer._alfaResize && typeof ResizeObserver !== "undefined") {
+      layer._alfaResize = new ResizeObserver(() => layer._alfaRenderLinks?.());
+      layer._alfaResize.observe(body);
+    }
+    requestAnimationFrame(() => layer._alfaRenderLinks?.());
   } else {
     body.replaceChildren();
     if (value.kind === "bridge") {
@@ -113,11 +171,18 @@ export function renderCognitiveProjection(stage, value) {
     } else if (value.kind === "whatif") {
       body.append(make("p", value.question, "cognitive-question"));
       for (let i = 0; i < value.options.length; i++) {
-        const item = make("article", value.options[i], "cognitive-node");
+        const item = make("article", value.options[i], "cognitive-node cognitive-branch");
+        item.dataset.branch = String(i + 1);
+        item.setAttribute("aria-label", "المسار " + (i + 1) + ": " + value.options[i]);
         if (value.revealed && i === value.chosen) item.classList.add("cognitive-chosen");
         body.append(item);
       }
-      if (value.revealed) body.append(make("p", value.result, "cognitive-revealed-result"));
+      if (value.revealed) {
+        const outcome=make("section","","cognitive-outcome");
+        outcome.append(make("small","المسار المختار — " + value.options[value.chosen]),
+          make("p",value.result,"cognitive-revealed-result"));
+        body.append(outcome);
+      }
       foot.textContent = value.revealed ? "نتيجة كتبها واعتمدها المحاضر" : "النتائج لم تُكشف بعد";
     }
   }
@@ -142,10 +207,15 @@ export function mountLivingIntelligence(mount, context) {
     return true;
   };
   const activeSlide = () => context.getSlides()[context.getSlide() - 1] || {};
+  const sections = [];
   const section = (title) => {
     const details = make("details", "", "cognitive-tools-section");
     details.append(make("summary", title));
     root.append(details);
+    sections.push(details);
+    details.addEventListener("toggle", () => {
+      if (details.open) for (const other of sections) if (other !== details) other.open = false;
+    });
     return details;
   };
   const living = section("01 · بناء المعرفة");
