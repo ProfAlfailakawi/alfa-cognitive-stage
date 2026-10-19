@@ -57,6 +57,10 @@
           <textarea id="q-opts" rows="4" placeholder="خيار في كل سطر (2 إلى 6)"></textarea>
           <input type="text" id="q-objective" maxlength="150" placeholder="هدف التعلم (اختياري، يكتبه المحاضر)" />
           <label><input type="checkbox" id="q-change" /> السماح بتغيير الإجابة</label>
+          <label><input type="checkbox" id="q-before-after" /> سؤال قبل وبعد الشرح (جولتان منفصلتان)</label>
+          <label>رقم الإجابة الصحيحة المعتمدة (اختياري، 1 إلى 6)
+            <input id="q-correct" type="number" min="1" max="6" step="1" placeholder="اتركه فارغاً إن لم توجد إجابة صحيحة" />
+          </label>
           <div class="actions"><button class="primary" id="add-poll">إضافة السؤال</button></div>
           <p class="meta" id="poll-msg"></p>
         </div>
