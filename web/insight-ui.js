@@ -43,17 +43,26 @@ export function mountInsight(mount, { getToken, getBundle, getManifest, getSlide
   }
   async function pollPulse() {
     const code = getPollCode();
-    if (!code || !getToken()) { pulseLine.hidden = true; return; }
+    pulseLine.hidden = false;
+    pulseLine.dataset.level = "quiet";
+    if (!getToken()) {
+      pulseLine.textContent = "نبض الفهم غير مفعّل: أدخل رمز المحاضر لقراءة الإشارات.";
+      return;
+    }
+    if (!code) {
+      pulseLine.textContent = "نبض الفهم جاهز بعد فتح جلسة تصويت ومشاركة الطلبة.";
+      return;
+    }
     await pushContext();
     try {
       const { live } = await call(`/api/sessions/${code}/pulse`);
-      if (!live.devices) { pulseLine.hidden = true; return; }
+      if (!live.devices) { pulseLine.dataset.level = "quiet"; pulseLine.textContent = "نبض الفهم: بانتظار ضغط الطلبة «فاهم» أو «ضايع»."; return; }
       pulseLine.hidden = false;
       pulseLine.dataset.level = live.hidden ? "quiet" : live.level;
       pulseLine.textContent = live.hidden ? "نبض الفهم: إشارات قليلة بعد"
         : live.level === "watch" ? `نبض الفهم: ${live.lost} من ${live.devices} ضايعون هنا`
         : `نبض الفهم: هادئ (${live.got} فاهمون من ${live.devices})`;
-    } catch { pulseLine.hidden = true; }
+    } catch { pulseLine.dataset.level = "quiet"; pulseLine.textContent = "تعذّر تحديث نبض الفهم؛ تحقق من جلسة التصويت والاتصال بالخادم."; }
   }
   const timer = setInterval(pollPulse, 4000);
   addEventListener("pagehide", () => clearInterval(timer));
@@ -76,7 +85,15 @@ export function mountInsight(mount, { getToken, getBundle, getManifest, getSlide
       body.append(el("p", { id: "coach-text", textContent: suggestion.text }),
         el("ul", { id: "coach-evidence" }, ...suggestion.evidence.map((x) => el("li", { textContent: x }))),
         el("p", { className: "meta", textContent: "مبني على أعداد مجمّعة وبلا أسماء، وهو تلميح لا حكم على الشرح." }));
-    } else body.append(el("p", { className: "meta", id: "coach-none", textContent: "لا يوجد اقتراح مدعوم بالأعداد حتى الآن." }));
+    } else {
+      const recent = local.at(-1);
+      const omitted = recent?.unvisited?.length || 0;
+      const text = recent?.slidesVisited
+        ? (omitted ? `سجل البروفة: عُرضت ${recent.slidesVisited} شريحة، وبقيت ${omitted} دون عرض. راجع إن كان تجاوزها مقصوداً. لا توجد إشارات طلبة تكفي للحكم على الفهم بعد.`
+          : `سجل العرض: مررت على ${recent.slidesVisited} شريحة. لتحصل على اقتراح تعليمي مبني على أدلة، اجمع إشارات فهم وأسئلة الطلاب أثناء الجلسات.`)
+        : "لا تتوفر بيانات جلسات كافية بعد. اعرض الشرائح، وافتح جلسة تصويت للطلبة، ثم أعد فتح هذا القسم.";
+      body.append(el("p", { className: "meta", id: "coach-none", textContent: text }));
+    }
 
     // 2. Student review page
     body.append(el("h4", { textContent: "مراجعة للطلاب بعد المحاضرة" }));
@@ -85,7 +102,11 @@ export function mountInsight(mount, { getToken, getBundle, getManifest, getSlide
     const withdraw = el("button", { type: "button", id: "review-withdraw", textContent: "سحب المراجعة", disabled: !code });
     const preview = el("ul", { id: "review-preview" });
     const current = sessionLog.current?.();
-    const review = current ? buildReview(summarizeSession(current, { manifest }), manifest) : { title: "", items: [] };
+    const reviewSource = { ...(manifest || {}), slides: (getSlides() || []).map((slide, i) => ({
+      index: slide.index || i + 1, title: slide.title || manifest?.slides?.[i]?.title || "",
+      text: slide.text || ""
+    })) };
+    const review = current ? buildReview(summarizeSession(current, { manifest }), reviewSource) : { title: "", items: [] };
     // Every item is the lecturer's to include. One whose numbers disagree with its own slide starts unticked.
     const boxes = review.items.map((item) => {
       const slideText = (getSlides()[item.slide - 1]?.text || "") + " " + (getSlides()[item.slide - 1]?.notes || "");
@@ -96,7 +117,7 @@ export function mountInsight(mount, { getToken, getBundle, getManifest, getSlide
       return box;
     });
     body.append(el("p", { className: "meta", textContent: review.items.length
-      ? `${review.items.length} عنصراً من المشاهد التي عرضتَها فقط. اختر ما يُنشر؛ لا شيء من خارج المحاضرة.` : "لم تُعرض مشاهد في هذه الجلسة بعد." }), preview, publish, withdraw);
+      ? `${review.items.length} عنصراً من الشرائح والمشاهد التي عرضتَها فعلاً. راجع المحتوى واختر ما يُنشر.` : "لا توجد شرائح أو مشاهد مسجلة في هذه الجلسة بعد. انتقل إلى شريحة أولاً." }), preview, publish, withdraw);
     publish.disabled = !code || !review.items.length;
     publish.onclick = async () => {
       const chosen = { title: review.title, items: review.items.filter((_, i) => boxes[i].checked) };
@@ -116,7 +137,19 @@ export function mountInsight(mount, { getToken, getBundle, getManifest, getSlide
     if (mine !== renderSeq) return;
     const expected = expectedQuestions(bank, getSlides());
     const slides = Object.keys(expected).map(Number).sort((a, b) => a - b);
-    if (!slides.length) body.append(el("p", { className: "meta", id: "bank-none", textContent: "لا أسئلة محفوظة بعد؛ اضغط «احتفظ به للبروفة» على أسئلة الطلاب الحقيقية." }));
+    if (!slides.length) {
+      body.append(el("p", { className: "meta", id: "bank-none",
+        textContent: "لا أسئلة طلاب محفوظة بعد. هذه بروفة أولية من عناوين الشرائح وليست أسئلة طلاب حقيقية. لحفظ أسئلة واقعية استخدم «احتفظ به للبروفة»." }));
+      const samples = (getSlides() || []).filter((slide) => String(slide.text || slide.title || "").trim()).slice(0, 5);
+      if (samples.length) {
+        const practice = el("ol", { id: "practice-list", className: "rehearsal-list" });
+        for (const [i, slide] of samples.entries()) {
+          const heading = String(slide.title || slide.text.split(/\r?\n/)[0] || "").trim().slice(0, 75);
+          practice.append(el("li", { textContent: `شريحة ${slide.index || i + 1}: كيف ستشرح «${heading}» بوضوح؟` }));
+        }
+        body.append(practice);
+      }
+    }
     else {
       const list = el("ol", { id: "bank-list", className: "rehearsal-list" });
       for (const slide of slides) for (const q of expected[slide]) {
