@@ -125,23 +125,43 @@ export function createVoteStore({ file = null } = {}) {
     return code;
   }
 
-  function createPoll(code, { question, options, allowChange = false, kind = "choice", objective = "" }) {
+  function createPoll(code, { question, options, allowChange = false, kind = "choice", objective = "", beforeAfter = false, correctIndex = null }) {
     const q = clean(question, MAX_TEXT);
     if (!q) throw new VoteError("نص السؤال مطلوب");
     const words = kind === "words";
     if (kind !== "choice" && !words) throw new VoteError("نوع السؤال غير معروف");
     const opts = words ? [] : (Array.isArray(options) ? options : []).map((o) => clean(o, MAX_TEXT)).filter(Boolean);
     if (!words && (opts.length < 2 || opts.length > MAX_OPTIONS)) throw new VoteError(`عدد الخيارات بين 2 و${MAX_OPTIONS}`);
+    if (correctIndex !== null && (!Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex >= opts.length)) throw new VoteError("رقم الإجابة الصحيحة غير صالح");
+    if (words && beforeAfter) throw new VoteError("المقارنة القبلية/البعدية لا تدعم سحابة الكلمات");
     const s = session(code);
     const p = {
       id: s.nextId++, question: q, options: opts, allowChange: Boolean(allowChange),
       status: "draft", reveal: false, votes: {}, kind: words ? "words" : "choice",
       objective: clean(objective, 150), // an explicit learning objective typed by the lecturer, never inferred
+      ...(beforeAfter ? { pulsePair: s.nextId - 1, pulsePhase: "before", correctIndex } : {}),
       ...(words ? { words: {}, hidden: [] } : {}),
     };
     s.polls.push(p);
     persist();
     return p;
+  }
+
+  function repeatBeforeAfterPoll(code, id) {
+    const prior = poll(code, id);
+    const s = session(code);
+    if (prior.kind !== "choice" || prior.pulsePhase !== "before" || prior.status !== "closed")
+      throw new VoteError("أغلق الجولة القبلية أولاً", 409);
+    if (s.polls.some((p) => p.status === "open")) throw new VoteError("أغلق السؤال النشط أولاً", 409);
+    if (s.polls.some((p) => p.pulsePair === prior.id && p.pulsePhase === "after"))
+      throw new VoteError("الجولة البعدية موجودة بالفعل", 409);
+    const fresh = createPoll(code, { question: prior.question, options: [...prior.options],
+      allowChange: prior.allowChange, objective: prior.objective });
+    fresh.pulsePair = prior.id;
+    fresh.pulsePhase = "after";
+    fresh.correctIndex = prior.correctIndex ?? null;
+    setStatus(code, fresh.id, "open");
+    return fresh;
   }
 
   function repeatPoll(code, id) {
@@ -232,6 +252,7 @@ export function createVoteStore({ file = null } = {}) {
       polls: s.polls.map((p) => ({
         id: p.id, question: p.question, options: p.options, status: p.status, kind: p.kind || "choice",
         objective: p.objective || "",
+        pulsePair: p.pulsePair ?? null, pulsePhase: p.pulsePhase || null, correctIndex: p.correctIndex ?? null,
         reveal: p.reveal, allowChange: p.allowChange, total: total(p), counts: counts(p),
         ...(p.kind === "words" ? { words: allWords(p), submissions: wordTotal(p) } : {}),
       })),
@@ -444,7 +465,7 @@ export function createVoteStore({ file = null } = {}) {
     return { sessions: sessions.size, polls, pendingQuestions: questions, storedDeviceTokens: tokens };
   }
 
-  return { createSession, createPoll, repeatPoll, setStatus, setReveal, vote,
+  return { createSession, createPoll, repeatPoll, repeatBeforeAfterPoll, setStatus, setReveal, vote,
     studentState, presenterState, submitQuestion, listQuestions, dismissQuestion, hasSession,
     maintain, deleteSession, deleteAll, summary, submitWords, hideWord, setLabel, listSessions,
     setContext, sendPulse, pulseLive, pulseReport, lectureHistory, publishReview, unpublishReview, studentReview, keepQuestion };
