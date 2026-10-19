@@ -324,7 +324,12 @@ def render_slides(pptx: Path, out_dir: Path, width: int) -> tuple[int, str]:
     shutil.copy(pptx, work / "deck.pptx")
     pdf = work / "deck.pdf"
     rendered_with_powerpoint = False
-    powerpoint_available = sys.platform == "darwin" and Path("/Applications/Microsoft PowerPoint.app").exists()
+    # Native export is the fidelity path for a real Mac session. Tests and
+    # unattended processes can opt out so a blocked Office automation dialog
+    # never stalls the importer.
+    powerpoint_available = (sys.platform == "darwin" and
+                            os.environ.get("ALFA_NATIVE_POWERPOINT", "1") != "0" and
+                            Path("/Applications/Microsoft PowerPoint.app").exists())
     if powerpoint_available:
         # Use Microsoft's renderer when available to preserve Office fonts,
         # spacing, shapes and line wrapping. Work on the temporary copy above;
@@ -340,7 +345,7 @@ def render_slides(pptx: Path, out_dir: Path, width: int) -> tuple[int, str]:
 end run'''
         try:
             subprocess.run(["osascript", "-e", script, str(work / "deck.pptx"), str(pdf)],
-                           check=True, capture_output=True, timeout=35 * 60)
+                           check=True, capture_output=True, timeout=90)
             rendered_with_powerpoint = pdf.is_file() and pdf.stat().st_size > 0
         except (subprocess.SubprocessError, OSError):
             # Keep import available on Macs where PowerPoint is installed but
@@ -416,7 +421,9 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
 
     video_cache = {}
     problems = []
-    if render_engine != "PowerPoint" and sys.platform == "darwin" and Path("/Applications/Microsoft PowerPoint.app").exists():
+    if (render_engine != "PowerPoint" and sys.platform == "darwin" and
+            os.environ.get("ALFA_NATIVE_POWERPOINT", "1") != "0" and
+            Path("/Applications/Microsoft PowerPoint.app").exists()):
         problems.append({"slide": 1, "problem": "تعذّر التصدير عبر PowerPoint؛ استُخدم LibreOffice كبديل"})
     slides = []
     for index, slide in enumerate(deck.slides, start=1):
