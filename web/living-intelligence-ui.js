@@ -1,8 +1,10 @@
 // Presenter-only contextual tools for ALFA Living Intelligence.
 // No private notes, sources or unapproved options are broadcast to audience windows.
 import { sourceRecord, createKnowledgeGraph, appendKnowledge, loadKnowledge, saveKnowledge, clearKnowledge,
-  audienceGraph, eligibleShape, xrayProjection, findTimeBridge, validateScenario, calculateScenario, canEnterStage,
-  exportLivingArchive, importLivingArchive, evaluateScenarioFormula, suggestXrayFromSpeech, cognitiveSpeechCue } from "./living-intelligence.js";
+  audienceGraph, graphPage as knowledgeGraphPage, eligibleShape, xrayProjection, findTimeBridge, validateScenario, calculateScenario, canEnterStage,
+  exportLivingArchive, importLivingArchive, evaluateScenarioFormula, suggestXrayFromSpeech } from "./living-intelligence.js";
+import { createContextualCognitiveDirector } from "./cognitive-context-director.js";
+import { roomReadabilityStatus } from "./cognitive-readability.js";
 const make = (tag, text = "", className = "") => {
   const el = document.createElement(tag);
   if (text) el.textContent = text;
@@ -112,6 +114,15 @@ function paintLivingLinks(layer, value) {
   }
 }
 
+function verifyStageLegibility(layer) {
+  if (!layer.isConnected) return;
+  const fit = roomReadabilityStatus(layer);
+  layer.dataset.roomFit = fit.ok ? "ok" : "review";
+  layer.classList.toggle("room-fit-tight", !fit.ok);
+  if (!fit.ok) requestAnimationFrame(() => {
+    if (layer.isConnected) layer.dataset.roomFit = roomReadabilityStatus(layer).ok ? "ok" : "review";
+  });
+}
 export function renderCognitiveProjection(stage, value) {
   if (!stage) return;
   const prior = stage.querySelector(".cognitive-projection");
@@ -132,13 +143,19 @@ export function renderCognitiveProjection(stage, value) {
     layer?.remove();
     layer = make("section", "", "info-layer cognitive-projection cognitive-card-stage");
     layer.dataset.kind = value.kind;
-    layer.append(make("h2", "", "cognitive-stage-heading"), make("div", "", "cognitive-stage-body"),
+    layer.append(make("p", "ALFA", "cognitive-eyebrow"), make("h2", "", "cognitive-stage-heading"), make("div", "", "cognitive-stage-body"),
       make("p", "", "cognitive-stage-foot"));
     stage.append(layer);
   }
   layer.querySelector("h2").textContent = value.title || "المسرح المعرفي";
   const body = layer.querySelector(".cognitive-stage-body"), foot = layer.querySelector(".cognitive-stage-foot");
   body.classList.toggle("cognitive-branches", value.kind === "whatif");
+  body.classList.toggle("cognitive-living-map", value.kind === "living");
+  body.dataset.revealed = value.kind === "whatif" && value.revealed ? "true" : "false";
+  layer.querySelector(".cognitive-eyebrow").textContent = ({
+    living:"ALFA  /  شبكة المعرفة", whatif:"ALFA  /  مختبر القرارات",
+    bridge:"ALFA  /  جسر الذاكرة",pulse:"ALFA  /  نبض الفهم"
+  })[value.kind] || "ALFA";
   body.classList.toggle("cognitive-pulse-body", value.kind === "pulse");
   body.dataset.count = String(value.kind === "living" ? value.nodes.length :
     value.kind === "whatif" ? value.options.length : 1);
@@ -153,19 +170,21 @@ export function renderCognitiveProjection(stage, value) {
         el.append(make("small"), make("p"));
         body.append(el);
       }
-      el.querySelector("small").textContent = ({ topic:"الفكرة الرئيسية",concept:"مفهوم",example:"مثال",
-        stat:"إحصائية",compare:"مقارنة",step:"خطوة",question:"سؤال",summary:"خلاصة" })[node.type] || "عنصر";
-      el.querySelector("p").textContent = node.text.length > 156 ? node.text.slice(0,153).trimEnd() + "…" : node.text;
+      const role = ({topic:"الفكرة الرئيسية",concept:"مفهوم",example:"مثال",
+        stat:"إحصائية",compare:"مقارنة",step:"خطوة",question:"سؤال",summary:"خلاصة"})[node.type] || "عنصر";
+      el.querySelector("small").textContent = role +
+        (node.parts > 1 ? " · جزء " + node.part + " من " + node.parts : "");
+      el.querySelector("p").textContent = node.text;
       el.querySelector("p").title = node.text;
+      el.dataset.kind = node.type;
       el.classList.toggle("cognitive-topic", node.type === "topic");
     }
     const relationNames = {"related":"مرتبط بـ","part-of":"جزء من","example-of":"مثال على",
       "compared-with":"مقارنة مع","precedes":"يسبق","explains":"يشرح"};
     const names = new Map(value.nodes.map((node) => [node.id, node.text]));
     const links = (value.edges || []).filter((edge) => names.has(edge.from) && names.has(edge.to));
-    foot.textContent = "مجموعة " + (value.page + 1) + " من " + value.pages +
-      " · " + links.length + " روابط معتمدة" +
-      (value.nodes.some((n) => n.text.length > 156) ? " · بعض العبارات مقتطفات" : "");
+    foot.textContent = "اللقطة " + (value.page + 1) + " من " + value.pages +
+      " · " + links.length + " علاقات معتمدة · النصوص محفوظة من المصدر";
     layer.setAttribute("aria-label", "روابط المعرفة: " +
       links.map((e) => names.get(e.from) + " " + (relationNames[e.relation] || "مرتبط بـ") + " " + names.get(e.to)).join("؛ "));
     layer._alfaRenderLinks = () => paintLivingLinks(layer, value);
@@ -173,7 +192,7 @@ export function renderCognitiveProjection(stage, value) {
       layer._alfaResize = new ResizeObserver(() => layer._alfaRenderLinks?.());
       layer._alfaResize.observe(body);
     }
-    requestAnimationFrame(() => layer._alfaRenderLinks?.());
+    requestAnimationFrame(() => {layer._alfaRenderLinks?.();verifyStageLegibility(layer);});
   } else {
     body.replaceChildren();
     if (value.kind === "bridge") {
@@ -215,6 +234,7 @@ export function renderCognitiveProjection(stage, value) {
       foot.textContent = value.revealed ? "نتيجة كتبها واعتمدها المحاضر" : "النتائج لم تُكشف بعد";
     }
   }
+  if (value.kind !== "living") requestAnimationFrame(() => verifyStageLegibility(layer));
 }
 
 export function mountLivingIntelligence(mount, context) {
