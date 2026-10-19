@@ -254,7 +254,7 @@ export function mountLivingIntelligence(mount, context) {
     const current = snapshot.lectures.find((l) => l.bundle === bundle);
     const lectures = snapshot.lectures.filter((l) => l.bundle !== bundle &&
       (acrossBox.checked || (current?.courseId && l.courseId === current.courseId))).slice(0, 40);
-    const version = JSON.stringify(lectures.map((l) => [l.bundle, l.courseId, l.slideCount, l.title]));
+    const version = JSON.stringify(lectures.map((l) => [l.bundle, l.courseId, l.slideCount, l.title, l.builtAt]));
     if (referenceVersion === version) return [...referenceCache.values()].flat();
     referenceVersion = version; referenceCache = new Map();
     // Only manifests already stored on the lecturer's machine, never a remote service.
@@ -263,11 +263,31 @@ export function mountLivingIntelligence(mount, context) {
       if (!response.ok) continue;
       const manifest = await response.json();
       referenceCache.set(lecture.bundle, (manifest.slides || []).slice(0, 300).flatMap((s, i) => {
-        const passage = String(s.text || "").trim();
-        return passage ? [{ bundle: lecture.bundle, lecture: lecture.title, courseId: lecture.courseId,
-          slide: i + 1, text: passage.slice(0, 2400) }] : [];
+        const texts = [s.text, s.notes].map((v) => String(v || "").trim()).filter(Boolean);
+        return texts.map((passage) => ({ bundle: lecture.bundle, lecture: lecture.title,
+          courseId: lecture.courseId, slide: i + 1, text: passage.slice(0, 2400) }));
       }));
     }
+    // The existing, lecturer-authenticated memory store contains real previously approved scenes.
+    // Its records are not sent to students; only a chosen short literal excerpt can be projected.
+    try {
+      const reply = await fetch("/api/memory/library", { headers: { "X-Admin-Token": token } });
+      if (reply.ok) {
+        const data = await reply.json();
+        const authorized = new Map(lectures.map((l) => [l.bundle, l]));
+        for (const item of (Array.isArray(data.scenes) ? data.scenes : []).slice(0, 150)) {
+          const lecture = authorized.get(item.bundle);
+          if (!lecture || !Number.isInteger(item.slide)) continue;
+          const passage = String(item.utterance || item.spec?.title || "").trim();
+          if (!passage) continue;
+          const entries = referenceCache.get(item.bundle) || [];
+          if (entries.length >= 650) continue;
+          entries.push({ bundle: item.bundle, lecture: lecture.title, courseId: lecture.courseId,
+            slide: item.slide, text: passage.slice(0, 2400) });
+          referenceCache.set(item.bundle, entries);
+        }
+      }
+    } catch { /* Previously approved scenes are optional; slide index still works offline. */ }
     return [...referenceCache.values()].flat();
   }
   btn(bridge, "ابحث محلياً", async () => {
