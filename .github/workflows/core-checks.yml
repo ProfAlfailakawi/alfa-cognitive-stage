@@ -24,6 +24,9 @@ jobs:
           node --check server/security.mjs
           node --check server/director-quota.mjs
           node --check web/app.js
+          node --check web/cognitive-readability.js
+          node --check web/cognitive-context-director.js
+          node --check tests/cognitive-quality.mjs
           node --check web/living-intelligence.js
           node --check web/living-intelligence-ui.js
           node --check tests/living-intelligence.mjs
