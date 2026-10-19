@@ -981,7 +981,9 @@ function handleVoicePoll(command) {
 }
 function handleVoiceNav(command) {
   if (videoEls.some((el) => !el.paused)) { setDirectorStatus("الفيديو يعمل؛ لم أنفّذ أمر التنقل الصوتي."); return; }
-  const key = command.kind + ":" + (command.index ?? "");
+  // A build-step request and an explicit next-slide request are distinct intents,
+  // even if the recognizer delivers them less than 700 ms apart.
+  const key = command.kind + ":" + (command.index ?? "") + ":" + (command.skipBuilds ? "slide" : "build");
   if (voiceNav.last && voiceNav.last.key === key && Date.now() - voiceNav.last.at < 700) return;
   voiceNav.last = { key, at: Date.now() };
   const before = { index: state.index, step: state.step };
