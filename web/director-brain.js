@@ -5,6 +5,7 @@
 // context (rolling window, topic tracking, slide grounding, pacing). Measured by tests/director-corpus.mjs.
 import { interpretSpeech, normalizeArabic, percentMention } from "./director-core.js";
 import { lecturerComparison, lecturerRealityContrast, lecturerTakeaway, lecturerTeachingMove } from "./lecturer-profile.js";
+import { matchDomainTopic } from "./domain-profile.js";
 
 const WINDOW_MS = 60000;
 const MAX_WINDOW = 8;
@@ -245,7 +246,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
 
   function status(decision, why) { decision.why.push(why); return decision; }
   function blank(extra = {}) {
-    return { action: "none", kind: null, spec: null, reason: "", confidence: 0, why: [], topic: { shifted: false, returnedTo: null },
+    return { action: "none", kind: null, spec: null, reason: "", confidence: 0, why: [], domain: null, topic: { shifted: false, returnedTo: null },
       opportunity: null, ...extra };
   }
   function trackTopic(text, d) {
@@ -291,6 +292,12 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       ? window.filter((w) => t - w.at < 25000 && !w.used).slice(-3).map((w) => numeralizePercents(w.text)).join(" ")
       : "";
     const normalized = normalizeArabic(spoken);
+
+    // Keep the specialty context explicit for the UI and logs. A single alias
+    // does not force a scene; it only grounds a scene that the speech rules
+    // already accepted.
+    const domain = matchDomainTopic([raw, ctx.slide?.text || "", ctx.slide?.notes || ""].join(" "));
+    if (domain) d.domain = { id: domain.id, label: domain.label, aliases: domain.matchedAliases };
 
     trackTopic(spoken, d);
     if (d.topic.shifted) { d.why.push("تغيّر الموضوع؛ أُغلقت القصة المفتوحة"); }
