@@ -82,10 +82,10 @@ export function renderStructuredScene(type, title, lines) {
       // Three non-overlapping horizontal zones (RTL): label, bar, percentage.
       // Mixed Arabic/English labels may need three short rows; never paint
       // them beyond the 960px viewBox edge or on top of the bar.
-      const y = 158 + i * (rowH + 12), w = (values[i] / top) * 370;
+      const y = 158 + i * (rowH + 12), w = (values[i] / top) * 430;
       return motion("rise", i, labelMid(name, 790, y + rowH / 2, { size: small ? 15 : 17, limit: small ? 12 : 14, rows: 3, lh: small ? 17 : 20, weight: 800, family: FONT.display }) +
-        `<rect x="288" y="${y}" width="370" height="${rowH}" rx="14" fill="${C.track}"/>`) +
-        `<g class="m-grow-r" style="--i:${i + 1}"><rect class="bar-fill" x="${658 - w}" y="${y}" width="${w}" height="${rowH}" rx="14" fill="url(#${i % 2 ? "sk-gold" : "sk-blue"})"/></g>` +
+        `<rect x="250" y="${y}" width="430" height="${rowH}" rx="14" fill="${C.track}"/>`) +
+        `<g class="m-grow-r" style="--i:${i + 1}"><rect class="bar-fill" x="${680 - w}" y="${y}" width="${w}" height="${rowH}" rx="14" fill="url(#${i % 2 ? "sk-gold" : "sk-blue"})"/></g>` +
         motion("pop", i + 2, labelMid(value, 180, y + rowH / 2, { size: small ? 27 : 31, limit: 8, rows: 1, family: FONT.hero }));
     }).join("");
     return frame(title, nodes);
