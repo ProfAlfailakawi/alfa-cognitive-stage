@@ -1,6 +1,7 @@
 // ALFA Living Intelligence: bounded, deterministic models. No external AI calls.
 // Suggestions are never published without an explicit lecturer action.
 import { embed, compatible } from "./semantic-index.js";
+import { roomKnowledgePages } from "./cognitive-readability.js";
 
 export const KNOWLEDGE_VERSION = 1;
 export const NODE_TYPES = Object.freeze(["topic", "concept", "example", "stat", "compare", "step", "question", "summary"]);
@@ -46,12 +47,18 @@ export function appendKnowledge(graph, { type = "concept", text, source, parentI
   return { graph: { ...graph, nodes: [...graph.nodes, node], edges, revision: graph.revision + 1 }, node, duplicate: false };
 }
 export function graphPage(graph, page = 0, pageSize = 6) {
-  const size = Math.max(1, Math.min(8, pageSize));
-  const pages = Math.max(1, Math.ceil((graph?.nodes?.length || 0) / size));
-  const index = Math.max(0, Math.min(pages - 1, Math.trunc(page) || 0));
-  const nodes = (graph?.nodes || []).slice(index * size, (index + 1) * size);
-  return { nodes, edges: (graph?.edges || []).filter((e) =>
-    nodes.some((n) => n.id === e.from) && nodes.some((n) => n.id === e.to)), page: index, pages };
+  if (pageSize !== 6) { // Explicit fixed pages remain available to legacy consumers.
+    const size = Math.max(1, Math.min(8, pageSize));
+    const pages = Math.max(1, Math.ceil((graph?.nodes?.length || 0) / size));
+    const index = Math.max(0, Math.min(pages - 1, Math.trunc(page) || 0));
+    const nodes = (graph?.nodes || []).slice(index * size, (index + 1) * size);
+    return {nodes,edges:(graph?.edges || []).filter((e)=>
+      nodes.some((n)=>n.id===e.from) && nodes.some((n)=>n.id===e.to)),page:index,pages};
+  }
+  const groups = roomKnowledgePages(graph);
+  const raw = Number.isFinite(page) ? Math.trunc(page) : groups.length - 1;
+  const index = Math.max(0, Math.min(groups.length - 1, raw || 0));
+  return {...groups[index],page:index,pages:groups.length};
 }
 export function saveKnowledge(graph, storage = globalThis.localStorage) {
   if (!storage || !graph || graph.version !== KNOWLEDGE_VERSION) return false;
@@ -79,9 +86,9 @@ export function clearKnowledge(bundle, storage = globalThis.localStorage) {
 // The audience never receives raw provenance, transcript, notes, rejected suggestions or graph history.
 export function audienceGraph(graph, page = 0) {
   const slice = graphPage(graph, page);
-  return { kind: "living", title: slice.nodes.find((n) => n.type === "topic")?.text ||
-      graph?.nodes?.find((n) => n.type === "topic")?.text || "المسرح المعرفي",
-    nodes: slice.nodes.map((n) => ({ id: n.id, type: n.type, text: n.text })),
+  return { kind: "living", title: "خريطة المعرفة",
+    nodes: slice.nodes.map((n) => ({ id: n.id, type: n.type, text: n.text,
+      part: n.part || 1, parts: n.parts || 1, sourceId: n.sourceId || n.id })),
     edges: slice.edges.map((e) => ({ from: e.from, to: e.to, relation: e.relation })),
     page: slice.page, pages: slice.pages };
 }
