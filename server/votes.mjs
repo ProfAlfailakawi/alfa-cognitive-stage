@@ -136,7 +136,7 @@ export function createVoteStore({ file = null } = {}) {
     if (words && beforeAfter) throw new VoteError("المقارنة القبلية/البعدية لا تدعم سحابة الكلمات");
     const s = session(code);
     const p = {
-      id: s.nextId++, question: q, options: opts, allowChange: Boolean(allowChange),
+      id: s.nextId++, question: q, options: opts, allowChange: Boolean(allowChange), createdAt: Date.now(),
       status: "draft", reveal: false, votes: {}, kind: words ? "words" : "choice",
       objective: clean(objective, 150), // an explicit learning objective typed by the lecturer, never inferred
       ...(beforeAfter ? { pulsePair: s.nextId - 1, pulsePhase: "before", correctIndex } : {}),
@@ -191,7 +191,10 @@ export function createVoteStore({ file = null } = {}) {
       for (const other of session(code).polls) if (other.status === "open" && other !== p) seal(other);
     }
     if (status === "closed") seal(p);
-    else p.status = status;
+    else {
+      p.status = status;
+      if (status === "open") p.openedAt = Date.now();
+    }
     persist();
     return p;
   }
@@ -263,6 +266,7 @@ export function createVoteStore({ file = null } = {}) {
         id: p.id, question: p.question, options: p.options, status: p.status, kind: p.kind || "choice",
         objective: p.objective || "",
         pulsePair: p.pulsePair ?? null, pulsePhase: p.pulsePhase || null, correctIndex: p.correctIndex ?? null,
+        createdAt: p.createdAt || null, openedAt: p.openedAt || null, closedAt: p.closedAt || null,
         reveal: p.reveal, allowChange: p.allowChange, total: total(p), counts: counts(p),
         ...(p.kind === "words" ? { words: allWords(p), submissions: wordTotal(p) } : {}),
       })),
