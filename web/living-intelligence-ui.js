@@ -4,7 +4,7 @@ import { sourceRecord, createKnowledgeGraph, appendKnowledge, loadKnowledge, sav
   audienceGraph, graphPage as knowledgeGraphPage, eligibleShape, xrayProjection, findTimeBridge, validateScenario, calculateScenario, canEnterStage,
   exportLivingArchive, importLivingArchive, evaluateScenarioFormula, suggestXrayFromSpeech } from "./living-intelligence.js";
 import { createContextualCognitiveDirector } from "./cognitive-context-director.js";
-import { roomReadabilityStatus } from "./cognitive-readability.js";
+import { roomReadabilityStatus, splitVerbatim } from "./cognitive-readability.js";
 const make = (tag, text = "", className = "") => {
   const el = document.createElement(tag);
   if (text) el.textContent = text;
@@ -65,7 +65,9 @@ export function validCognitivePacket(value, { bundle, index, step, videoPlaying 
     Array.isArray(value.options) && value.options.length >= 2 && value.options.length <= 3 &&
     value.options.every((v) => typeof v === "string") &&
     (!value.revealed || (Number.isInteger(value.chosen) && value.chosen >= 0 &&
-      value.chosen < value.options.length && typeof value.result === "string"));
+      value.chosen < value.options.length && typeof value.result === "string" && value.result.length <= 1200 &&
+      (value.resultPart === undefined || (Number.isInteger(value.resultPart) &&
+        value.resultPart >= 0 && value.resultPart < 12))));
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -226,9 +228,12 @@ export function renderCognitiveProjection(stage, value) {
         body.append(item);
       }
       if (value.revealed) {
+        const parts=splitVerbatim(value.result,145);
+        const index=Math.min(parts.length-1,value.resultPart||0);
         const outcome=make("section","","cognitive-outcome");
-        outcome.append(make("small","المسار المختار — " + value.options[value.chosen]),
-          make("p",value.result,"cognitive-revealed-result"));
+        outcome.append(make("small","المسار المختار — " + value.options[value.chosen] +
+          (parts.length>1?" · جزء "+(index+1)+" من "+parts.length:"")),
+          make("p",parts[index],"cognitive-revealed-result"));
         body.append(outcome);
       }
       foot.textContent = value.revealed ? "نتيجة كتبها واعتمدها المحاضر" : "النتائج لم تُكشف بعد";
@@ -610,7 +615,23 @@ export function mountLivingIntelligence(mount, context) {
     if (safeProject({ kind:"whatif", title:currentScenario.title, question:currentScenario.question,
       options:currentScenario.options.map((o) => o.text), revealed:true, chosen:i,
       result:option.result + (option.explanation ? " — " + option.explanation : "") })) {
-      lastRevealedBranch = { scenario: currentScenario, option };
+      lastRevealedBranch = { scenario: currentScenario, option, resultPage:0 };
+    }
+  });
+  btn(scenarioActions, "تابع عرض النتيجة", () => {
+    if(!lastRevealedBranch){say("اكشف النتيجة أولًا.");return;}
+    const {scenario,option}=lastRevealedBranch;
+    const whole=option.result+(option.explanation?" — "+option.explanation:"");
+    const parts=splitVerbatim(whole,145);
+    if(lastRevealedBranch.resultPage>=parts.length-1){
+      say("هذه آخر لقطة من النتيجة المعتمدة.");return;
+    }
+    const next=lastRevealedBranch.resultPage+1;
+    if(safeProject({kind:"whatif",title:scenario.title,question:scenario.question,
+      options:scenario.options.map((o)=>o.text),revealed:true,
+      chosen:scenario.options.indexOf(option),result:whole,resultPart:next})){
+      lastRevealedBranch.resultPage=next;
+      say("لقطة النتيجة "+(next+1)+" من "+parts.length+" — كامل النص محفوظ.");
     }
   });
   btn(scenarioActions, "أضف نتيجة الفرع للمسرح المعرفي", () => {
