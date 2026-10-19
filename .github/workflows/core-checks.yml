@@ -141,7 +141,16 @@ jobs:
       - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
         run: npm run test:e2e-speech
       - name: Living Intelligence interactive presenter and audience integration
+        env:
+          LIVING_SHOTS: /tmp/alfa-living-shots
         run: npm run test:e2e-living
+      - name: Upload Living Intelligence browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alfa-living-visual-checks
+          path: /tmp/alfa-living-shots/
+          if-no-files-found: ignore
       - name: Long-session stability, leaks, idle CPU and CSP violations
         run: npm run test:e2e-stress
       - name: Five-phone browser voting and persistence test
