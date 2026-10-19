@@ -187,6 +187,25 @@ try {
 
   // Open the knowledge section again: one tool section intentionally stays open at a time.
   await open(0);
+  // Deterministic visual-only projection of an already aggregated paired pulse;
+  // the linked server vote lifecycle has separate unit and privacy tests.
+  await audience.evaluate(async (bundleId) => {
+    const {renderCognitiveProjection} = await import("/living-intelligence-ui.js");
+    const stage=document.getElementById("stage");
+    renderCognitiveProjection(stage,{kind:"pulse",title:"قبل وبعد الشرح",bundle:bundleId,
+      slide:1,step:0,question:"ما الفرق بين أسلوبين؟",totals:[10,12],values:[
+        {option:"التعلم التعاوني",firstPercent:40,lastPercent:75,deltaPoints:35},
+        {option:"التعلم الفردي",firstPercent:60,lastPercent:25,deltaPoints:-35}
+      ]});
+  },bundle);
+  check("real paired-pulse visual has distinct before and after bars",
+    await audience.locator(".cognitive-pulse-item").count()===2 &&
+    await audience.locator(".cognitive-pulse-fill.before").count()===2 &&
+    await audience.locator(".cognitive-pulse-fill.after").count()===2);
+  if(shots) await audience.locator("#stage").screenshot({path:join(shots,"pulse-comparison.png")});
+  await presenter.locator("#home").click();
+  await audience.evaluate(()=>document.querySelector(".cognitive-projection")?.remove());
+
   // Browser download keeps approved lecturer data private; importing it requires
   // explicit confirmation, validates bundle ID, and never projects automatically.
   check("private backup import picker is hidden until explicitly invoked",
