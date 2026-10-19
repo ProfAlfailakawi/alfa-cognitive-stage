@@ -23,11 +23,11 @@ export function numberFacts(text) {
     // A numeric fact belongs to its own clause; do not borrow words from a neighbouring percentage.
     const clauseStart = Math.max(0, i - CONTEXT_REACH);
     let start = i;
-    while (start > clauseStart && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[start - 1].norm) && !/^\\d/.test(tokens[start - 1].raw)) start--;
+    while (start > clauseStart && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[start - 1].norm) && !/^\d/.test(tokens[start - 1].raw)) start--;
     let end = i + 1;
-    while (end < tokens.length && end - i <= CONTEXT_REACH && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[end].norm) && !/^\\d/.test(tokens[end].raw)) end++;
+    while (end < tokens.length && end - i <= CONTEXT_REACH && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[end].norm) && !/^\d/.test(tokens[end].raw)) end++;
     const near = [...tokens.slice(start, i), ...tokens.slice(i + 1, end)]
-      .filter((t) => !/^\\d/.test(t.raw) && !PERCENT_AFTER.test(t.norm)).map((t) => t.raw).join(" ");
+      .filter((t) => !/^\d/.test(t.raw) && !PERCENT_AFTER.test(t.norm)).map((t) => t.raw).join(" ");
     const subject = new Set(contentWords(near).map((w) => w.stem));
     facts.push({ value, unit: percent ? "%" : "", subject });
   });
