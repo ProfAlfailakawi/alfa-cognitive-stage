@@ -21,6 +21,9 @@ for index in range(1, 8):
     draw = ImageDraw.Draw(img)
     draw.rectangle((60, 60, 900, 470), outline=(62, 92, 120), width=8)
     draw.text((120, 220), "ALFA TEST SLIDE %d" % index, fill=(22, 29, 35))
+    if index == 1:
+        draw.rectangle((560, 175, 870, 290), outline=(40, 125, 115), width=3)
+        draw.text((600, 220), "SECOND ELEMENT", fill=(22, 29, 35))
     img.save(SLIDES / ("%03d.png" % index))
 STEPS = DIR / "steps"
 STEPS.mkdir(parents=True, exist_ok=True)
@@ -52,6 +55,14 @@ for index in range(1, 8):
         "index": index, "image": "slides/%03d.png" % index,
         "text": "ملف اختبار شريحة %d" % index,
         "notes": "ملاحظات اختبارية",
+        # Synthetic fixture shapes match pixels deliberately drawn above (not real lecture content).
+        "elements": ([{
+            "id": "s1-e1", "type": "text", "text": "ALFA TEST SLIDE 1",
+            "x": .12, "y": .395, "w": .40, "h": .09
+        }, {
+            "id": "s1-e2", "type": "text", "text": "SECOND ELEMENT",
+            "x": .62, "y": .395, "w": .27, "h": .09
+        }] if index == 1 else []),
         "build": ({"version": 1, "steps": [
             {"image": "steps/003-%02d.png" % k, "auto": False, "delayMs": 0, "durationMs": 400,
              "effects": ([] if k == 0 else [{"action": "show", "target": "shape", "effect": "fade", "startMs": 0, "durMs": 400}])}
