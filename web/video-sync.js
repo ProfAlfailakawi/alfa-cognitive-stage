@@ -6,6 +6,7 @@ export function validMediaTime(value) {
 }
 export function sameLecture(message, bundle) {
   return Boolean(message && typeof message === "object" &&
+    typeof bundle === "string" && bundle.length > 0 &&
     typeof message.bundle === "string" && message.bundle === bundle);
 }
 export function validVideoPacket(message, bundle, slide, clipCount) {
@@ -22,6 +23,7 @@ export function needsMediaSeek(currentTime, desiredTime, limit = DRIFT_LIMIT_SEC
 export function validSnapshot(message, bundle, clipCount) {
   return sameLecture(message, bundle) && message.type === "snapshot" &&
     Number.isInteger(message.index) && message.index >= 1 &&
+    Number.isInteger(clipCount) && clipCount >= 0 &&
     Array.isArray(message.videos) && message.videos.length === clipCount &&
     message.videos.every(item => item && validMediaTime(item.time) &&
       typeof item.playing === "boolean");
