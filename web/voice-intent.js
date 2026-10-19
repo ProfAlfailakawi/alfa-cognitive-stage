@@ -22,7 +22,13 @@ function anchoredDirection(t, direction) {
 /** The existing strict commands remain valid; richer sentences must still be unambiguous. */
 export function interpretNaturalNav(utterance) {
   const strict = interpretNav(utterance);
-  if (strict) return strict;
+  if (strict) {
+    // A request for the slide "after this one" is NOT merely the next build click.
+    const spoken = clean(utterance);
+    if (strict.kind === "next" && /(?:شريحه|صفحه|سلايد)\s+(?:(?:اللي|الي)\s+)?(?:بعدها|عقبها)/.test(spoken))
+      return { ...strict, skipBuilds: true };
+    return strict;
+  }
   let t = clean(utterance);
   if (!t || t.length > 145 || t.split(" ").length > 17) return null;
   if (/^(?:لا|مو|لاتروح|ما نبي|ما ابي|بدون|لازم ما)\b/.test(t)) return null;
