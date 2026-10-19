@@ -107,7 +107,7 @@ try {
   await presenter.locator("#cognitive-drawer > summary").click();
   const newLiving = await open(0);
   check("graph memory persisted after reload",
-    (await newLiving.locator(".meta").last().innerText()).includes("2"));
+    (await newLiving.locator(".meta").filter({hasText:"عناصر معتمدة"}).first().innerText()).includes("2"));
   await newLiving.getByRole("button",{name:"التالي"}).click();
   check("graph restoration shows approved exact text",
     (await presenter.locator(".cognitive-card-stage").innerText()).includes("الألعاب التعليمية"));
@@ -131,6 +131,12 @@ try {
     (await audience.locator(".cognitive-card-stage").innerText()).includes("نقاش مجموعات"));
   await wait(480);
   if (shots) await audience.locator("#stage").screenshot({path:join(shots,"whatif-revealed.png")});
+  // Arbitrary deterministic math is explicit, bounded and never silently projected.
+  await whatif.locator('input[placeholder="120*(1+15%)"]').fill("120*(1+15%)");
+  await whatif.getByRole("button",{name:"قيّم الصيغة"}).click();
+  check("safe formula renders expected deterministic result to lecturer only",
+    (await presenter.locator("#cognitive-drawer > .meta").innerText()).includes("138") &&
+    !(await audience.locator(".cognitive-card-stage").innerText()).includes("138"));
 
   // Late-join audience receives only approved projection via existing snapshot protocol.
   const late=await context.newPage();
@@ -165,6 +171,26 @@ try {
   const motion=await presenter.locator(".cognitive-node").first()
     .evaluate((element)=>getComputedStyle(element).animationName);
   check("reduced motion accepted", motion === "none", motion);
+
+  // Browser download keeps approved lecturer data private; importing it requires
+  // explicit confirmation, validates bundle ID, and never projects automatically.
+  const downloadReady = presenter.waitForEvent("download");
+  await newLiving.getByRole("button",{name:"صدّر نسخة خاصة"}).click();
+  const download = await downloadReady;
+  const rawBackup = readFileSync(await download.path(), "utf8");
+  const backup = JSON.parse(rawBackup);
+  check("private JSON backup includes approved graph and authored scenarios",
+    backup.format === "alfa-living-backup" && backup.bundle === bundle &&
+    backup.graph.nodes.length >= 2 && backup.scenarios.some((s)=>s.title==="قرار النشاط"));
+  presenter.once("dialog", (dialog) => dialog.accept());
+  await newLiving.locator('input[type="file"]').setInputFiles({
+    name: "alfa-private.json", mimeType: "application/json", buffer: Buffer.from(rawBackup)
+  });
+  await presenter.waitForFunction(() => document.querySelector("#cognitive-drawer > .meta")
+    ?.textContent?.includes("استُعيدت الشبكة"));
+  check("valid archive imports locally with explicit approval", true);
+  check("import never broadcasts private archive content",
+    await audience.locator(".cognitive-card-stage").count()===0);
 } catch (error) {
   console.error(error);
   failures.push("exception: "+error.message);
