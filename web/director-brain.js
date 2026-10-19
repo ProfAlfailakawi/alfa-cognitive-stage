@@ -440,7 +440,7 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
       const count = perSlide.get(slideIndex) || 0;
       if (count >= MAX_PER_SLIDE) return status({ ...decision, action: "none" }, "بلغ الحد الأعلى لاقتراحات هذه الشريحة");
       if (t - lastShownAt < GAP_MS && decision.kind !== "steps") return status({ ...decision, action: "none" }, "فترة هدوء بعد المشهد السابق");
-      const auto = (mode === "balanced" && decision.confidence >= 0.95 && ["stat", "steps"].includes(decision.kind) ||
+      const auto = (mode === "balanced" && decision.confidence >= 0.95 && ["stat", "steps", "study"].includes(decision.kind) ||
         mode === "balanced" && decision.confidence >= 0.96 && decision.kind === "bars" && decision.spec.lines.length === 2 ||
         mode === "balanced" && decision.confidence >= 0.95 && decision.kind === "compare" && decision.spec.lines.length === 1 && /^(?:من|كانت)/.test(decision.spec.lines[0]) ||
         mode === "creative" && (decision.storyAuto && decision.kind === "story" || decision.confidence >= 0.95));

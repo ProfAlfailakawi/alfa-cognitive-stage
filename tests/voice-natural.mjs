@@ -9,6 +9,11 @@ for (const speech of [
   assert.equal(interpretNaturalNav(speech)?.kind, "next", speech);
 }
 assert.deepEqual(interpretNaturalNav("خلونا نروح للشريحة اللي بعدها"), { kind: "next", skipBuilds: true });
+// Explicitly naming a slide means skip its remaining PowerPoint build states.
+for (const speech of ["الشريحة التالية", "انتقل للشريحة التالية", "روح للشريحة التالية", "طيب الشريحة التالية", "الشريحة السابقة", "انتقل للشريحة السابقة"]) {
+  const parsed = interpretNaturalNav(speech);
+  assert.equal(parsed?.skipBuilds, true, `explicit slide navigation: ${speech}`);
+}
 assert.deepEqual(interpretNaturalNav("التالية"), { kind: "next" }, "next still moves a single build click");
 for (const speech of ["خلونا نروح للشريحة السابقة", "ورني الصفحة اللي قبلها"]) assert.equal(interpretNaturalNav(speech)?.kind, "prev", speech);
 for (const speech of ["نرجع للشريحة الأصلية", "ردني للعرض", "خلونا نرجع للشرح", "نكمل شرحنا",

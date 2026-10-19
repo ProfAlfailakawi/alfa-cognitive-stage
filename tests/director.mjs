@@ -50,6 +50,20 @@ assert.equal(interpretSpeech("النسبة من 30% إلى 70% إلى 90%")?.kin
   "Three values must not be reduced to an arbitrary pair");
 assert.equal(interpretSpeech("النسبة من 30% إلى 70% عفواً أقصد 80%")?.kind, "stat",
   "Existing explicit correction path is preserved");
+// Studies are visual evidence too: numeric results use the same immediate
+// statistic path, while qualitative findings keep their exact spoken wording.
+const studyCount = interpretSpeech("أظهرت دراسة شارك فيها 240 طالب أن التفاعل زاد");
+assert.equal(studyCount?.kind, "stat");
+assert.equal(studyCount.spec.lines[0], "240");
+assert.match(studyCount.spec.lines[1], /طالب/);
+assert.equal(interpretSpeech("دراسات كشفت أن 45% من الطلبة يستفيدون")?.spec?.lines[0], "45%");
+const studyFinding = interpretSpeech("الدراسات الحديثة أظهرت أن ممارسة التفاعل داخل القاعة تساعد الطلاب على المشاركة");
+assert.equal(studyFinding?.kind, "study");
+assert.equal(studyFinding.spec.type, "quote");
+assert.equal(studyFinding.spec.lines[0], "الدراسات الحديثة أظهرت أن ممارسة التفاعل داخل القاعة تساعد الطلاب على المشاركة");
+assert.equal(interpretSpeech("الدراسة اللي قلت لكم عنها"), null, "mere mention of a study has no fabricated result");
+assert.equal(interpretSpeech("نُشرت دراسة سنة 2024 عن التعلم")?.spec ?? null, null, "year alone is not an effect size or sample count");
+assert.equal(createDirectorBrain().observe("الدراسات الحديثة أظهرت أن ممارسة التفاعل داخل القاعة تساعد الطلاب على المشاركة", { slide: { index: 1 } }).action, "auto");
 console.log("director-core: all checks passed");
 
 // a comparison left hanging is completed by the next sentence that carries one number

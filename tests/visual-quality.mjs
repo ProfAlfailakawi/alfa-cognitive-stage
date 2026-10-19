@@ -52,7 +52,7 @@ for (const raw of ["101%", "-2%", "غير معروف", "40%%", ""]) assert.equal
 const arabicBars = { type: "bars", title: "نتائج", lines: ["المجموعة الأولى | ٣٧٫٥٪", "المجموعة الثانية | ٧٥٪"] };
 assert.deepEqual(validateSpec(arabicBars).lines, arabicBars.lines, "original Arabic bar labels survive validation");
 const arabicBarsSvg = renderInfographic(arabicBars);
-assert.ok(arabicBarsSvg.includes('width="215"'), "37.5 relative to 75 must render at half the maximum bar width");
+assert.ok(arabicBarsSvg.includes('width="215"'), "37.5 relative to 75 must render at half the largest 430px bar width");
 assert.ok(arabicBarsSvg.includes("٣٧٫٥٪") && arabicBarsSvg.includes("٧٥٪"), "Arabic bar values remain visible verbatim");
 assert.throws(() => validateSpec({ ...arabicBars, lines: ["الفئة | ١٠١٪", "الفئة | ٥٠٪"] }), "percentages above 100 must be rejected");
 const persianStat = renderInfographic({ type: "stat", title: "مشاركة", lines: ["۳۷٫۵٪", "من المشاركين"] });

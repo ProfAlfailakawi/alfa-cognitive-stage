@@ -23,9 +23,10 @@ function anchoredDirection(t, direction) {
 export function interpretNaturalNav(utterance) {
   const strict = interpretNav(utterance);
   if (strict) {
-    // A request for the slide "after this one" is NOT merely the next build click.
+    // A named slide is an explicit slide transition, never an animation/build click.
+    // The standalone "التالية"/"السابقة" keeps the established single-build behavior.
     const spoken = clean(utterance);
-    if (strict.kind === "next" && /(?:شريحه|صفحه|سلايد)\s+(?:(?:اللي|الي)\s+)?(?:بعدها|عقبها)/.test(spoken))
+    if ((strict.kind === "next" || strict.kind === "prev") && /(?:شريحه|صفحه|سلايد)/.test(spoken))
       return { ...strict, skipBuilds: true };
     return strict;
   }

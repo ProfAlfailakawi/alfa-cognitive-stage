@@ -15,6 +15,19 @@ export function buildReview(report, manifest = {}) {
     seen.add(key);
     (bySlide.get(sc.slide) || bySlide.set(sc.slide, []).get(sc.slide)).push({ heading, lines });
   }
+  // A lecture remains reviewable even when no extra infographic was projected.
+  // Use only slides actually visited; never publish private speaker notes.
+  const visited = new Set((report?.slides || []).map((r) => Number(r.index)).filter((i) => Number.isInteger(i) && i > 0));
+  const slideByIndex = new Map((manifest.slides || []).map((s) => [Number(s.index), s]));
+  for (const index of visited) {
+    if (bySlide.has(index)) continue;
+    const source = slideByIndex.get(index);
+    if (!source) continue;
+    const heading = clip(source.title || String(source.text || "").split(/\r?\n/)[0] || "شريحة " + index, 120);
+    const lines = String(source.text || "").split(/\r?\n/).map((part) => clip(part, 140))
+      .filter((part) => part && part !== heading).slice(0, 3);
+    if (heading || lines.length) bySlide.set(index, [{ heading: heading || "شريحة " + index, lines }]);
+  }
   const items = [];
   for (const slide of [...bySlide.keys()].sort((a, b) => a - b)) {
     for (const sc of bySlide.get(slide)) items.push({ slide, heading: sc.heading || titles.get(slide) || "شريحة " + slide, lines: sc.lines });

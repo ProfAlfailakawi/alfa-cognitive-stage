@@ -167,7 +167,7 @@ function statBand(spec) {
     : drawLine(404, 340, 556, 340, { color: C.blue, width: 6, i: 2 });
   const captionY = value !== null && value <= 100 ? 466 : 410;
   const cap = text ? (value !== null && value <= 100
-    ? motion("rise", 3, label(text, 480, captionY, { size: 30, color: C.blue, limit: 38, rows: 2, lh: 36, weight: 900, family: FONT.display }))
+    ? motion("rise", 3, labelMid(text, 480, captionY, { size: 27, color: C.blue, limit: 33, rows: 3, lh: 31, weight: 800, family: FONT.display }))
     : motion("rise", 3, `<rect x="120" y="${captionY - 34}" width="720" height="82" rx="${radius(22)}" fill="${C.gold}"/>` + labelMid(text, 480, captionY + 7, { size: 30, color: C.onAccent, limit: 40, rows: 2, lh: 36, weight: 800, family: FONT.display }))) : "";
   return frame(spec.title, bigNumber + bar + cap);
 }

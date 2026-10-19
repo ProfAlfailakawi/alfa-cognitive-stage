@@ -79,11 +79,14 @@ export function renderStructuredScene(type, title, lines) {
     const top = Math.max(...values, 1);
     const rowH = Math.min(58, (360 - (rows.length - 1) * 12) / rows.length), small = rowH < 56;
     const nodes = rows.map(([name, value], i) => {
+      // Three non-overlapping horizontal zones (RTL): label, bar, percentage.
+      // Mixed Arabic/English labels may need three short rows; never paint
+      // them beyond the 960px viewBox edge or on top of the bar.
       const y = 158 + i * (rowH + 12), w = (values[i] / top) * 430;
-      return motion("rise", i, labelMid(name, 830, y + rowH / 2, { size: small ? 17 : 21, limit: small ? 18 : 14, rows: 2, lh: small ? 20 : 24, weight: 800, family: FONT.display }) +
+      return motion("rise", i, labelMid(name, 790, y + rowH / 2, { size: small ? 15 : 17, limit: small ? 12 : 14, rows: 3, lh: small ? 17 : 20, weight: 800, family: FONT.display }) +
         `<rect x="250" y="${y}" width="430" height="${rowH}" rx="14" fill="${C.track}"/>`) +
         `<g class="m-grow-r" style="--i:${i + 1}"><rect class="bar-fill" x="${680 - w}" y="${y}" width="${w}" height="${rowH}" rx="14" fill="url(#${i % 2 ? "sk-gold" : "sk-blue"})"/></g>` +
-        motion("pop", i + 2, labelMid(value, 170, y + rowH / 2, { size: small ? 28 : 34, limit: 8, rows: 1, family: FONT.hero }));
+        motion("pop", i + 2, labelMid(value, 180, y + rowH / 2, { size: small ? 27 : 31, limit: 8, rows: 1, family: FONT.hero }));
     }).join("");
     return frame(title, nodes);
   }
