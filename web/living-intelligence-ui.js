@@ -400,6 +400,32 @@ export function mountLivingIntelligence(mount, context) {
   mount.append(root);
 
   return {
+    addPollSummary(payload) {
+      if (!payload || typeof payload.question !== "string" || payload.question.length > 200 ||
+          !Array.isArray(payload.totals) || payload.totals.length !== 2 ||
+          !payload.totals.every((n) => Number.isSafeInteger(n) && n >= 0) ||
+          !Array.isArray(payload.values) || payload.values.length < 2 || payload.values.length > 6 ||
+          payload.values.some((v) => typeof v.option !== "string" || v.option.length > 200 ||
+            ![v.firstPercent, v.lastPercent, v.deltaPoints].every((n) => typeof n === "number" && Number.isFinite(n))))
+        { say("توزيع التصويت غير صالح"); return false; }
+      const original = "سؤال: " + payload.question + ". قبل: " + payload.totals[0] +
+        " مشاركة، بعد: " + payload.totals[1] + " مشاركة. " +
+        payload.values.map((v) => v.option + ": " + v.firstPercent +
+          "% قبل، " + v.lastPercent + "% بعد، الفرق " + v.deltaPoints + " نقطة مئوية").join("؛ ") +
+        ". تغير توزيعي لا يثبت السببية.";
+      const text = original.slice(0, 300);
+      try {
+        const source = sourceRecord({ bundle, slide: context.getSlide(), originalText: original,
+          kind: "poll", approved: true });
+        const result = appendKnowledge(graph, { type: "stat", text, source,
+          parentId: graph.nodes[0]?.id || null });
+        graph = result.graph; saveKnowledge(graph); summaryGraph();
+        graphPage = Math.max(0, Math.ceil(graph.nodes.length / 6) - 1);
+        safeProject(audienceGraph(graph, graphPage));
+        say("أُضيف توزيع الإجابات الفعلي مع أعداد الجولتين، بلا استنتاج سببي.");
+        return true;
+      } catch (error) { say(error.message); return false; }
+    },
     onSpeech(raw) {
       if (context.videoPlaying() || !raw || !root.isConnected) return;
       const candidates = (activeSlide().elements || []).filter((s) =>
