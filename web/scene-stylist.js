@@ -6,6 +6,7 @@ import { worldName } from "./world-theme.js";
 import { brightness, hueOf, hslOf } from "./color-math.js";
 import { VARIANTS } from "./scene-variants.js";
 import { lecturerTeachingMove } from "./lecturer-profile.js";
+import { refineVisualStyle } from "./visual-quality.js";
 
 const RULES = [
   ["balance", /(عدل|عدالة|توازن|ضمير|أخلاق|اخلاق|إنصاف|انصاف)/],
@@ -132,6 +133,7 @@ export function styleScene(spec, { mode = "auto", storage, history, sourceSpeech
     : { theme: mode, world: null, variant: pickVariant(spec.type, text, past) };
   const out = { ...spec, theme: picked.theme };
   if (picked.variant) out.variant = picked.variant; else delete out.variant;
+  const refined = refineVisualStyle(spec, out, { explicitTheme: !auto, explicitVariant: Number.isInteger(spec.variant) });
   saveHistory(entryOf(picked, spec.type), storage, past);
-  return out;
+  return refined;
 }
