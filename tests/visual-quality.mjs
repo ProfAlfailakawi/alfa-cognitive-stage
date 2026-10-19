@@ -30,12 +30,12 @@ styleScene(dense, { storage });
 assert.equal(saved.at(-1)[0].v, 0, "history reflects the actually displayed dense-scene layout");
 assert.equal(saved.at(-1)[0].w, "warm", "history reflects the actually displayed restrained theme");
 // Every displayed statistical value must match the lecturer's literal input.
-for (const value of ["0%", "37.5%", "100%", "٣٧%", "٣٧٪", "12"]) {
+for (const value of ["0%", "37.5%", "100%", "٣٧%", "٣٧٪", "٣٧٫٥٪", "٣٧ ٪", "12"]) {
   const rendered = renderInfographic({ type: "stat", title: "نتيجة", lines: [value, "من المشاركين"] });
   assert.ok(rendered.includes(">" + value + "</text>"), "statistic must preserve literal number: " + value);
   assert.ok(rendered.includes("من المشاركين"), "statistic must preserve its explanation");
 }
-for (const [value, expected] of [["0%", "0"], ["37.5%", "37.5"], ["100%", "100"], ["٣٧%", "37"], ["٣٧٪", "37"]]) {
+for (const [value, expected] of [["0%", "0"], ["37.5%", "37.5"], ["100%", "100"], ["٣٧%", "37"], ["٣٧٪", "37"], ["٣٧٫٥٪", "37.5"], ["٣٧ ٪", "37"]]) {
   const rendered = renderInfographic({ type: "stat", title: "نتيجة", lines: [value, "من المشاركين"] });
   assert.ok(rendered.includes('style="--v:' + expected + '"'), "ring must use the precise spoken percentage");
 }
