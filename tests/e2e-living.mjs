@@ -236,8 +236,14 @@ try {
       const layer=document.querySelector(".cognitive-card-stage");
       const nodes=[...layer.querySelectorAll(".cognitive-node p")];
       const fonts=nodes.map((n)=>parseFloat(getComputedStyle(n).fontSize));
-      const clipped=nodes.some((n)=>n.scrollHeight>n.clientHeight+2||n.scrollWidth>n.clientWidth+2);
-      return {fit:layer.dataset.roomFit,clipped,fonts,
+      const fit=nodes.map((node)=>{
+        const target=node.closest(".cognitive-node").getBoundingClientRect();
+        const range=document.createRange();range.selectNodeContents(node);
+        const rects=[...range.getClientRects()].filter((r)=>r.width>0&&r.height>0);
+        return rects.length>0 && rects.every((r)=>r.left>=target.left-3 &&
+          r.right<=target.right+3 && r.top>=target.top-3 && r.bottom<=target.bottom+3);
+      });
+      return {fit:layer.dataset.roomFit,clipped:fit.some((x)=>!x),fonts,
         screen:{w:document.documentElement.scrollWidth,h:document.documentElement.scrollHeight}};
     });
     check("projector legibility "+width+"x"+height,
@@ -260,7 +266,12 @@ try {
   check("authored long outcomes are shown as legible sequenced excerpts",
     await room.locator(".cognitive-outcome small").innerText().then((s)=>s.includes("جزء 1 من")));
   const size=await room.locator(".cognitive-revealed-result").evaluate((node)=>({
-    clipped:node.scrollHeight>node.clientHeight+2,font:parseFloat(getComputedStyle(node).fontSize)
+    clipped:(()=>{
+      const box=node.closest(".cognitive-outcome").getBoundingClientRect();
+      const range=document.createRange();range.selectNodeContents(node);
+      return [...range.getClientRects()].some((r)=>r.width>0&&r.height>0&&
+        (r.left<box.left-3||r.right>box.right+3||r.top<box.top-3||r.bottom>box.bottom+3));
+    })(),font:parseFloat(getComputedStyle(node).fontSize)
   }));
   check("premiere outcome remains legible at standard projector resolution",
     !size.clipped && size.font>=21,JSON.stringify(size));
