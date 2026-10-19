@@ -88,8 +88,8 @@ export function audienceGraph(graph, page = 0) {
 export function canEnterStage({ videoPlaying = false, mode = "slide", requested, approved = false }) {
   if (videoPlaying) return { ok: false, reason: "الفيديو قيد التشغيل" };
   if (!approved) return { ok: false, reason: "تحتاج موافقة المحاضر" };
-  if (!["slide", "visual", "living", "xray", "poll", "whatif", "bridge"].includes(mode) ||
-      !["living", "xray", "poll", "whatif", "bridge"].includes(requested))
+  if (!["slide", "visual", "living", "xray", "poll", "pulse", "whatif", "bridge"].includes(mode) ||
+      !["living", "xray", "poll", "pulse", "whatif", "bridge"].includes(requested))
     return { ok: false, reason: "حالة المسرح غير معروفة" };
   return { ok: true };
 }

@@ -334,3 +334,20 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .cognitive-question,.cognitive-revealed-result { font-size: clamp(11px,3vw,15px); line-height:1.35; }
   .cognitive-stage-foot { font-size: 9px; }
 }
+
+/* Real before/after classroom comparison. Equal-length scales, clear denominators, no motion. */
+.cognitive-pulse-body { display: block; overflow: hidden; }
+.cognitive-pulse-visual { width: 100%; height: 100%; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); gap: 2%; align-content: stretch; }
+.cognitive-pulse-item { border: 1px solid rgba(241,217,168,.34); border-radius: 12px; padding: 3%; display: flex; flex-direction: column; justify-content: center; min-width: 0; min-height: 0; }
+.cognitive-pulse-item h3 { margin: 0 0 2%; font-size: clamp(16px,1.7vw,26px); line-height: 1.35; overflow-wrap: anywhere; }
+.cognitive-pulse-line { display: grid; grid-template-columns: minmax(90px,30%) minmax(0,1fr); align-items: center; gap: 2%; margin: .35em 0; font-size: clamp(12px,1.25vw,20px); }
+.cognitive-pulse-track { background: rgba(255,255,255,.12); width: 100%; height: .85em; border-radius: 4px; overflow: hidden; }
+.cognitive-pulse-fill { display: block; height: 100%; border-radius: 4px; }
+.cognitive-pulse-fill.before { background: #82a7af; }
+.cognitive-pulse-fill.after { background: #f0d6a0; }
+@media (max-width:600px) {
+ .cognitive-pulse-visual { gap: 1%; }
+ .cognitive-pulse-item { padding: 2%; }
+ .cognitive-pulse-item h3 { font-size: 11px; }
+ .cognitive-pulse-line { grid-template-columns: 45% 55%; font-size: 9px; }
+}

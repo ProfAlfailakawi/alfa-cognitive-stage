@@ -41,7 +41,7 @@ function readScenarios(bundle) {
 export function validCognitivePacket(value, { bundle, index, step, videoPlaying = false } = {}) {
   if (!value || typeof value !== "object" || videoPlaying || value.bundle !== bundle ||
       value.slide !== index || value.step !== step ||
-      !["living", "xray", "bridge", "whatif"].includes(value.kind) ||
+      !["living", "xray", "bridge", "whatif", "pulse"].includes(value.kind) ||
       JSON.stringify(value).length > 16000) return false;
   if (value.kind === "living") return Array.isArray(value.nodes) && value.nodes.length <= 8 &&
     value.nodes.every((n) => typeof n.text === "string" && n.text.length <= 300) &&
@@ -49,6 +49,14 @@ export function validCognitivePacket(value, { bundle, index, step, videoPlaying 
   if (value.kind === "xray") return Array.isArray(value.boxes) && value.boxes.length >= 1 &&
     value.boxes.length <= 2 && value.boxes.every((b) => [b.x, b.y, b.w, b.h].every(Number.isFinite) &&
       b.x >= 0 && b.y >= 0 && b.w > 0 && b.h > 0 && b.x + b.w <= 1.001 && b.y + b.h <= 1.001);
+  if (value.kind === "pulse") return typeof value.question === "string" && value.question.length <= 200 &&
+    Array.isArray(value.totals) && value.totals.length === 2 &&
+    value.totals.every((n) => Number.isSafeInteger(n) && n >= 0) &&
+    Array.isArray(value.values) && value.values.length >= 2 && value.values.length <= 6 &&
+    value.values.every((v) => typeof v.option === "string" && v.option.length <= 200 &&
+      [v.firstPercent,v.lastPercent,v.deltaPoints].every(Number.isFinite) &&
+      v.firstPercent>=0 && v.firstPercent<=100 && v.lastPercent>=0 && v.lastPercent<=100 &&
+      Math.abs(v.deltaPoints)<=100);
   if (value.kind === "bridge") return typeof value.title === "string" &&
     typeof value.excerpt === "string" && value.excerpt.length <= 240;
   return typeof value.title === "string" && typeof value.question === "string" &&
@@ -131,6 +139,7 @@ export function renderCognitiveProjection(stage, value) {
   layer.querySelector("h2").textContent = value.title || "المسرح المعرفي";
   const body = layer.querySelector(".cognitive-stage-body"), foot = layer.querySelector(".cognitive-stage-foot");
   body.classList.toggle("cognitive-branches", value.kind === "whatif");
+  body.classList.toggle("cognitive-pulse-body", value.kind === "pulse");
   body.dataset.count = String(value.kind === "living" ? value.nodes.length :
     value.kind === "whatif" ? value.options.length : 1);
   if (value.kind === "living") {
@@ -170,6 +179,24 @@ export function renderCognitiveProjection(stage, value) {
     if (value.kind === "bridge") {
       body.append(make("p", value.excerpt, "cognitive-bridge-quote"));
       foot.textContent = value.lecture + " — الشريحة " + value.fromSlide;
+    } else if (value.kind === "pulse") {
+      const display=make("div","","cognitive-pulse-visual");
+      for(const record of value.values){
+        const row=make("article","","cognitive-pulse-item");
+        row.append(make("h3",record.option));
+        for(const [label,percent,style] of [["قبل",record.firstPercent,"before"],["بعد",record.lastPercent,"after"]]){
+          const line=make("div","","cognitive-pulse-line");
+          line.append(make("span",label+" · "+percent.toFixed(1)+"%"));
+          const track=make("div","","cognitive-pulse-track");
+          const fill=make("span","","cognitive-pulse-fill "+style);
+          fill.style.width=percent+"%";track.append(fill);line.append(track);
+          row.append(line);
+        }
+        display.append(row);
+      }
+      body.append(display);
+      foot.textContent="قبل: "+value.totals[0]+" مشاركات · بعد: "+value.totals[1]+
+        " مشاركات · فرق التوزيع لا يثبت السببية أو مشاركة الأشخاص أنفسهم.";
     } else if (value.kind === "whatif") {
       body.append(make("p", value.question, "cognitive-question"));
       for (let i = 0; i < value.options.length; i++) {
@@ -613,6 +640,15 @@ export function mountLivingIntelligence(mount, context) {
   mount.append(root);
 
   return {
+    showPulseComparison(payload) {
+      const data={kind:"pulse",question:payload?.question,title:"قبل وبعد الشرح",
+        totals:payload?.totals,values:payload?.values};
+      if(!validCognitivePacket({...data,bundle,slide:context.getSlide(),step:context.getStep()},
+          {bundle,index:context.getSlide(),step:context.getStep()})) {
+        say("بيانات المقارنة غير صالحة؛ لم تُعرض.");return false;
+      }
+      return safeProject(data);
+    },
     addPollSummary(payload) {
       if (!payload || typeof payload.question !== "string" || payload.question.length > 200 ||
           !Array.isArray(payload.totals) || payload.totals.length !== 2 ||
