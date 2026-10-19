@@ -132,6 +132,7 @@ try {
   await wait(480);
   if (shots) await audience.locator("#stage").screenshot({path:join(shots,"whatif-revealed.png")});
   // Arbitrary deterministic math is explicit, bounded and never silently projected.
+  await whatif.locator("details").last().evaluate((el) => { el.open = true; });
   await whatif.locator('input[placeholder="120*(1+15%)"]').fill("120*(1+15%)");
   await whatif.getByRole("button",{name:"قيّم الصيغة"}).click();
   check("safe formula renders expected deterministic result to lecturer only",
