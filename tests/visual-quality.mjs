@@ -17,4 +17,11 @@ assert.equal(manual.theme, "ember");
 assert.equal(manual.variant, 2);
 const short = { type: "steps", title: "فهم", lines: ["تجربة", "تطبيق"] };
 assert.deepEqual(refineVisualStyle(short, { ...short, theme: "world:ivory-thesis", variant: 1 }), { ...short, theme: "world:ivory-thesis", variant: 1 });
+// Regression: lecturer-selected layout survives the automatic style selector.
+const chosen = styleScene({ type: "steps", title: "مقدمة", lines: ["معلومة"], variant: 2 }, { storage: { getItem: () => null, setItem: () => {} } });
+assert.equal(chosen.variant, 2, "explicit lecturer layout is preserved");
+const saved = [];
+const storage = { getItem: () => null, setItem: (_key, value) => saved.push(JSON.parse(value)) };
+styleScene(dense, { storage });
+assert.equal(saved.at(-1)[0].v, 0, "history reflects the actually displayed dense-scene layout");
 console.log("visual quality: dense layouts restrained, lecturer content intact");
