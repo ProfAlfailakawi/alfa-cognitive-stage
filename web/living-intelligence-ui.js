@@ -215,7 +215,8 @@ export function mountLivingIntelligence(mount, context) {
   });
   const importFile = make("input");
   importFile.type = "file"; importFile.accept = ".json,application/json";
-  importFile.hidden = true; importFile.setAttribute("aria-label", "استيراد نسخة المسرح المعرفي");
+  importFile.hidden = true; importFile.style.display = "none";
+  importFile.setAttribute("aria-label", "استيراد نسخة المسرح المعرفي");
   living.append(importFile);
   btn(actions, "استورد نسخة خاصة", () => { importFile.value = ""; importFile.click(); });
   importFile.onchange = async () => {
