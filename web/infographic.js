@@ -31,7 +31,7 @@ function validateBase(spec) {
   }
   if (type === "stat") {
     if (lines.length < 1 || lines.length > 2) throw new Error("البطاقة الإحصائية تحتاج رقماً ووصفاً فقط");
-    if (!/^[\d.,%٪+\-٠-٩ ]+$/.test(lines[0]) && lines[0].length > 12) throw new Error("الرقم يجب أن يكون قصيراً");
+    if (!/^[\d.,٫%٪+\-٠-٩ ]+$/.test(lines[0]) && lines[0].length > 12) throw new Error("الرقم يجب أن يكون قصيراً");
     return { type, title, theme, lines };
   }
   if (type === "compare") {
@@ -70,7 +70,7 @@ const AR_DIGITS = { "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥":
 
 function statSvg(spec) {
   const [number, text] = [spec.lines[0], spec.lines[1] || ""];
-  const ascii = number.replace(/[٠-٩]/g, (d) => AR_DIGITS[d]).replace(/٪/g, "%").replace(/\s/g, "");
+  const ascii = number.replace(/[٠-٩]/g, (d) => AR_DIGITS[d]).replace(/٪/g, "%").replace(/٫/g, ".").replace(/\s/g, "");
   const pct = ascii.match(/^(\d{1,3}(?:[.,]\d+)?)%$/);
   const count = /^\d{1,2}$/.test(ascii) && Number(ascii) >= 1 && Number(ascii) <= 12 ? Number(ascii) : null;
   const value = pct ? Number(pct[1].replace(",", ".")) : null;
