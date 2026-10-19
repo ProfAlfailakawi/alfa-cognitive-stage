@@ -88,8 +88,9 @@ try {
   assert.equal(checkSpoken("خمسة وعشرين بالميه فقط", slide), null, "no subject words: no alert");
   assert.deepEqual(checkSpoken("الرضا ٩٠٪", "الرضا ٦٨٪"), { said: 90, printed: 68, unit: "%", about: ["رضا"] }, "Arabic-Indic digits");
   assert.equal(checkSpoken("نسبة الرضا 90 بالمئة", ""), null);
-  assert.ok(checkSpoken("نسبة الرضا 90 بالمئة", "نسبة الحضور 90% ونسبة الرضا 68%"), "an equal number for another subject must not hide a real disagreement");
-  assert.equal(checkSpoken("نسبة الرضا 90 بالمئة", "نسبة الحضور 68% ونسبة الرضا 90%"), null, "a matching value for the same subject is safe");
+  assert.ok(checkSpoken("نسبة الرضا 90 بالمئة", "نسبة الحضور 90% ونسبة الرضا 68%"), "unrelated equal figure cannot hide a discrepancy");
+  assert.equal(checkSpoken("نسبة الرضا 90 بالمئة", "نسبة الحضور 68% ونسبة الرضا 90%"), null, "same-subject equality remains safe");
+  assert.equal(numberFacts("الرضا ٣٧٫٥٪")[0].value, 37.5, "Arabic decimal separator");
   assert.ok(unmatchedNumber("90%", slide), "a published number the slide never prints is queried");
   assert.equal(unmatchedNumber("68%", slide), null);
   assert.equal(unmatchedNumber("90%", "شريحة بلا أرقام"), null, "nothing to compare against: no alert");
