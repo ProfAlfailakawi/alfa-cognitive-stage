@@ -126,6 +126,10 @@ jobs:
         run: python tools/make_test_fixture.py
       - name: Browser presenter and audience tests
         run: npm run test:e2e
+      - name: Living Intelligence interactive presenter and audience integration
+        env:
+          LIVING_SHOTS: /tmp/alfa-living-shots
+        run: npm run test:e2e-living
       - name: PowerPoint build steps and exact return after digressions
         run: npm run test:e2e-return
       - name: Memory controls and conservative preference learning
@@ -144,10 +148,6 @@ jobs:
         run: npm run test:e2e-voicenav
       - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
         run: npm run test:e2e-speech
-      - name: Living Intelligence interactive presenter and audience integration
-        env:
-          LIVING_SHOTS: /tmp/alfa-living-shots
-        run: npm run test:e2e-living
       - name: Upload Living Intelligence browser screenshots
         if: always()
         uses: actions/upload-artifact@v4
