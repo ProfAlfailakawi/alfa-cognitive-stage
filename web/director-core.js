@@ -101,6 +101,31 @@ export function interpretSpeech(utterance) {
       };
     }
   }
+  // A reported study is evidence too. Present only the numeral and wording
+  // actually spoken; do not infer a sample size, effect, percentage or cause.
+  // This is deliberately after percentage detection so 68% stays 68%, not 68.
+  const studySource = /(?:دراس(?:ه|ات)|بحث|ابحاث|بحوث|استطلاع|مسح)/.test(text);
+  if (studySource && !correction) {
+    const counts = [...text.matchAll(/(?<![\d])([0-9]{1,6}(?:[.,][0-9]{1,2})?)(?![\d%])/g)]
+      .filter((m) => !/^(?:19|20)\d{2}$/.test(m[1]) && Number(m[1].replace(",", ".")) > 0);
+    if (counts.length === 1 && percentages.length === 0) {
+      const m = counts[0];
+      const number = m[1].replace(",", ".");
+      const after = labelWords(norm, m.index + m[0].length, clauseEnd(text, m.index + m[0].length), 10, 85);
+      const before = labelWords(norm, 0, m.index, 9, 80);
+      const caption = after || before;
+      return { kind: "stat", confidence: 0.97, utterance: raw,
+        spec: { type: "stat", title: "نتيجة دراسة", lines: caption ? [number, caption] : [number] } };
+    }
+    // A qualitative finding is not a numeric statistic. Show the lecturer's
+    // literal claim as a study quote, but only when a finding verb is present.
+    // A casual mention ("الدراسة اللي قلت لكم عنها") must stay silent.
+    const finding = /(?:اظهر(?:ت|وا)?|اشار(?:ت|وا)?|بين(?:ت|وا)?|كشف(?:ت|وا)?|وجد(?:ت|وا)?|توصل(?:ت|وا)?|اثبت(?:ت|وا)?|اكد(?:ت|وا)?|تفيد|تشير|توضح|خلص(?:ت|وا)?)/;
+    if (!counts.length && !percentages.length && finding.test(text) && raw.split(/\s+/).length >= 6) {
+      return { kind: "study", confidence: 0.96, utterance: raw,
+        spec: { type: "quote", title: "نتيجة دراسة", lines: [raw.slice(0, 230)] } };
+    }
+  }
   if (/(بقولكم قصه|احكيلكم قصه|بعطيكم قصه|خلوني احكي|كان في شخص|كان هناك شخص)/.test(text)) {
     return { kind: "story", confidence: 0.89, utterance: raw };
   }
