@@ -484,7 +484,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
   });
   cognitive = mountLivingIntelligence(document.getElementById("cognitive-mount"), {
     getBundle: () => state.bundle, getSlide: () => state.index, getStep: () => state.step,
-    getSlides: () => state.slides, getToken: directorAdminToken,
+    getSlides: () => state.slides, getStage: () => document.getElementById("stage"), getToken: directorAdminToken,
     videoPlaying: () => videoEls.some((v) => !v.paused && !v.ended),
     currentMode: () => pollScreen.visible ? "poll" : cognitiveProjection?.kind || (currentOverlay ? "visual" : "slide"),
     project(data) {
