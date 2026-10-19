@@ -293,3 +293,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   .cognitive-projection *, .cognitive-focus-box { animation: none !important; transition: none !important; }
 }
+
+/* Keep every lecturer tool reachable without changing the stage or projector size. */
+.presenter .side { overflow-y: auto; grid-template-rows: none; align-content: start; }
