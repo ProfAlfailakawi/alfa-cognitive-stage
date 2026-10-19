@@ -436,7 +436,13 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
       document.getElementById("project-poll").textContent = "سجّل دخولك وأنشئ جلسة أولاً";
       return;
     }
+    if (videoEls.some((el) => !el.paused && !el.ended)) { setDirectorStatus("التصويت لا يغطي الفيديو أثناء تشغيله."); return; }
     if (!pollScreen.visible) beginDigression();
+    if (cognitiveProjection) {
+      cognitiveProjection = null;
+      renderCognitiveProjection(document.getElementById("stage"), null);
+      send({ type: "cognitive", data: null, index: state.index, step: state.step });
+    }
     pollScreen.visible = true;
     renderPollScreen(pollScreen);
     send({ type: "poll-projection", data: pollScreen });
