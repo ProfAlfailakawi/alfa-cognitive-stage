@@ -11,7 +11,7 @@ const TENS = { عشرين: 20, ثلاثين: 30, اربعين: 40, خمسين: 5
 /** Spoken or digit number, 1–99, or null. */
 export function parseNumber(text) {
   const t = normalizeArabic(text).replace(/\s+/g, " ").trim();
-  if (/^\d{1,3}$/.test(t)) return Number(t);
+  if (/^\d{1,3}$/.test(t)) { const n = Number(t); return n >= 1 && n <= 999 ? n : null; }
   const words = t.split(" ");
   if (words.length === 1) return UNITS[words[0]] ?? TENS[words[0]] ?? null;
   // eleven…nineteen: "احد عشر"، "اثنا عشر"، "ثلاثه عشر"…

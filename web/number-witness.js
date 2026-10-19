@@ -11,7 +11,7 @@ const CONTEXT_REACH = 3; // words on each side that name what the number is abou
 
 /** Numbers with their unit and the subject words around them. Years and standalone small counts are ignored. */
 export function numberFacts(text) {
-  const raw = numeralizePercents(String(text || "").replace(/[٠-٩۰-۹]/g, (d) => ARABIC_INDIC[d]));
+  const raw = numeralizePercents(String(text || "").replace(/[٠-٩۰-۹]/g, (d) => ARABIC_INDIC[d]).replace(/٫/g, "."));
   const tokens = raw.split(/[^\p{L}\p{N}%.٪]+/u).filter(Boolean).map((t) => ({ raw: t, norm: normalizeArabic(t) }));
   const facts = [];
   tokens.forEach((tok, i) => {
@@ -83,7 +83,7 @@ export function createNumberWitness() {
     check(slideIndex, spoken, slideText) {
       const hit = checkSpoken(spoken, slideText);
       if (!hit) return null;
-      const key = [slideIndex, hit.said, hit.printed, hit.unit].join("|");
+      const key = [slideIndex, hit.said, hit.printed, hit.unit, ...hit.about].join("|");
       if (seen.has(key)) return null;
       seen.add(key);
       return { ...hit, message: witnessMessage(hit) };
