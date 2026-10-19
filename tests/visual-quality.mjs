@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { assessVisualDensity, refineVisualStyle } from "../web/visual-quality.js";
 import { styleScene } from "../web/scene-stylist.js";
@@ -43,4 +44,12 @@ const zeroBars = renderInfographic({ type: "bars", title: "المشاركة", li
 assert.ok(zeroBars.includes('width="0"'), "zero percent must produce a genuinely empty bar");
 const selectedTheme = styleScene({ ...dense, theme: "ember" }, { storage: { getItem: () => null, setItem: () => {} } });
 assert.equal(selectedTheme.theme, "ember", "explicit scene theme survives automatic mode and density gate");
+
+// Static projection should never loop, tilt in 3D, or animate for reduced-motion users.
+const css = readFileSync(new URL("../web/style.css", import.meta.url), "utf8");
+assert.ok(css.includes(".info-layer svg .fl { transform: none; }"));
+assert.ok(!css.includes("fl 5.5s ease-in-out infinite"));
+assert.ok(!css.includes("rotateX(6deg)"));
+assert.ok(css.includes(".info-layer svg .k-item, .info-layer > svg { animation: none !important; }"));
+assert.ok(css.includes(".info-layer svg .k-static { display: inline; }"));
 console.log("visual quality: dense layouts restrained, lecturer content intact");
