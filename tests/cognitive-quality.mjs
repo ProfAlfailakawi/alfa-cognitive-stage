@@ -19,6 +19,8 @@ graph=appendKnowledge(graph,{type:"topic",text:"الدافعية",source}).graph
 graph=appendKnowledge(graph,{type:"concept",text:original.slice(0,300),source,parentId:graph.nodes[0].id}).graph;
 const pages=roomKnowledgePages(graph);
 assert.ok(pages.length>1,"long concepts must be read on consecutive full-resolution pages");
+assert.ok(pages.every((page) => page.nodes.filter((node) => node.sourceId === "n2").length <= 1),
+  "fragments of the same source may not crowd a single projected composition");
 assert.equal(pages.flatMap(p=>p.nodes).filter(n=>n.sourceId==="n2").map(n=>n.text).join(""),original.slice(0,300));
 assert.ok(pages.every(p=>p.nodes.length<=6 && p.nodes.reduce((a,n)=>a+n.readingUnits,0)<=6));
 assert.ok(pages[0].edges.every(e=>pages[0].nodes.some(n=>n.id===e.from)&&pages[0].nodes.some(n=>n.id===e.to)));

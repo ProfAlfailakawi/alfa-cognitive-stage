@@ -191,7 +191,7 @@ export function renderCognitiveProjection(stage, value) {
       links.map((e) => names.get(e.from) + " " + (relationNames[e.relation] || "مرتبط بـ") + " " + names.get(e.to)).join("؛ "));
     layer._alfaRenderLinks = () => paintLivingLinks(layer, value);
     if (!layer._alfaResize && typeof ResizeObserver !== "undefined") {
-      layer._alfaResize = new ResizeObserver(() => layer._alfaRenderLinks?.());
+      layer._alfaResize = new ResizeObserver(() => { layer._alfaRenderLinks?.(); verifyStageLegibility(layer); });
       layer._alfaResize.observe(body);
     }
     requestAnimationFrame(() => {layer._alfaRenderLinks?.();verifyStageLegibility(layer);});
@@ -228,7 +228,7 @@ export function renderCognitiveProjection(stage, value) {
         body.append(item);
       }
       if (value.revealed) {
-        const parts=splitVerbatim(value.result,145);
+        const parts=splitVerbatim(value.result,105);
         const index=Math.min(parts.length-1,value.resultPart||0);
         const outcome=make("section","","cognitive-outcome");
         outcome.append(make("small","المسار المختار — " + value.options[value.chosen] +
@@ -622,7 +622,7 @@ export function mountLivingIntelligence(mount, context) {
     if(!lastRevealedBranch){say("اكشف النتيجة أولًا.");return;}
     const {scenario,option}=lastRevealedBranch;
     const whole=option.result+(option.explanation?" — "+option.explanation:"");
-    const parts=splitVerbatim(whole,145);
+    const parts=splitVerbatim(whole,105);
     if(lastRevealedBranch.resultPage>=parts.length-1){
       say("هذه آخر لقطة من النتيجة المعتمدة.");return;
     }

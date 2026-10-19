@@ -60,7 +60,9 @@ export function roomKnowledgePages(graph) {
   };
   for (const node of all) {
     if (current.length && (current.length >= ROOM_LIMITS.maxCards ||
-        units + node.readingUnits > ROOM_LIMITS.maxUnits)) flush();
+        units + node.readingUnits > ROOM_LIMITS.maxUnits ||
+        // Reading consecutive fragments of the same source requires a deliberate next step.
+        current.some((shown) => shown.sourceId === node.sourceId))) flush();
     current.push(node);
     units += node.readingUnits;
   }

@@ -489,3 +489,20 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     animation:none!important;transition:none!important;
   }
 }
+
+/* Protect the full Arabic baseline and exact letters from flex shrinking.
+   Legibility is achieved with fewer cards per page, not shortened citations. */
+.cognitive-card-stage .cognitive-living-map > .cognitive-node p {
+  flex: 0 0 auto;
+  min-height: max-content;
+}
+.cognitive-card-stage .cognitive-outcome > .cognitive-revealed-result {
+  flex: 0 0 auto;
+  min-height: max-content;
+  font-size: clamp(21px, 1.76vw, 30px);
+  line-height: 1.4;
+}
+.cognitive-card-stage .cognitive-outcome > small { flex: 0 0 auto; }
+.cognitive-card-stage .cognitive-branches[data-revealed="true"] {
+  grid-template-rows: minmax(0,.6fr) minmax(0,1fr) minmax(0,1.4fr);
+}
