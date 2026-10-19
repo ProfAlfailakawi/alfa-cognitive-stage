@@ -1499,6 +1499,13 @@ async function boot() {
   state.slides = manifest.slides;
   state.count = manifest.slideCount;
   state.aspect = manifest.aspect;
+  // An earlier lecture may be viewed in a separate lecturer-only window,
+  // without changing the running classroom deck or its return stack.
+  const startAt = Number(params.get("start"));
+  if (role === "presenter" && Number.isSafeInteger(startAt) && startAt >= 1 && startAt <= state.count) {
+    state.index = startAt;
+    state.main = startAt;
+  }
 
   // Install listeners before the first hello to avoid missing a fast snapshot reply.
   channel.onmessage = (event) => {
