@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { domainSceneGuidance, matchDomainTopic, topicPrompt } from "../web/domain-profile.js";
 import { createDirectorBrain } from "../web/director-brain.js";
 assert.equal(matchDomainTopic("نشرح نموذج ADDIE في التصميم التعليمي")?.id, "instructional-design");
+assert.match(matchDomainTopic("نشرح نموذج ADDIE في التصميم التعليمي")?.objective, /التحليل/);
 assert.equal(matchDomainTopic("الطالب يستخدم التكنولوجيا المساعدة")?.id, "inclusive-education");
 assert.equal(domainSceneGuidance("الواقع الافتراضي والواقع المعزز", "compare").preferred, true);
 assert.equal(domainSceneGuidance("التعلم الإلكتروني", "story").preferred, false);
