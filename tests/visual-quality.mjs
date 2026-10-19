@@ -24,6 +24,7 @@ const saved = [];
 const storage = { getItem: () => null, setItem: (_key, value) => saved.push(JSON.parse(value)) };
 styleScene(dense, { storage });
 assert.equal(saved.at(-1)[0].v, 0, "history reflects the actually displayed dense-scene layout");
+assert.equal(saved.at(-1)[0].w, "warm", "history reflects the actually displayed restrained theme");
 // Every displayed statistical value must match the lecturer's literal input.
 for (const value of ["0%", "37.5%", "100%", "٣٧%", "12"]) {
   const rendered = renderInfographic({ type: "stat", title: "نتيجة", lines: [value, "من المشاركين"] });
