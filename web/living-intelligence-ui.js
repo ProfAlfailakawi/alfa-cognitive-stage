@@ -242,6 +242,7 @@ export function mountLivingIntelligence(mount, context) {
   let graph = loadKnowledge(bundle), graphPage = 0, scenarios = readScenarios(bundle);
   let currentScenario = null, lastRevealedBranch = null, suggestion = null, referenceResults = [];
   let referenceStamp = 0, referenceCache = new Map(), referenceVersion = "";
+  const cognitiveDirector = createContextualCognitiveDirector();
   const root = make("details", "", "cognitive-drawer");
   root.id = "cognitive-drawer";
   root.append(make("summary", "المسرح المعرفي — ALFA Living Intelligence"));
@@ -304,15 +305,15 @@ export function mountLivingIntelligence(mount, context) {
       const result = appendKnowledge(graph, { type: type.value, text: raw, source,
         parentId: parentNode.value || null, relation: relation.value });
       graph = result.graph; saveKnowledge(graph); summaryGraph(); suggestion = null; proposalLine.textContent = "";
-      graphPage = Math.ceil(graph.nodes.length / 6) - 1;
+      graphPage = knowledgeGraphPage(graph,Infinity).page;
       if (!safeProject(audienceGraph(graph, graphPage))) return;
       text.value = "";
       say(result.duplicate ? "المفهوم موجود بالفعل؛ لم نكرر العقدة." : "أُضيفت العبارة التي وافقت عليها وحُفظ المصدر.");
     } catch (e) { say(e.message); }
   }, "primary");
-  btn(actions, "تجاهل", () => { suggestion = null; text.value = ""; proposalLine.textContent = ""; say("تجاهلت الاقتراح؛ لم يُرسل للطلبة."); });
+  btn(actions, "تجاهل", () => { cognitiveDirector.dismiss(suggestion); suggestion = null; text.value = ""; proposalLine.textContent = ""; say("تجاهلت الاقتراح؛ لم يُرسل للطلبة."); });
   btn(actions, "السابق", () => { graphPage--; safeProject(audienceGraph(graph, graphPage)); graphPage = Math.max(0, graphPage); });
-  btn(actions, "التالي", () => { graphPage = Math.min(Math.ceil(graph.nodes.length / 6) - 1, graphPage + 1);
+  btn(actions, "التالي", () => { graphPage = Math.min(knowledgeGraphPage(graph,Infinity).page, graphPage + 1);
     graphPage = Math.max(0, graphPage); safeProject(audienceGraph(graph, graphPage)); });
   btn(actions, "مسح هذه الشبكة", () => {
     if (!confirm("حذف الشبكة المعرفية المحفوظة لهذه المحاضرة؟")) return;
@@ -623,7 +624,7 @@ export function mountLivingIntelligence(mount, context) {
       const result = appendKnowledge(graph, { type: "example", text: literal.slice(0, 300), source,
         parentId: graph.nodes[0]?.id || null });
       graph = result.graph; saveKnowledge(graph); summaryGraph();
-      graphPage = Math.max(0, Math.ceil(graph.nodes.length / 6) - 1);
+      graphPage = Math.max(0, knowledgeGraphPage(graph,Infinity).page);
       safeProject(audienceGraph(graph, graphPage));
       say("أُضيف الفرع المحدد والنتيجة التي كتبها المحاضر، دون الادعاء أنه خيار الأغلبية.");
     } catch (e) { say(e.message); }
@@ -689,7 +690,7 @@ export function mountLivingIntelligence(mount, context) {
         const result = appendKnowledge(graph, { type: "stat", text, source,
           parentId: graph.nodes[0]?.id || null });
         graph = result.graph; saveKnowledge(graph); summaryGraph();
-        graphPage = Math.max(0, Math.ceil(graph.nodes.length / 6) - 1);
+        graphPage = Math.max(0, knowledgeGraphPage(graph,Infinity).page);
         safeProject(audienceGraph(graph, graphPage));
         say("أُضيف توزيع الإجابات الفعلي مع أعداد الجولتين، بلا استنتاج سببي.");
         return true;
@@ -706,12 +707,14 @@ export function mountLivingIntelligence(mount, context) {
         xrayMessage.textContent = "تطابق دلالي محلي محتمل مع عنصر الشريحة: " + shape.text.slice(0, 100) +
           ". راجع العنصر واختره يدوياً؛ لم يُفعّل X-Ray تلقائياً.";
       }
-      const cue=cognitiveSpeechCue(raw);
-      if (!cue) return; // The director stays silent for ordinary narration.
-      if (cue.kind === "bridge") {
+      const cue=cognitiveDirector.observe(raw,{
+        bundle,slideIndex:context.getSlide(),slide:activeSlide(),graph
+      });
+      if(!cue)return; // Normal narration stays quiet; no automatic projection.
+      if(cue.kind==="bridge"){
         bridgeInput.value=cue.query;
         const stamp=++referenceStamp;
-        say("إشارة واضحة لمحاضرة سابقة — أتحقق محلياً للمحاضر فقط.");
+        say("إشارة لاسترجاع درس سابق؛ أتحقق من مصادر المحاضر محليًا فقط.");
         void (async()=>{
           try {
             const entries=await loadReferences();
@@ -726,19 +729,25 @@ export function mountLivingIntelligence(mount, context) {
                 fromSlide:hit.slide,excerpt:hit.excerpt}));
               results.append(item);
             }
-            say(matches.length?"وجدت "+matches.length+" مراجع محتملة — راجع قبل العرض.":
+            say(matches.length?"وجدت "+matches.length+" مراجع محتملة؛ راجعها قبل العرض.":
               "لا يوجد مرجع مطابق بما يكفي. لم يُخترع شيء.");
-          }catch{if(stamp===referenceStamp)say("البحث غير متاح الآن؛ لا تغيير في العرض.");}
+          }catch{if(stamp===referenceStamp)say("تعذّر البحث المحلي؛ لا تغيير في العرض.");}
         })();
         return;
       }
-      suggestion={text:cue.text,original:String(raw).slice(0,1200)};
+      suggestion={...cue,original:String(raw).slice(0,1200)};
       text.value=cue.text;
-      proposalLine.textContent="اقتراح تعليمي صريح — راجع دقته واضغط أضف للمشهد.";
+      if(cue.nodeType&&[...type.options].some((option)=>option.value===cue.nodeType))
+        type.value=cue.nodeType;
+      proposalLine.textContent=cue.reason+" · "+(cue.evidence.onSlide?
+        "مفرداته متوافقة مع نص الشريحة":cue.evidence.approved?
+          "يرتبط بمفهوم سبق اعتماده":cue.evidence.prior?
+            "يتكرر ضمن سياق الشرح القريب":"من كلام المحاضر فقط؛ راجع المعلومة ومصدرها")+
+        " · اقتراح خاص، لن يُعرض قبل موافقتك.";
     },
     onSlideChange() {
       stopPicking?.();
-      ++referenceStamp; suggestion = null; proposalLine.textContent = ""; text.value = "";
+      ++referenceStamp; cognitiveDirector.reset(bundle,context.getSlide()); suggestion = null; proposalLine.textContent = ""; text.value = "";
       if (xray.open) refreshShapes();
     },
     graph: () => graph,
