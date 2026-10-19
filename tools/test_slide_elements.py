@@ -22,6 +22,16 @@ class XrayBoundsTests(unittest.TestCase):
         self.assertAlmostEqual(match[0]["w"], float(Inches(4) / self.deck.slide_width), places=4)
         self.assertTrue(match[0]["id"].startswith("s1-e"))
 
+    def test_four_by_three_slide_uses_original_dimensions(self):
+        self.deck.slide_width, self.deck.slide_height = Inches(10), Inches(7.5)
+        box = self.slide.shapes.add_textbox(Inches(5), Inches(2), Inches(2), Inches(1))
+        box.text = "English and العربية 2026"
+        items = build_bundle.slide_elements(self.slide, self.deck.slide_width, self.deck.slide_height, 2)
+        row = next(item for item in items if item["text"] == box.text)
+        self.assertAlmostEqual(row["x"], .5, places=5)
+        self.assertAlmostEqual(row["y"], 2/7.5, places=5)
+        self.assertAlmostEqual(row["w"], .2, places=5)
+
     def test_rotated_shape_is_not_focusable(self):
         shape = self.slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1), Inches(1),
             Inches(2), Inches(1))
