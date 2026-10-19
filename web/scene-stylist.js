@@ -7,6 +7,7 @@ import { brightness, hueOf, hslOf } from "./color-math.js";
 import { VARIANTS } from "./scene-variants.js";
 import { lecturerTeachingMove } from "./lecturer-profile.js";
 import { refineVisualStyle } from "./visual-quality.js";
+import { domainSceneGuidance, topicPrompt } from "./domain-profile.js";
 
 const RULES = [
   ["balance", /(عدل|عدالة|توازن|ضمير|أخلاق|اخلاق|إنصاف|انصاف)/],
@@ -127,7 +128,8 @@ export function styleScene(spec, { mode = "auto", storage, history, sourceSpeech
   // Use the lecturer's actual explanation for visual tone/layout, not just an extracted
   // 3-word caption. Speech is NEVER added to the visible slide or stored as a prompt.
   const cue = lecturerTeachingMove(sourceSpeech);
-  const text = [sourceSpeech, spec.title, ...(spec.lines || []), cue.designCue].join(" ").slice(0, 1000);
+  const guidance = domainSceneGuidance([sourceSpeech, spec.title, ...(spec.lines || [])].join(" "), spec.type);
+  const text = [sourceSpeech, spec.title, ...(spec.lines || []), cue.designCue, topicPrompt(sourceSpeech), guidance.preferred ? "مشهد مناسب للتخصص" : ""].join(" ").slice(0, 1000);
   const auto = mode === "auto" || mode === "auto-all";
   const picked = auto ? pickStyle({ type: spec.type, text, allowDark: mode === "auto-all", history: past })
     : { theme: mode, world: null, variant: pickVariant(spec.type, text, past) };
