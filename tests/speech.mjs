@@ -77,5 +77,30 @@ assert.equal(scheduled.size, 0, "Permission refusal never restarts microphone");
 assert.equal(diagnosticMic.diagnostics().errors, 2);
 diagnosticMic.stop();
 
+// A second genuinely spoken navigation command must not be swallowed for 3.5 seconds.
+let tick2 = 1000;
+const twice = [];
+const repeatMic = createSpeechDirector({ now: () => tick2, onUtterance: (t) => twice.push(t) });
+repeatMic.start();
+const repeatRecognizer = FakeRecognition.instance;
+const emit = () => repeatRecognizer.onresult({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: "التالية" } }] });
+emit(); tick2 += 350; emit(); tick2 += 650; emit();
+assert.deepEqual(twice, ["التالية", "التالية"], "short recognizer echo is ignored but next real request works");
+repeatMic.stop();
+
+// ar-KW may be rejected on a Mac: try ar-SA without retrying denied permissions.
+const timers = [];
+const fallbackMic = createSpeechDirector({ onStatus: (x) => statuses.push(x),
+  setTimer: (fn, ms) => { timers.push(fn); return timers.length; }, clearTimer: () => {} });
+fallbackMic.start();
+const langRecognizer = FakeRecognition.instance;
+assert.equal(langRecognizer.lang, "ar-KW");
+langRecognizer.onerror({ error: "language-not-supported" });
+langRecognizer.onend();
+assert.equal(langRecognizer.lang, "ar-SA");
+assert.ok(timers.length);
+timers.shift()();
+assert.equal(langRecognizer.started, 2);
+fallbackMic.stop();
 delete globalThis.SpeechRecognition;
 console.log("Web Speech interim preview/final event isolation/video pause passed");

@@ -9,6 +9,9 @@ export function lecturerTeachingMove(utterance) {
   const original = String(utterance || "").trim();
   const t = normalizeArabic(original).toLowerCase().replace(/[\u064b-\u065f]/g, "");
   if (!t) return { kind: "none", designCue: "" };
+  // Explicit personal conclusions outrank a contrast mentioned INSIDE the conclusion.
+  if (/^(?:نصيحتي|رسالتي|خلاصه الكلام|الخلاصه|الزبده|المهم عندي|باختصار)/.test(t))
+    return { kind: "takeaway", designCue: "أثر" };
   if (/(?:في المقابل|بالمقابل|لكن في المقابل|الفرق بين|شنو الفرق|فيه فرق|مو نفس|مب نفس|غير عن|على العكس)/.test(t))
     return { kind: "contrast", designCue: "مقابل" };
   if (/(?:على سبيل الافتراض|على سبيل المثال|على سبيل المثال|مثلا|اتذكر مره|تخيل|لو نفرض|خلوني اعطيكم مثال)/.test(t))

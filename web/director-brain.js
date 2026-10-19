@@ -4,6 +4,7 @@
 // This is NOT neural language understanding: it is explicit Kuwaiti/Gulf/MSA patterns plus
 // context (rolling window, topic tracking, slide grounding, pacing). Measured by tests/director-corpus.mjs.
 import { interpretSpeech, normalizeArabic, percentMention } from "./director-core.js";
+import { lecturerTakeaway, lecturerTeachingMove } from "./lecturer-profile.js";
 
 const WINDOW_MS = 60000;
 const MAX_WINDOW = 8;
@@ -226,7 +227,7 @@ function detectActivity(spoken) {
 }
 const CYCLIC = /(?:دوره|حلقه|يتكرر|مستمره|دائريه|مره ثانيه ونرجع للاول)/;
 const SHIFT_MARKER = /(?:الحين نتكلم عن|الحين نتحدث عن|ننتقل الى|نروح لموضوع|موضوع ثاني|نغير الموضوع|نبدا موضوع|نتكلم الحين عن)/;
-const EXAMPLE = /(?:مثلا|على سبيل المثال|خلوني اعطيكم مثال|خذوا مثال|تخيلوا|تخيل|لو افترضنا|فرضا)/;
+const EXAMPLE = /(?:مثلا|على سبيل المثال|على سبيل الافتراض|خلوني اعطيكم مثال|خذوا مثال|تخيلوا|تخيل|لو افترضنا|فرضا|اتذكر مره من المرات)/;
 const CONCEPT = /(?:المقصود ب|نقصد ب|نعني ب|تعريف|يعرف ب|مفهوم)/;
 const NARRATIVE = /(?:مره (?:واحد|وحده|كنت|كان)|صار لي موقف|تذكرون|قصه صارت|عندي حاله|خلوني احكي|كان في شخص|كان هناك شخص|بقولكم قصه|احكيلكم قصه|بعطيكم قصه)/;
 const CORRECTION = /(?:عفوا|اقصد|قصدي|التصحيح|اصحح|مو قصدي|بل الصحيح|لا غلطت|غلطت)/;
@@ -374,6 +375,14 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
           if (dialogue) found = { kind: "dialogue", confidence: 0.8, spec: dialogue, utterance: raw };
         }
       }
+    }
+    if (!found) {
+      const takeaway = lecturerTakeaway(raw);
+      if (takeaway) found = { kind: "quote", confidence: 0.84, spec: takeaway, utterance: raw };
+    }
+    if (!found) {
+      const teachingMove = lecturerTeachingMove(raw);
+      if (teachingMove.kind === "question") found = { kind: "question", confidence: 0.82, utterance: raw };
     }
     if (!found) {
       if (NARRATIVE.test(normalized)) found = { kind: "story", confidence: 0.85, utterance: raw };
