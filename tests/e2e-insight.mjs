@@ -82,8 +82,9 @@ try {
 
   // ---- move on: the next slide starts a fresh count ----
   await presenter.keyboard.press("ArrowRight");
-  await presenter.waitForFunction(() => document.querySelector("#pulse-line")?.hidden === true, null, { timeout: 12000 });
-  check("a new slide starts a fresh pulse", true);
+  await presenter.waitForFunction(() => document.querySelector("#pulse-line")?.textContent?.includes("بانتظار ضغط الطلبة"), null, { timeout: 12000 });
+  check("a new slide starts a fresh pulse with an informative empty state",
+    !(await presenter.textContent("#pulse-line")).includes("3 من 6"));
 
   // ---- number witness (slide 2 prints 68%) ----
   await presenter.click("#director-start");
