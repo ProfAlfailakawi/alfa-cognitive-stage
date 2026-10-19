@@ -233,7 +233,7 @@ export function evaluateScenarioFormula(expression, unit = "") {
       typeof unit !== "string" || unit.length > 30 || /[<>]/.test(unit))
     throw Error("الصيغة أو الوحدة غير صالحة");
   const input = expression.replace(/\s+/g, "");
-  if (!/^[0-9.+\-*/()%]+$/.test(input)) throw Error("الصيغة تدعم الأرقام والأقواس والعمليات فقط");
+  if (!/^[0-9.+\-*\/()%]+$/.test(input)) throw Error("الصيغة تدعم الأرقام والأقواس والعمليات فقط");
   let at = 0, operations = 0;
   const bound = (v) => {
     if (!Number.isFinite(v) || Math.abs(v) > 1e12) throw Error("ناتج خارج الحدود المسموحة");
