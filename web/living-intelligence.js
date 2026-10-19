@@ -134,7 +134,10 @@ export function validateScenario(input) {
     explanation: clip(o?.explanation, 350), reference: clip(o?.reference, 180) }));
   if (choices.some((o) => !o.text || !o.result || !o.explanation)) throw Error("اكتب نتائج وتفسيرات كل الخيارات صراحة");
   if (new Set(choices.map((o) => plain(o.text))).size !== choices.length) throw Error("الخيارات مكررة");
-  return { version: 1, type, title, question, options: choices, createdBy: "lecturer" };
+  const slide = input?.slide == null ? null : Number(input.slide);
+  if (slide !== null && (!Number.isSafeInteger(slide) || slide < 1 || slide > 10000))
+    throw Error("مرجع الشريحة غير صالح");
+  return { version: 1, type, title, question, slide, options: choices, createdBy: "lecturer" };
 }
 export function calculateScenario({ operation, a, b, unitA = "", unitB = "" }) {
   if (!["sum", "difference", "ratio", "percent"].includes(operation) ||
