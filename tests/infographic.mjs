@@ -18,6 +18,11 @@ ok("an unknown theme falls back to the default, a known one is kept", !renderInf
 ok("stat card shows the label as typed", stat.includes("من المشاركين استفادوا"));
 ok("stat card has no invented source text", !/دراسة|باحث|سنة|عينة/.test(stat.replace("الألعاب التعليمية", "")));
 
+// Regression: the long Arabic caption was drawn partly below the 540px SVG.
+const statLong = renderInfographic({ type: "stat", title: "إحصائية", lines: ["20%", "من الناس ما يستخدم الاصطناعي ولا الذكاء"] });
+ok("stat ring moved above the long caption's safe zone", statLong.includes('cy="283" r="112"') && statLong.includes('x="480" y="'));
+const barLong = renderInfographic({ type: "bars", title: "مقارنة النسب", lines: ["خسرت Netflix من X | 20%", "ربحت Amazon | 60%"] });
+ok("mixed Arabic/English comparison labels stay away from right edge", barLong.includes('x="790"') && barLong.includes("خسرت Netflix") && barLong.includes('x="288"'));
 const cmp = renderInfographic({ type: "compare", title: "فرق", lines: ["هدف تعليمي | هدف ترفيهي", "تغذية راجعة | تغذية مختلفة"] });
 ok("compare renders both columns", cmp.includes("هدف تعليمي") && cmp.includes("هدف ترفيهي"));
 
