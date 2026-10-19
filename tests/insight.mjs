@@ -143,6 +143,12 @@ try {
   const review = buildReview(report, { title: "مقدمة", slides: [{ index: 1, title: "البداية" }] });
   assert.deepEqual(review.items.map((i) => i.slide), [1, 3], "duplicates and empty scenes are dropped, slides in order");
   assert.equal(review.items[0].heading, "البداية", "an untitled scene borrows the lecture's own slide title");
+  const visitedOnly = buildReview({ slides: [{ index: 2, ms: 30000 }], scenes: { list: [] } }, {
+    title: "درس", slides: [{ index: 1, title: "غير معروضة", text: "سر خاص" },
+      { index: 2, title: "التعلم النشط", text: "التعلم النشط\nمشاركة الطلبة\nتطبيق عملي", notes: "ملاحظة محاضر خاصة" }] });
+  assert.deepEqual(visitedOnly.items.map((item) => item.slide), [2], "only presented slides enter the review");
+  assert.ok(visitedOnly.items[0].lines.includes("مشاركة الطلبة"), "the slide's actual words are reviewable");
+  assert.ok(!JSON.stringify(visitedOnly).includes("ملاحظة محاضر خاصة") && !JSON.stringify(visitedOnly).includes("سر خاص"), "no private notes or unseen slide contents");
   assert.ok(reviewToMarkdown(review).includes("68% راضون"));
   assert.ok(!JSON.stringify(review).includes("<"));
 
