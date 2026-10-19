@@ -107,9 +107,10 @@ function paintLivingLinks(layer, value) {
 export function renderCognitiveProjection(stage, value) {
   if (!stage) return;
   const prior = stage.querySelector(".cognitive-projection");
-  if (!value) { prior?.remove(); return; }
+  if (!value) { prior?._alfaResize?.disconnect(); prior?.remove(); return; }
   if (!validCognitivePacket(value, { bundle: value.bundle, index: value.slide, step: value.step })) return;
   if (value.kind === "xray") {
+    prior?._alfaResize?.disconnect();
     prior?.remove();
     const overlay = make("div", "", "info-layer cognitive-projection cognitive-xray");
     overlay.dataset.kind = "xray";
@@ -119,6 +120,7 @@ export function renderCognitiveProjection(stage, value) {
   }
   let layer = prior;
   if (!layer || layer.dataset.kind !== value.kind) {
+    layer?._alfaResize?.disconnect();
     layer?.remove();
     layer = make("section", "", "info-layer cognitive-projection cognitive-card-stage");
     layer.dataset.kind = value.kind;
@@ -469,9 +471,43 @@ export function mountLivingIntelligence(mount, context) {
   for (const [v, t] of [["concept","سيناريو مفاهيمي"],["numeric","سيناريو حسابي حتمي"]]) {
     const o = make("option", t); o.value = v; kind.append(o);
   }
-  whatif.append(kind, make("p", "كل سطر: الخيار | نتيجته التي كتبتها | تفسيرك | مرجع اختياري. سطران أو ثلاثة.", "meta"));
-  const choices = appendInput(whatif, "الخيار | النتيجة | التفسير | المرجع", 1800, true);
-  choices.rows = 4;
+  whatif.append(kind, make("p", "اكتب الخيارات ونتائجها وتفسيراتها في حقول مستقلة؛ لا تظهر النتائج للطلاب قبل موافقتك.", "meta"));
+  const editor=make("div","","cognitive-scenario-editor");whatif.append(editor);
+  const rows=[];
+  function appendChoice(initial={}) {
+    if (rows.length>=3) {say("الحد ثلاثة مسارات.");return;}
+    const group=make("fieldset","","cognitive-choice-editor");
+    const legend=make("legend","المسار "+(rows.length+1));group.append(legend);
+    const fields=[
+      appendInput(group,"الخيار",140),
+      appendInput(group,"النتيجة المعتمدة",320,true),
+      appendInput(group,"التفسير التعليمي",350,true),
+      appendInput(group,"المرجع (اختياري)",180)];
+    const values=[initial.text,initial.result,initial.explanation,initial.reference];
+    fields.forEach((field,i)=>{
+      field.value=values[i]||"";
+      field.setAttribute("aria-label",["الخيار","النتيجة","التفسير","المرجع"][i]+" للمسار "+(rows.length+1));
+    });
+    btn(group,"حذف المسار",()=>{
+      if(rows.length<=2){say("يلزم مساران على الأقل.");return;}
+      group.remove();
+      rows.splice(rows.findIndex((row)=>row.group===group),1);
+      rows.forEach((row,i)=>{row.group.querySelector("legend").textContent="المسار "+(i+1);});
+    });
+    rows.push({group,fields});editor.append(group);
+  }
+  function populateChoices(options) {
+    editor.replaceChildren();rows.length=0;
+    for(const choice of options)appendChoice(choice);
+    while(rows.length<2)appendChoice();
+  }
+  function readChoices() {
+    return rows.map((r)=>({text:r.fields[0].value.trim(),
+      result:r.fields[1].value.trim(),explanation:r.fields[2].value.trim(),
+      reference:r.fields[3].value.trim()}));
+  }
+  populateChoices([{},{}]);
+  btn(whatif,"أضف مسارًا ثالثًا",()=>appendChoice());
   const storedList = make("select"); storedList.setAttribute("aria-label","سيناريو محفوظ"); whatif.append(storedList);
   function refreshScenarioList() {
     storedList.replaceChildren();
@@ -483,7 +519,7 @@ export function mountLivingIntelligence(mount, context) {
     const s = scenarios[Number(storedList.value)];
     if (!s) return;
     currentScenario = s; title.value = s.title; question.value = s.question; kind.value = s.type;
-    choices.value = s.options.map((o) => [o.text, o.result, o.explanation, o.reference].join(" | ")).join("\n");
+    populateChoices(s.options);
   };
   refreshScenarioList();
   const scenarioActions = make("div", "", "cognitive-actions"); whatif.append(scenarioActions);
@@ -491,10 +527,7 @@ export function mountLivingIntelligence(mount, context) {
     try {
       const s = validateScenario({ title: title.value, question: question.value, type: kind.value,
         slide: context.getSlide(),
-        options: choices.value.split("\n").filter(Boolean).map((line) => {
-          const [text, result, explanation, reference] = line.split("|").map((v) => v.trim());
-          return { text, result, explanation, reference };
-        }) });
+        options: readChoices() });
       currentScenario = s;
       scenarios = scenarios.filter((x) => x.title !== s.title).concat(s).slice(-30);
       if (!storeScenarios(bundle, scenarios)) throw Error("تعذّر الحفظ المحلي");
@@ -617,13 +650,35 @@ export function mountLivingIntelligence(mount, context) {
         xrayMessage.textContent = "تطابق دلالي محلي محتمل مع عنصر الشريحة: " + shape.text.slice(0, 100) +
           ". راجع العنصر واختره يدوياً؛ لم يُفعّل X-Ray تلقائياً.";
       }
-      const phrase = String(raw).trim().slice(0, 300);
-      if (phrase.length < 12) return;
-      // Voice can suggest but never approve, modify a slide or activate a scenario.
-      suggestion = { text: phrase, original: String(raw).slice(0, 1200) };
-      text.value = phrase;
-      proposalLine.textContent = "اقتراح من الكلام المعترف به — راجع الدقة ثم اضغط أضف للمشهد.";
-      // A voice reference does not trigger a library search without lecturer action.
+      const cue=cognitiveSpeechCue(raw);
+      if (!cue) return; // The director stays silent for ordinary narration.
+      if (cue.kind === "bridge") {
+        bridgeInput.value=cue.query;
+        const stamp=++referenceStamp;
+        say("إشارة واضحة لمحاضرة سابقة — أتحقق محلياً للمحاضر فقط.");
+        void (async()=>{
+          try {
+            const entries=await loadReferences();
+            if(stamp!==referenceStamp||!root.isConnected||context.videoPlaying())return;
+            const matches=findTimeBridge(cue.query,entries,bundle,{allCourses:true});
+            referenceResults=matches;results.replaceChildren();
+            for(const hit of matches){
+              const item=make("div","","cognitive-reference");
+              item.append(make("strong",hit.lecture+" — شريحة "+hit.slide),make("p",hit.excerpt));
+              btn(item,"اعرض التذكير",()=>safeProject({kind:"bridge",
+                title:"تذكّر من المحاضرة السابقة",lecture:hit.lecture,
+                fromSlide:hit.slide,excerpt:hit.excerpt}));
+              results.append(item);
+            }
+            say(matches.length?"وجدت "+matches.length+" مراجع محتملة — راجع قبل العرض.":
+              "لا يوجد مرجع مطابق بما يكفي. لم يُخترع شيء.");
+          }catch{if(stamp===referenceStamp)say("البحث غير متاح الآن؛ لا تغيير في العرض.");}
+        })();
+        return;
+      }
+      suggestion={text:cue.text,original:String(raw).slice(0,1200)};
+      text.value=cue.text;
+      proposalLine.textContent="اقتراح تعليمي صريح — راجع دقته واضغط أضف للمشهد.";
     },
     onSlideChange() {
       stopPicking?.();
