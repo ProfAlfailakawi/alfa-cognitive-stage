@@ -6,12 +6,13 @@ export function assessVisualDensity(spec) {
   const maxLine = Math.max(0, ...lines.map((s) => s.length));
   const total = lines.reduce((n, s) => n + s.length, title.length);
   const count = lines.length;
-  const dense = title.length > 65 || maxLine > 85 || total > 320 || (count >= 5 && maxLine > 50);
+  const crowded = (count >= 5 && maxLine > 50) || (count >= 6 && total > 240);
+  const dense = title.length > 65 || maxLine > 85 || total > 320 || crowded;
   const reasons = [
     ...(title.length > 65 ? ["long-title"] : []),
     ...(maxLine > 85 ? ["long-item"] : []),
     ...(total > 320 ? ["total-copy"] : []),
-    ...(count >= 5 && maxLine > 50 ? ["crowded-items"] : []),
+    ...(crowded ? ["crowded-items"] : []),
   ];
   return { dense, reasons, count, total, maxLine };
 }
