@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import { domainSceneGuidance, matchDomainTopic, topicPrompt } from "../web/domain-profile.js";
+import { createDirectorBrain } from "../web/director-brain.js";
+assert.equal(matchDomainTopic("نشرح نموذج ADDIE في التصميم التعليمي")?.id, "instructional-design");
+assert.match(matchDomainTopic("نشرح نموذج ADDIE في التصميم التعليمي")?.objective, /التحليل/);
+assert.equal(matchDomainTopic("الطالب يستخدم التكنولوجيا المساعدة")?.id, "inclusive-education");
+assert.equal(domainSceneGuidance("الواقع الافتراضي والواقع المعزز", "compare").preferred, true);
+assert.equal(domainSceneGuidance("التعلم الإلكتروني", "story").preferred, false);
+assert.match(topicPrompt("تكنولوجيا التعليم في الفصل"), /تكنولوجيا التعليم/);
+assert.equal(matchDomainTopic("نتكلم عن موضوع خارج التخصص"), null);
+const decision = createDirectorBrain().observe("نشرح مفهوم التصميم التعليمي", { slide: { index: 1, text: "التصميم التعليمي" } });
+assert.equal(decision.domain.id, "instructional-design");
+assert.equal(decision.action, "none", "a domain match alone never triggers a scene");
+console.log("domain profile: specialty topics, visual guidance and conservative matching passed");

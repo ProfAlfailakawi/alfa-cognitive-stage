@@ -25,7 +25,7 @@ C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
-BUNDLE_BUILD_VERSION = 2
+BUNDLE_BUILD_VERSION = 3
 
 
 
@@ -196,17 +196,18 @@ def video_targets(shape):
     extension as an embedded relationship. Prefer the embedded relationship
     in that case so these clips remain portable with the presentation.
     """
-    found = []
+    links = []
     for node in shape._element.iter(f"{{{A_NS}}}videoFile"):
         rid = node.get(f"{{{R_NS}}}link")
         if rid:
-            found.append((rid, True))
+            links.append((rid, True))
+    embedded = []
     for node in shape._element.iter():
         if node.tag.endswith("}media"):
             rid = node.get(f"{{{R_NS}}}embed")
             if rid:
-                found.append((rid, False))
-    return found
+                embedded.append((rid, False))
+    return embedded or links
 
 
 def unique_embedded_video_targets(shape, slide):
@@ -313,6 +314,8 @@ def render_slides(pptx: Path, out_dir: Path, width: int) -> tuple[int, str]:
     work = out_dir.parent / ".alfa-render"
     if work.exists():
         for child in work.iterdir():
+            if child.name == "deck.pptx":
+                continue
             if child.is_dir():
                 shutil.rmtree(child)
             else:
@@ -321,7 +324,12 @@ def render_slides(pptx: Path, out_dir: Path, width: int) -> tuple[int, str]:
     shutil.copy(pptx, work / "deck.pptx")
     pdf = work / "deck.pdf"
     rendered_with_powerpoint = False
-    powerpoint_available = sys.platform == "darwin" and Path("/Applications/Microsoft PowerPoint.app").exists()
+    # Native export is the fidelity path for a real Mac session. Tests and
+    # unattended processes can opt out so a blocked Office automation dialog
+    # never stalls the importer.
+    powerpoint_available = (sys.platform == "darwin" and
+                            os.environ.get("ALFA_NATIVE_POWERPOINT", "1") != "0" and
+                            Path("/Applications/Microsoft PowerPoint.app").exists())
     if powerpoint_available:
         # Use Microsoft's renderer when available to preserve Office fonts,
         # spacing, shapes and line wrapping. Work on the temporary copy above;
@@ -337,7 +345,7 @@ def render_slides(pptx: Path, out_dir: Path, width: int) -> tuple[int, str]:
 end run'''
         try:
             subprocess.run(["osascript", "-e", script, str(work / "deck.pptx"), str(pdf)],
-                           check=True, capture_output=True, timeout=35 * 60)
+                           check=True, capture_output=True, timeout=90)
             rendered_with_powerpoint = pdf.is_file() and pdf.stat().st_size > 0
         except (subprocess.SubprocessError, OSError):
             # Keep import available on Macs where PowerPoint is installed but
@@ -361,7 +369,9 @@ end run'''
     for index, page in enumerate(pages, start=1):
         shutil.move(str(page), slides_dir / f"{index:03d}.png")
     for child in work.iterdir():
-        if child.is_dir():
+        if child.name == "deck.pptx":
+            child.write_bytes(b"")
+        elif child.is_dir():
             shutil.rmtree(child)
         else:
             child.unlink()
@@ -411,7 +421,9 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
 
     video_cache = {}
     problems = []
-    if render_engine != "PowerPoint" and sys.platform == "darwin" and Path("/Applications/Microsoft PowerPoint.app").exists():
+    if (render_engine != "PowerPoint" and sys.platform == "darwin" and
+            os.environ.get("ALFA_NATIVE_POWERPOINT", "1") != "0" and
+            Path("/Applications/Microsoft PowerPoint.app").exists()):
         problems.append({"slide": 1, "problem": "تعذّر التصدير عبر PowerPoint؛ استُخدم LibreOffice كبديل"})
     slides = []
     for index, slide in enumerate(deck.slides, start=1):

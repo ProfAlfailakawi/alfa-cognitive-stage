@@ -87,7 +87,7 @@ class ManifestTests(unittest.TestCase):
             movie = slide.shapes.add_movie(
                 str(clip), Inches(1), Inches(1), Inches(3), Inches(2),
                 mime_type="video/mp4")
-            self.assertEqual(len(build_bundle.video_targets(movie)), 2)
+            self.assertEqual(len(build_bundle.video_targets(movie)), 1)
             targets = list(build_bundle.unique_embedded_video_targets(movie, slide))
             self.assertEqual(len(targets), 1)
             self.assertEqual(
