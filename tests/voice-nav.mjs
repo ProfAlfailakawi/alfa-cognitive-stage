@@ -24,6 +24,8 @@ for (const s of [
   "خلونا نتكلم عن الدافعية", "نرجع للعرض", "نرجع للي قبل", "نكمل درسنا", "", "   ", "السابقة الجاية التالية", "الشريحة",
 ]) assert.equal(interpretNav(s), null, `must not navigate: «${s}»`);
 assert.equal(interpretNav("الشريحة صفر"), null);
+for (const s of ["لا تروح للشريحة التالية", "لا تنتقل للشريحة خمسة", "مو الشريحة التالية"]) assert.equal(interpretNav(s), null, "negated navigation: " + s);
+assert.equal(parseNumber("000"), null, "zero is not a slide");
 assert.equal(interpretNav("الشريحة 0"), null);
 assert.equal(interpretNav("x".repeat(500)), null);
 assert.equal(interpretNav(null), null);
