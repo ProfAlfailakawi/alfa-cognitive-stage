@@ -299,3 +299,28 @@ export function suggestXrayFromSpeech(utterance, slide, step = 0) {
   });
   return hits.length === 1 ? hits[0] : null;
 }
+
+
+/**
+ * Conservative lecturer-only cues. A broad sentence is not a knowledge command.
+ * The return value is only a private suggestion and never authorizes projection.
+ */
+export function cognitiveSpeechCue(utterance) {
+  const raw = String(utterance || "").trim().slice(0, 1200);
+  if (raw.length < 12 || raw.split(/\s+/u).length < 3) return null;
+  const normalized = raw.replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/[ًٌٍَُِّْـ]/g, "");
+  const recall = /(?:تذكرون|تتذكرون|تذكروا|سبق\s+(?:ان|لنا)|مثل\s+ما\s+(?:شرحنا|اخذنا)|المحاضرة\s+السابقة|المحاضرات\s+السابقة)/u;
+  if (recall.test(normalized)) {
+    const query = raw
+      .replace(/^(?:.*?)(?:تذكرون|تتذكرون|تذكروا|سبق\s+(?:أن|ان)|مثل\s+ما\s+(?:شرحنا|أخذنا|اخذنا))\s*(?:لما|يوم|عندما|اللي|موضوع|مفهوم|عن|في|أن|ان|إن|احنا|إحنا|شرحنا|تكلمنا\s+عن)*\s*/u, "")
+      .replace(/\s+(?:في\s+)?المحاضر(?:ة|ات)\s+السابق(?:ة|ات)?[؟?.!\s]*$/u, "")
+      .replace(/[؟?.!،]+$/u, "").trim();
+    // Require a meaningful anchor; a vague "remember last time" must stay silent.
+    if (query.length >= 10 && query.split(/\s+/u).length >= 2) return { kind: "bridge", query };
+    return null;
+  }
+  if (/(?:^|\s)(?:الخلاصة|وباختصار|بمعنى|المقصود|النقطة\s+(?:الاساسية|الرئيسية|المهمة)|مثال\s+(?:علي|على|لهذا)|الفرق\s+بين)(?=\s|[:،])/u.test(normalized)) {
+    return { kind: "knowledge", text: raw.slice(0, 300) };
+  }
+  return null;
+}
