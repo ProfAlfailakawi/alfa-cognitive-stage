@@ -382,7 +382,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   font-size:clamp(12px,1.05vw,17px);line-height:1.45;
   margin:0;padding-top:.7%;color:#d4e6dd;
 }
-.cognitive-living-map {
+.cognitive-card-stage .cognitive-stage-body.cognitive-living-map {
   width:100%!important;align-self:stretch!important;
   display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
   grid-auto-rows:minmax(0,1fr);
