@@ -314,7 +314,7 @@ export function cognitiveSpeechCue(utterance) {
     const query = raw
       .replace(/^(?:.*?)(?:تذكرون|تتذكرون|تذكروا|سبق\s+(?:أن|ان)|مثل\s+ما\s+(?:شرحنا|أخذنا|اخذنا))\s*(?:لما|يوم|عندما|اللي|موضوع|مفهوم|عن|في|أن|ان|إن|احنا|إحنا|شرحنا|تكلمنا\s+عن)*\s*/u, "")
       .replace(/\s+(?:في\s+)?المحاضر(?:ة|ات)\s+السابق(?:ة|ات)?[؟?.!\s]*$/u, "")
-      .replace(/[؟?.!،]+$/u, "").trim();
+      .replace(/[؟?.!،]+$/u, "").trim().replace(/^(?:في\s+)?المحاضرة\s+السابقة$/u, "").trim();
     // Require a meaningful anchor; a vague "remember last time" must stay silent.
     if (query.length >= 10 && query.split(/\s+/u).length >= 2) return { kind: "bridge", query };
     return null;
