@@ -206,6 +206,67 @@ try {
   await presenter.locator("#home").click();
   await audience.evaluate(()=>document.querySelector(".cognitive-projection")?.remove());
 
+  // Projector premiere: visual fidelity is checked in real Chromium at room-size viewports.
+  const room=await context.newPage();
+  room.on("pageerror",(e)=>failures.push("room pageerror: "+e.message));
+  await room.goto(base+"/?bundle="+bundle+"#audience");
+  await room.waitForSelector("#stage");
+  const longPhrase="الألعاب التعليمية تعزز الدافعية لدى الطلاب وتدعم المناقشة العملية من خلال أمثلة معتمدة. ";
+  await room.evaluate(async (arg)=>{
+    const {renderCognitiveProjection}=await import("/living-intelligence-ui.js");
+    const {roomKnowledgePages}=await import("/cognitive-readability.js");
+    const graph={nodes:[
+      {id:"n1",type:"topic",text:"الألعاب التعليمية"},
+      {id:"n2",type:"concept",text:arg.phrase.repeat(3).trim()}
+    ],edges:[{from:"n2",to:"n1",relation:"related"}]};
+    const pages=roomKnowledgePages(graph);
+    window.__roomPageCount=pages.length;
+    const first=pages[0];
+    renderCognitiveProjection(document.getElementById("stage"),{
+      kind:"living",title:"خريطة المعرفة",bundle:arg.bundle,slide:1,step:0,
+      page:0,pages:pages.length,nodes:first.nodes,edges:first.edges
+    });
+  },{bundle,phrase:longPhrase});
+  check("long original text is paginated rather than silently cut",
+    await room.evaluate(()=>window.__roomPageCount)>1);
+  for(const [width,height] of [[1920,1080],[1366,768],[1280,720],[1024,768]]){
+    await room.setViewportSize({width,height});
+    await room.waitForTimeout(190);
+    const quality=await room.evaluate(()=>{
+      const layer=document.querySelector(".cognitive-card-stage");
+      const nodes=[...layer.querySelectorAll(".cognitive-node p")];
+      const fonts=nodes.map((n)=>parseFloat(getComputedStyle(n).fontSize));
+      const clipped=nodes.some((n)=>n.scrollHeight>n.clientHeight+2||n.scrollWidth>n.clientWidth+2);
+      return {fit:layer.dataset.roomFit,clipped,fonts,
+        screen:{w:document.documentElement.scrollWidth,h:document.documentElement.scrollHeight}};
+    });
+    check("projector legibility "+width+"x"+height,
+      quality.fit==="ok"&&!quality.clipped&&quality.fonts.every((x)=>x>=19),
+      JSON.stringify(quality));
+    if(shots)await room.locator("#stage").screenshot({path:join(shots,"premiere-living-"+width+".png")});
+  }
+  await room.evaluate(async (bundleId)=>{
+    const {renderCognitiveProjection}=await import("/living-intelligence-ui.js");
+    renderCognitiveProjection(document.getElementById("stage"),{
+      kind:"whatif",title:"قرار النشاط",question:"كيف نختار طريقة التعلم في هذا الموقف؟",
+      bundle:bundleId,slide:1,step:0,
+      options:["نشاط تعاوني","نشاط فردي"],revealed:true,chosen:0,
+      result:("وصف النتيجة المعتمدة: تطبيق نشاط تعاوني وفق السيناريو الذي كتبه المحاضر. ").repeat(7),
+      resultPart:0
+    });
+  },bundle);
+  await room.setViewportSize({width:1366,height:768});
+  await room.waitForTimeout(170);
+  check("authored long outcomes are shown as legible sequenced excerpts",
+    await room.locator(".cognitive-outcome small").innerText().then((s)=>s.includes("جزء 1 من")));
+  const size=await room.locator(".cognitive-revealed-result").evaluate((node)=>({
+    clipped:node.scrollHeight>node.clientHeight+2,font:parseFloat(getComputedStyle(node).fontSize)
+  }));
+  check("premiere outcome remains legible at standard projector resolution",
+    !size.clipped && size.font>=21,JSON.stringify(size));
+  if(shots)await room.locator("#stage").screenshot({path:join(shots,"premiere-decision.png")});
+  await room.close();
+
   // Browser download keeps approved lecturer data private; importing it requires
   // explicit confirmation, validates bundle ID, and never projects automatically.
   check("private backup import picker is hidden until explicitly invoked",
