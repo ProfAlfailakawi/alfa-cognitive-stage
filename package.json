@@ -20,7 +20,7 @@
     "test:security": "node tests/security.mjs && node tests/remote-surface.mjs && node tests/hardening.mjs",
     "test:readiness": "node tests/readiness.mjs",
     "test:poll-analytics": "node tests/poll-analytics.mjs",
-    "test:speech": "node tests/speech.mjs && node tests/latency.mjs && node tests/voice-nav.mjs",
+    "test:speech": "node tests/speech.mjs && node tests/latency.mjs && node tests/voice-nav.mjs && node tests/voice-natural.mjs,
     "test:media-preflight": "node tests/media-preflight.mjs && npm run test:video-sync",
     "test:preferences": "node tests/director-preferences.mjs",
     "test:video-sync": "node tests/video-sync.mjs",

@@ -20,7 +20,8 @@ import { clockState, PLANNED_CHOICES } from "./lecture-clock.js";
 import { runRehearsal } from "./rehearsal.js";
 import { mountInsight } from "./insight-ui.js";
 import { mountFieldTools } from "./field-ui.js";
-import { interpretNav, interpretPoll } from "./voice-nav.js";
+import { interpretPoll } from "./voice-nav.js";
+import { interpretNaturalNav, interpretStageReturn } from "./voice-intent.js";
 import { THEMES } from "./scene-theme.js";
 import { styleScene } from "./scene-stylist.js";
 import { createFieldRecorder } from "./field-recorder.js";
@@ -309,7 +310,8 @@ function renderPresenter() {
           <button id="prev" aria-label="الشريحة السابقة">السابقة</button>
           <button class="primary" id="next" aria-label="الشريحة التالية">التالية</button>
           <button id="playvid">تشغيل الفيديو</button>
-          <button class="emergency" id="home" aria-label="عودة فورية إلى العرض الأصلي">عودة فورية (E)</button>
+          <button class="emergency" id="home" aria-label="إغلاق المشهد والعودة للشريحة الأصلية">↩ ارجع للشريحة الأصلية (E)</button>
+          <button class="direct-slide" id="next-slide" aria-label="انتقل للشريحة التالية دون بقية حركات الشريحة">انتقل للشريحة اللي بعدها ↶</button>
           <button id="open-audience">فتح نافذة الطلبة</button>
           <button id="open-vote">التصويت</button>
           ${DEV ? '<button id="toggle-info">إنفوجرافيك</button>' : ""}
@@ -370,7 +372,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
             <option value="safe">محافظ — موافقتك على كل مشهد</option>
             <option value="creative">إبداعي — القصص المؤكدة تلقائياً</option>
           </select>
-          <label class="director-cloud"><input type="checkbox" id="director-nav" checked /> التنقل بالصوت («الشريحة التالية»، «السابقة»، «روح للشريحة خمسة»)</label>
+          <label class="director-cloud"><input type="checkbox" id="director-nav" checked /> التنقل بالكلام الطبيعي («نرجع للشريحة الأصلية»، «خلونا نروح للشريحة اللي بعدها»، «السابقة»)</label>
           <label class="director-cloud">ألوان المشاهد <select id="scene-theme" aria-label="ألوان المشاهد"><option value="auto">ذكي — عوالم متنوعة حسب كلامك (فاتح، موصى به)</option><option value="auto-all">ذكي — فاتح وداكن</option>${Object.entries(THEMES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}</select></label>
           <button type="button" id="nav-undo" hidden>تراجع عن آخر انتقال صوتي</button>
           ${DEV ? '<input id="director-admin-token" type="password" autocomplete="off" placeholder="رمز المحاضر" />' : ""}
@@ -403,6 +405,10 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
   setAspect(state.aspect);
   document.getElementById("prev").onclick = () => retreat();
   document.getElementById("next").onclick = () => advance();
+  document.getElementById("next-slide").onclick = () => {
+    if (state.index < state.count) { go(state.index + 1); setDirectorStatus("الشريحة التالية مباشرة دون بقية حركات الشريحة السابقة."); }
+    else { goMain(); setDirectorStatus("أنت في آخر شريحة."); }
+  };
   document.getElementById("home").onclick = () => goMain();
   document.getElementById("playvid").onclick = () => toggleVideo();
   document.getElementById("open-vote").onclick = () => {
@@ -643,7 +649,7 @@ const sceneMode = () => {
   const chosen = box?.value || (() => { try { return localStorage.getItem("alfa-scene-theme"); } catch { return null; } })();
   return chosen === "auto" || chosen === "auto-all" || Object.hasOwn(THEMES, chosen) ? chosen : "auto";
 };
-const styledScene = (spec) => styleScene(spec, { mode: sceneMode() });
+const styledScene = (spec, sourceSpeech = "") => styleScene(spec, { mode: sceneMode(), sourceSpeech });
 function setupSceneTheme() {
   const box = document.getElementById("scene-theme");
   if (!box) return;
@@ -748,6 +754,7 @@ function restoreStageState(snapshot) {
 function goMain() {
   // Emergency/return: back to the exact lecture state captured when the digression began.
   noteQuickHide();
+  clearDirectorProposal();
   const original = returnStack.home();
   if (original) { sessionLog.digression("return"); restoreStageState(original); return; }
   // No digression recorded: stop clips, hide scenes, stay on the current slide and click state.
@@ -852,7 +859,7 @@ function revealDirectorScene(proposal, source = "approved") {
       Date.now() - proposal.at > 30000 || videoEls.some((el) => !el.paused)) return false;
   try {
     beginDigression();
-    proposal.spec = styledScene(proposal.spec);
+    proposal.spec = styledScene(proposal.spec, proposal.utterance || "");
     renderLayer(proposal.spec);
     currentOverlay = proposal.spec;
     sessionLog.scene({ slide: state.index, type: proposal.spec.type, title: proposal.spec.title, lines: proposal.spec.lines, source });
@@ -906,8 +913,9 @@ function refreshTasteLine() {
     : "لا تفضيلات متعلمة بعد؛ الرفض المنفرد لا يغيّر السلوك.";
 }
 // All interpretation lives in director-brain.js; this function only applies its decision.
-// Spoken navigation: whole-utterance imperatives only (see voice-nav.js), never while a video plays,
-// at most once per command per 2 s, and always undoable.
+// Only clear, speaker-directed natural slide requests navigate; lectures ABOUT slides never do.
+ // The microphone service may be unavailable: the two visible controls remain authoritative.
+ // A short guard suppresses duplicate recognition callbacks but allows consecutive real requests.
 const voiceNav = { last: null, undoTimer: null };
 function navEnabled() {
   const box = document.getElementById("director-nav");
@@ -923,11 +931,16 @@ function handleVoicePoll(command) {
 function handleVoiceNav(command) {
   if (videoEls.some((el) => !el.paused)) { setDirectorStatus("الفيديو يعمل؛ لم أنفّذ أمر التنقل الصوتي."); return; }
   const key = command.kind + ":" + (command.index ?? "");
-  if (voiceNav.last && voiceNav.last.key === key && Date.now() - voiceNav.last.at < 2000) return;
+  if (voiceNav.last && voiceNav.last.key === key && Date.now() - voiceNav.last.at < 700) return;
   voiceNav.last = { key, at: Date.now() };
   const before = { index: state.index, step: state.step };
-  if (command.kind === "next") advance();
-  else if (command.kind === "prev") retreat();
+  if (command.kind === "next") {
+    if (command.skipBuilds && state.index < state.count) go(state.index + 1);
+    else advance();
+  } else if (command.kind === "prev") {
+    if (command.skipBuilds && state.index > 1) go(state.index - 1);
+    else retreat();
+  }
   else if (command.kind === "first") go(1);
   else if (command.kind === "last") go(state.count);
   else if (command.index > state.count) { setDirectorStatus(`الشريحة ${command.index} غير موجودة؛ عدد الشرائح ${state.count}.`); return; }
@@ -946,13 +959,27 @@ function handleVoiceNav(command) {
 function receiveDirectorSpeech(text, meta = {}) {
   const raw = String(text || "").trim();
   if (!raw) return;
-  const navCommand = navEnabled() ? interpretNav(raw) : null;
+  const last = document.getElementById("director-last");
+  if (last) last.textContent = "سمعت: " + raw.slice(0, 160);
+  const navCommand = navEnabled() ? interpretNaturalNav(raw) : null;
   if (navCommand) { handleVoiceNav(navCommand); return; }
   const pollCommand = interpretPoll(raw); // independent of the slide-navigation toggle
   if (pollCommand) { handleVoicePoll(pollCommand); return; }
-  // A return command already executed from a stable interim transcript must not run twice.
+  const returnKind = interpretStageReturn(raw);
   const early = directorRuntime.interimReturn;
-  if (early && Date.now() - early.at < 5000 && brain.peekReturn(raw)) { directorRuntime.interimReturn = null; return; }
+  directorRuntime.interimReturn = null;
+  if (early && Date.now() - early.at < 5000 && returnKind === early.kind) return;
+  if (returnKind) {
+    clearDirectorProposal();
+    if (returnStack.active() || directorRuntime.activeOverlay) {
+      if (returnKind === "return-level") backOneLevel(); else goMain();
+      setDirectorStatus(returnKind === "return-level" ? "رجعت خطوة من الاستطراد." : "رجعنا لشريحتك الأصلية، بنفس الحركة وموضع الفيديو.");
+    } else {
+      goMain();
+      setDirectorStatus("أنت على الشريحة الأصلية. للانتقال قل «الشريحة اللي بعدها» أو اضغط زر الانتقال.");
+    }
+    return;
+  }
   const finalAt = Number.isFinite(meta.finalAt) ? meta.finalAt : Date.now();
   const timed = (kind) => {
     const decidedAt = Date.now();
@@ -961,8 +988,6 @@ function receiveDirectorSpeech(text, meta = {}) {
       recorder?.latency({ kind, totalMs: Date.now() - (Number.isFinite(meta.firstInterimAt) ? meta.firstInterimAt : finalAt), engine: meta.engine });
     });
   };
-  const last = document.getElementById("director-last");
-  if (last) last.textContent = "سمعت: " + raw.slice(0, 160);
   const context = directorContext();
   const decision = brain.observe(raw, context);
   const heardId = recorder?.recording() ? recorder.utterance({ text: raw, slide: state.index, engine: meta.engine }) : null;
@@ -978,12 +1003,8 @@ function receiveDirectorSpeech(text, meta = {}) {
     setDirectorStatus("عدتَ إلى موضوع سابق: " + decision.topic.returnedTo);
   }
   if (decision.action === "return" || decision.action === "return-level") {
-    clearDirectorProposal();
-    if (directorRuntime.activeOverlay || returnStack.active()) {
-      if (decision.action === "return-level") backOneLevel(); else goMain();
-    }
-    setDirectorStatus(decision.action === "return-level"
-      ? "رجعنا خطوة واحدة في الاستطراد." : "تم فهم العودة إلى الموضوع الأصلي.");
+    // A narrative ("لو نرجع للعصر الحجري") is NOT a request to change the projector.
+    // Actual return commands are handled above through interpretStageReturn.
     return;
   }
   const rejected = wasProposalRejected({ bundle: state.bundle, slide: state.index, utterance: raw });
@@ -1060,9 +1081,9 @@ function setupDirector() {
     onDiagnostics: (health) => { lastVoiceHealth = health; renderVoiceHealth(); },
     onStableInterim: (transcript) => {
       // Only reversible navigation commands may act before the final transcript arrives.
-      const kind = brain.peekReturn(transcript);
+      const kind = interpretStageReturn(transcript);
       if (!kind || !(directorRuntime.activeOverlay || returnStack.active())) return;
-      directorRuntime.interimReturn = { at: Date.now() };
+      directorRuntime.interimReturn = { at: Date.now(), kind };
       clearDirectorProposal();
       if (kind === "return-level") backOneLevel(); else goMain();
       setDirectorStatus("فُهمت العودة من المعاينة المستقرة قبل اكتمال الجملة.");
