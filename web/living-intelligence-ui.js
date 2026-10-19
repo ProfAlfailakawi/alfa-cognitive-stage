@@ -1,7 +1,8 @@
 // Presenter-only contextual tools for ALFA Living Intelligence.
 // No private notes, sources or unapproved options are broadcast to audience windows.
 import { sourceRecord, createKnowledgeGraph, appendKnowledge, loadKnowledge, saveKnowledge, clearKnowledge,
-  audienceGraph, eligibleShape, xrayProjection, findTimeBridge, validateScenario, calculateScenario, canEnterStage } from "./living-intelligence.js";
+  audienceGraph, eligibleShape, xrayProjection, findTimeBridge, validateScenario, calculateScenario, canEnterStage,
+  exportLivingArchive, importLivingArchive, evaluateScenarioFormula, suggestXrayFromSpeech } from "./living-intelligence.js";
 const make = (tag, text = "", className = "") => {
   const el = document.createElement(tag);
   if (text) el.textContent = text;
@@ -200,6 +201,42 @@ export function mountLivingIntelligence(mount, context) {
   });
   living.append(graphSummary);
   summaryGraph();
+  living.append(make("p", "النسخة الخاصة تحتوي عبارات ومصادر المحاضر؛ احتفظ بها في مكان آمن. الاستيراد يستبدل بيانات هذه المحاضرة فقط، ولا ينشر شيئاً للطلبة.", "meta"));
+  btn(actions, "صدّر نسخة خاصة", () => {
+    try {
+      const archive = exportLivingArchive(bundle, graph, scenarios);
+      const url = URL.createObjectURL(new Blob([archive], {type:"application/json;charset=utf-8"}));
+      const download = make("a"); download.href = url;
+      download.download = "alfa-living-" + bundle + ".json";
+      document.body.append(download); download.click(); download.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      say("تم إعداد نسخة خاصة لهذه المحاضرة؛ لا تشاركها مع الطلبة.");
+    } catch (error) { say(error.message); }
+  });
+  const importFile = make("input");
+  importFile.type = "file"; importFile.accept = ".json,application/json";
+  importFile.hidden = true; importFile.setAttribute("aria-label", "استيراد نسخة المسرح المعرفي");
+  living.append(importFile);
+  btn(actions, "استورد نسخة خاصة", () => { importFile.value = ""; importFile.click(); });
+  importFile.onchange = async () => {
+    const file = importFile.files?.[0]; if (!file) return;
+    try {
+      if (file.size > 400000) throw Error("حجم الملف أكبر من الحد المسموح");
+      const archive = importLivingArchive(await file.text(), bundle);
+      if (!confirm("استبدال الشبكة والسيناريوهات المحفوظة لهذه المحاضرة بالنسخة المحددة؟")) return;
+      const oldGraph = graph, oldScenarios = scenarios;
+      if (!saveKnowledge(archive.graph)) throw Error("تعذّر حفظ الشبكة محلياً");
+      if (!storeScenarios(bundle, archive.scenarios)) {
+        saveKnowledge(oldGraph); storeScenarios(bundle, oldScenarios);
+        throw Error("تعذّر حفظ السيناريوهات؛ استُعيدت البيانات السابقة");
+      }
+      graph = archive.graph; scenarios = archive.scenarios;
+      currentScenario = null; lastRevealedBranch = null; graphPage = 0;
+      summaryGraph(); refreshScenarioList(); refreshBranch();
+      context.hide();
+      say("استُعيدت الشبكة والسيناريوهات محلياً بعد التحقق، دون عرض أي محتوى للطلبة.");
+    } catch (error) { say(error.message); }
+  };
 
   const xray = section("02 · X-Ray داخل الشريحة");
   const xrayMessage = make("p", "", "meta"), shapeList = make("div", "", "cognitive-shapes");
@@ -275,7 +312,9 @@ export function mountLivingIntelligence(mount, context) {
     const current = snapshot.lectures.find((l) => l.bundle === bundle);
     const lectures = snapshot.lectures.filter((l) => l.bundle !== bundle &&
       (acrossBox.checked || (current?.courseId && l.courseId === current.courseId))).slice(0, 40);
-    const version = JSON.stringify(lectures.map((l) => [l.bundle, l.courseId, l.slideCount, l.title, l.builtAt]));
+    const localGraphs = new Map(lectures.map((l) => [l.bundle, loadKnowledge(l.bundle)]));
+    const version = JSON.stringify(lectures.map((l) => [l.bundle, l.courseId, l.slideCount,
+      l.title, l.builtAt, localGraphs.get(l.bundle)?.revision || 0]));
     if (referenceVersion === version) return [...referenceCache.values()].flat();
     referenceVersion = version; referenceCache = new Map();
     // Only manifests already stored on the lecturer's machine, never a remote service.
@@ -284,10 +323,25 @@ export function mountLivingIntelligence(mount, context) {
       if (!response.ok) continue;
       const manifest = await response.json();
       referenceCache.set(lecture.bundle, (manifest.slides || []).slice(0, 300).flatMap((s, i) => {
-        const texts = [s.text, s.notes].map((v) => String(v || "").trim()).filter(Boolean);
-        return texts.map((passage) => ({ bundle: lecture.bundle, lecture: lecture.title,
-          courseId: lecture.courseId, slide: i + 1, text: passage.slice(0, 2400) }));
+        const texts = [["slide", s.text], ["notes", s.notes]]
+          .map(([sourceKind, value]) => [sourceKind, String(value || "").trim()])
+          .filter(([, value]) => Boolean(value));
+        return texts.map(([sourceKind, passage]) => ({ bundle: lecture.bundle,
+          lecture: lecture.title, courseId: lecture.courseId, slide: i + 1,
+          text: passage.slice(0, 2400), sourceKind }));
       }));
+      // Only explicit approved knowledge from the same locally stored lecture is searchable.
+      // This does not send private provenance to the audience.
+      const approved = localGraphs.get(lecture.bundle);
+      const rows = referenceCache.get(lecture.bundle) || [];
+      for (const node of (approved?.nodes || [])) {
+        if (rows.length >= 650) break;
+        if (node.status !== "approved" || !node.source?.approved ||
+            node.source.bundle !== lecture.bundle || !node.text || !Number.isInteger(node.slide)) continue;
+        rows.push({bundle:lecture.bundle, lecture:lecture.title, courseId:lecture.courseId,
+          slide:node.slide, text:node.text, sourceKind:"approved-scene"});
+      }
+      referenceCache.set(lecture.bundle, rows);
     }
     // The existing, lecturer-authenticated memory store contains real previously approved scenes.
     // Its records are not sent to students; only a chosen short literal excerpt can be projected.
@@ -304,7 +358,7 @@ export function mountLivingIntelligence(mount, context) {
           const entries = referenceCache.get(item.bundle) || [];
           if (entries.length >= 650) continue;
           entries.push({ bundle: item.bundle, lecture: lecture.title, courseId: lecture.courseId,
-            slide: item.slide, text: passage.slice(0, 2400) });
+            slide: item.slide, text: passage.slice(0, 2400), sourceKind:"approved-scene" });
           referenceCache.set(item.bundle, entries);
         }
       }
@@ -322,8 +376,10 @@ export function mountLivingIntelligence(mount, context) {
       if (!matches.length) { say("لا يوجد تطابق موثوق؛ لن يُخترع مرجع."); return; }
       for (const hit of matches) {
         const item = make("div", "", "cognitive-reference");
+        const origin = {"slide":"من نص الشريحة", "notes":"من ملاحظات المحاضر",
+          "approved-scene":"من معرفة أو مشهد اعتُمد سابقاً"}[hit.sourceKind] || "مرجع محلي";
         item.append(make("strong", hit.lecture + " — شريحة " + hit.slide),
-          make("p", hit.excerpt), make("p", hit.reason, "meta"));
+          make("p", hit.excerpt), make("p", origin + " · " + hit.reason, "meta"));
         btn(item, "اعرض التذكير", () => safeProject({ kind:"bridge", title:"تذكّر من المحاضرة السابقة",
           lecture: hit.lecture, fromSlide: hit.slide, excerpt: hit.excerpt }));
         btn(item, "افتح الشريحة الأصلية في نافذة مستقلة", () =>
@@ -439,6 +495,15 @@ export function mountLivingIntelligence(mount, context) {
       say("نتيجة الحساب: " + output.result + (output.unit ? " " + output.unit : "") + " — عملية " + output.formula);
     } catch (e) { say(e.message); }
   });
+  calculator.append(make("p", "صيغة حسابية اختيارية: أرقام وأقواس و + − × ÷ و %. مثال: 120*(1+15%). النسب المئوية تتحول إلى كسور؛ الوحدة النهائية يحددها المحاضر. لا توجد تنبؤات سببية.", "meta"));
+  const formulaInput = appendInput(calculator, "120*(1+15%)", 140);
+  btn(calculator, "قيّم الصيغة", () => {
+    try {
+      const output = evaluateScenarioFormula(formulaInput.value, units.value);
+      say("نتيجة الصيغة: " + output.result + (output.unit ? " " + output.unit : "") +
+        " — حساب حتمي، وليس تنبؤاً سببيّاً.");
+    } catch (error) { say(error.message); }
+  });
   whatif.append(calculator);
   root.append(status);
   mount.append(root);
@@ -476,12 +541,10 @@ export function mountLivingIntelligence(mount, context) {
         const scenario = scenarios.find((s) => s.slide === context.getSlide());
         if (scenario) say("يوجد سيناريو «" + scenario.title + "» لهذه الشريحة. يمكنك اختياره وعرضه بعد المراجعة.");
       }
-      const candidates = (activeSlide().elements || []).filter((s) =>
-        eligibleShape(s, activeSlide(), context.getStep()) && s.text && s.text.length >= 6 &&
-        String(raw).includes(s.text));
-      if (candidates.length === 1) {
-        xrayMessage.textContent = "ذُكر عنصر موجود بالشريحة: " + candidates[0].text.slice(0, 100) +
-          ". يمكنك اختياره يدوياً للتركيز؛ لم يُفعّل تلقائياً.";
+      const shape = suggestXrayFromSpeech(String(raw), activeSlide(), context.getStep());
+      if (shape) {
+        xrayMessage.textContent = "تطابق دلالي محلي محتمل مع عنصر الشريحة: " + shape.text.slice(0, 100) +
+          ". راجع العنصر واختره يدوياً؛ لم يُفعّل X-Ray تلقائياً.";
       }
       const phrase = String(raw).trim().slice(0, 300);
       if (phrase.length < 12) return;
