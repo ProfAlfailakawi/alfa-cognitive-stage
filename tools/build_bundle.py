@@ -210,6 +210,24 @@ def video_targets(shape):
     return embedded or links
 
 
+def unique_embedded_video_targets(shape, slide):
+    """Yield each embedded media part once per shape.
+
+    A single PowerPoint movie often has both a:videoFile and p14:media
+    relationships pointing at the same binary. They are not two video overlays.
+    Keep external links for the caller to report/skip as before.
+    """
+    seen_parts = set()
+    for rid, is_video_link in video_targets(shape):
+        rel = slide.part.rels[rid]
+        if not rel.is_external:
+            partname = rel.target_part.partname
+            if partname in seen_parts:
+                continue
+            seen_parts.add(partname)
+        yield rid, is_video_link
+
+
 def probe_streams(path: Path) -> dict:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries",
@@ -412,7 +430,7 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
         compatibility = slide_compatibility(slide)
         videos = []
         for shape in iter_shapes(slide.shapes):
-            for rid, is_video_link in video_targets(shape):
+            for rid, is_video_link in unique_embedded_video_targets(shape, slide):
                 rel = slide.part.rels[rid]
                 if rel.is_external and is_video_link:
                     # Some PowerPoint files carry both an external placeholder
