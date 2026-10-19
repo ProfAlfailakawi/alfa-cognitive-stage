@@ -174,6 +174,8 @@ try {
 
   // Browser download keeps approved lecturer data private; importing it requires
   // explicit confirmation, validates bundle ID, and never projects automatically.
+  check("private backup import picker is hidden until explicitly invoked",
+    await newLiving.locator('input[type="file"]').isHidden());
   const downloadReady = presenter.waitForEvent("download");
   await newLiving.getByRole("button",{name:"صدّر نسخة خاصة"}).click();
   const download = await downloadReady;
