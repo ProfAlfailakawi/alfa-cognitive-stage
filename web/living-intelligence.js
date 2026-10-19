@@ -167,3 +167,134 @@ export function comparePulse(first, last, correctIndex = null) {
     warning: Math.min(...totals) < 8 ? "المشاركات محدودة؛ لا تعمم النتائج." :
       "تغير في التوزيع لا يثبت أن الشرح تسبب في التغير؛ ولا يفترض مشاركة الطلبة أنفسهم." };
 }
+
+
+/**
+ * Explicit, portable lecturer backup. Only archive validated, approved content; never
+ * silently merge an untrusted archive with active lecture state.
+ */
+export function validateKnowledgeSnapshot(value, bundle) {
+  if (!value || value.version !== KNOWLEDGE_VERSION || value.bundle !== bundle ||
+      !Array.isArray(value.nodes) || value.nodes.length > GRAPH_LIMIT ||
+      !Array.isArray(value.edges) || value.edges.length > GRAPH_LIMIT * 2 ||
+      !Number.isSafeInteger(value.revision) || value.revision < value.nodes.length ||
+      value.revision > 1000000) throw Error("ملف الشبكة لا يطابق المحاضرة أو يحتوي بيانات غير صالحة");
+  const ids = new Set();
+  for (const n of value.nodes) {
+    if (!n || typeof n.id !== "string" || !/^n[1-9]\\d{0,6}$/.test(n.id) || ids.has(n.id) ||
+        !NODE_TYPES.includes(n.type) || n.status !== "approved" ||
+        typeof n.text !== "string" || !n.text.trim() || n.text.length > 300 ||
+        !n.source || n.source.version !== 1 || n.source.bundle !== bundle ||
+        n.source.approved !== true || !SOURCE_TYPES.has(n.source.kind) ||
+        !Number.isSafeInteger(n.source.slide) || n.source.slide < 1 || n.source.slide > 10000 ||
+        n.slide !== n.source.slide || typeof n.source.originalText !== "string" ||
+        !n.source.originalText.trim() || n.source.originalText.length > 1200 ||
+        (n.source.kind !== "poll" && !plain(n.source.originalText).includes(plain(n.text))))
+      throw Error("ملف الشبكة يحتوي عقدة غير معتمدة أو بلا مصدر صالح");
+    ids.add(n.id);
+  }
+  for (const e of value.edges) {
+    if (!e || !ids.has(e.from) || !ids.has(e.to) || e.from === e.to ||
+        !RELATIONS.includes(e.relation) || e.approved !== true)
+      throw Error("ملف الشبكة يحتوي علاقة غير موثوقة");
+  }
+  // Return a detached JSON-only structure so callers cannot mutate the imported input.
+  return JSON.parse(JSON.stringify({version: KNOWLEDGE_VERSION, bundle,
+    revision: value.revision, nodes: value.nodes, edges: value.edges}));
+}
+export function exportLivingArchive(bundle, graph, scenarios = []) {
+  const safe = validateKnowledgeSnapshot(graph, bundle);
+  if (!Array.isArray(scenarios) || scenarios.length > 30) throw Error("عدد السيناريوهات غير صالح");
+  const normalized = scenarios.map(validateScenario);
+  const archive = JSON.stringify({ format: "alfa-living-backup", version: 1,
+    bundle, exportedAt: new Date().toISOString(), graph: safe, scenarios: normalized });
+  if (archive.length > 230000) throw Error("النسخة الاحتياطية أكبر من الحد المسموح");
+  return archive;
+}
+export function importLivingArchive(raw, bundle) {
+  if (typeof raw !== "string" || raw.length > 230000) throw Error("حجم النسخة الاحتياطية غير صالح");
+  let data;
+  try { data = JSON.parse(raw); } catch { throw Error("ملف النسخة الاحتياطية ليس JSON صالحاً"); }
+  if (!data || data.format !== "alfa-living-backup" || data.version !== 1 ||
+      data.bundle !== bundle || !Array.isArray(data.scenarios) || data.scenarios.length > 30)
+    throw Error("النسخة الاحتياطية ليست لهذه المحاضرة");
+  const graph = validateKnowledgeSnapshot(data.graph, bundle);
+  const scenarios = data.scenarios.map(validateScenario);
+  return {graph, scenarios};
+}
+
+/**
+ * Bounded deterministic arithmetic (no eval, functions, variables, network or causal prediction).
+ * Percent literals are fractions: 15% is 0.15. One explicit *result* unit only.
+ */
+export function evaluateScenarioFormula(expression, unit = "") {
+  if (typeof expression !== "string" || expression.length > 140 || !expression.trim() ||
+      typeof unit !== "string" || unit.length > 30 || /[<>]/.test(unit))
+    throw Error("الصيغة أو الوحدة غير صالحة");
+  const input = expression.replace(/\\s+/g, "");
+  if (!/^[0-9.+\\-*/()%]+$/.test(input)) throw Error("الصيغة تدعم الأرقام والأقواس والعمليات فقط");
+  let at = 0, operations = 0;
+  const bound = (v) => {
+    if (!Number.isFinite(v) || Math.abs(v) > 1e12) throw Error("ناتج خارج الحدود المسموحة");
+    return v;
+  };
+  const count = () => { if (++operations > 100) throw Error("الصيغة معقدة أكثر من اللازم"); };
+  function factor(depth = 0) {
+    count();
+    if (depth > 14) throw Error("الأقواس متداخلة أكثر من اللازم");
+    let sign = 1;
+    while (input[at] === "+" || input[at] === "-") {
+      if (input[at++] === "-") sign *= -1;
+      count();
+    }
+    let value;
+    if (input[at] === "(") {
+      at++;
+      value = sum(depth + 1);
+      if (input[at++] !== ")") throw Error("الأقواس غير متوازنة");
+    } else {
+      const match = /^(?:\\d+(?:\\.\\d*)?|\\.\\d+)/.exec(input.slice(at));
+      if (!match) throw Error("قيمة عددية غير صالحة");
+      at += match[0].length;
+      value = Number(match[0]);
+    }
+    if (input[at] === "%") { at++; value /= 100; }
+    return bound(sign * value);
+  }
+  function product(depth) {
+    let v = factor(depth);
+    while (input[at] === "*" || input[at] === "/") {
+      count();
+      const op = input[at++], right = factor(depth);
+      if (op === "/" && right === 0) throw Error("القسمة على صفر غير مسموحة");
+      v = bound(op === "*" ? v * right : v / right);
+    }
+    return v;
+  }
+  function sum(depth) {
+    let v = product(depth);
+    while (input[at] === "+" || input[at] === "-") {
+      count();
+      const op = input[at++], right = product(depth);
+      v = bound(op === "+" ? v + right : v - right);
+    }
+    return v;
+  }
+  const result = sum(0);
+  if (at !== input.length) throw Error("الصيغة تحتوي رمزاً غير متوقع");
+  return { result: bound(result), unit: unit.trim(), formula: expression.trim(),
+    operation: "expression", inputs: [] };
+}
+
+/** Suggest only when one geometrically safe slide element is a strong semantic match. */
+export function suggestXrayFromSpeech(utterance, slide, step = 0) {
+  if (typeof utterance !== "string" || utterance.length < 7) return null;
+  const query = embed(utterance);
+  if (query.size < 2) return null;
+  const hits = (slide?.elements || []).filter((shape) => {
+    if (!eligibleShape(shape, slide, step) || typeof shape.text !== "string") return false;
+    const candidate = embed(shape.text);
+    return candidate.size >= 2 && compatible(query, candidate, {threshold: 0.84}).ok;
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
