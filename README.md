@@ -4,7 +4,7 @@
 
 ## البدء على macOS
 
-**للاستخدام اليومي بعد تجهيز البرامج:** افتح `Start ALFA.command` بالنقر المزدوج، ثم افتح صفحة المحاضر على `http://localhost:4173/#presenter`.
+**للاستخدام اليومي:** افتح `Start ALFA.command` بالنقر المزدوج، ثم افتح صفحة المحاضر على `http://localhost:4173/#presenter`. يجهز التشغيل مكتبات Python المطلوبة تلقائياً أول مرة ويصلحها عند الحاجة؛ لا تثبّتها يدوياً. اترك نافذة Terminal مفتوحة.
 
 للتجهيز الأول وتفاصيل التثبيت راجع [دليل Mac العربي](docs/MAC_SETUP_AR.md). المتطلبات: Node.js 22، Python 3، LibreOffice، Poppler، FFmpeg، python-pptx، lxml، Pillow.
 

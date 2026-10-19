@@ -30,7 +30,7 @@ export function mountImportPanel(mount, { empty = false } = {}) {
   const report = document.createElement("p");
   report.className = "import-report";
   report.setAttribute("role", "status");
-  report.textContent = "PowerPoint هو الأفضل (حركات النقر والفيديو). PDF صفحات ثابتة بلا حركة أو فيديو. Keynote: يُفضّل تصديره إلى PowerPoint.";
+  report.textContent = "على Mac، PowerPoint يحافظ على تنسيق الشرائح وخطوطها بدقة أعلى. قد يطلب macOS السماح له بمجلد ALFA مرة واحدة. PDF صفحات ثابتة بلا حركة أو فيديو. Keynote: يُفضّل تصديره إلى PowerPoint.";
   form.append(secret, file, actions, report);
   root.append(form);
   mount.append(root);
@@ -55,7 +55,7 @@ export function mountImportPanel(mount, { empty = false } = {}) {
     event.preventDefault();
     const selected = file.files?.[0];
     if (!selected || !/\.(pptx|pdf|key)$/i.test(selected.name)) { setStatus("اختر ملف PPTX أو PDF أو Keynote."); return; }
-    if (selected.size > 80 * 1024 * 1024) { setStatus("الحد الأقصى 80 MB."); return; }
+    if (selected.size > 2 * 1024 * 1024 * 1024) { setStatus("حجم الملف يتجاوز 2 GB."); return; }
     if (!token()) { setStatus("أدخل رمز المحاضر أولاً."); return; }
     run.disabled = true;
     setStatus("البرنامج يحوّل الشرائح ويفحص الفيديوهات الآن. لا تغلق الصفحة...");

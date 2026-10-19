@@ -25,6 +25,7 @@ C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
+BUNDLE_BUILD_VERSION = 2
 
 
 
@@ -37,8 +38,8 @@ def validate_pptx_container(path: Path):
         if len(members) > 15000:
             raise ValueError("الملف يحتوي على عدد غير معقول من العناصر")
         total = sum(item.file_size for item in members)
-        if total > 750 * 1024 * 1024:
-            raise ValueError("حجم الملفات بعد فك الضغط يتجاوز الحد الآمن")
+        if total > 2 * 1024 * 1024 * 1024:
+            raise ValueError("حجم الملفات بعد فك الضغط يتجاوز 2 GB")
         names = set(archive.namelist())
         if "[Content_Types].xml" not in names or "ppt/presentation.xml" not in names:
             raise ValueError("هذا ليس ملف PPTX صالحاً")
@@ -53,6 +54,12 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def bundle_fingerprint(path: Path) -> str:
+    """Version bundle IDs so imports made by older renderers are refreshed."""
+    value = f"{sha256_file(path)}:bundle:{BUNDLE_BUILD_VERSION}".encode("ascii")
+    return hashlib.sha256(value).hexdigest()[:12]
 
 
 def iter_shapes(shapes):
@@ -182,13 +189,42 @@ def write_indexes(bundles_root: Path, selected_id: str):
 
 
 def video_targets(shape):
-    """Return the media part names a picture shape plays as video."""
+    """Return relationship IDs for the media parts a picture shape plays as video.
+
+    PowerPoint can mark ``a:videoFile`` as an external link with a placeholder
+    target (often ``NULL``), while storing the actual clip in a p14:media
+    extension as an embedded relationship. Prefer the embedded relationship
+    in that case so these clips remain portable with the presentation.
+    """
     found = []
     for node in shape._element.iter(f"{{{A_NS}}}videoFile"):
         rid = node.get(f"{{{R_NS}}}link")
         if rid:
-            found.append(rid)
+            found.append((rid, True))
+    for node in shape._element.iter():
+        if node.tag.endswith("}media"):
+            rid = node.get(f"{{{R_NS}}}embed")
+            if rid:
+                found.append((rid, False))
     return found
+
+
+def unique_embedded_video_targets(shape, slide):
+    """Yield each embedded media part once per shape.
+
+    A single PowerPoint movie often has both a:videoFile and p14:media
+    relationships pointing at the same binary. They are not two video overlays.
+    Keep external links for the caller to report/skip as before.
+    """
+    seen_parts = set()
+    for rid, is_video_link in video_targets(shape):
+        rel = slide.part.rels[rid]
+        if not rel.is_external:
+            partname = rel.target_part.partname
+            if partname in seen_parts:
+                continue
+            seen_parts.add(partname)
+        yield rid, is_video_link
 
 
 def probe_streams(path: Path) -> dict:
@@ -270,15 +306,50 @@ def prepare_video(src: Path, dst_dir: Path):
     return dst.name, webm_name, details
 
 
-def render_slides(pptx: Path, out_dir: Path, width: int) -> int:
-    work = out_dir / "_render"
+def render_slides(pptx: Path, out_dir: Path, width: int) -> tuple[int, str]:
+    # Keep one stable directory under the local bundles folder. macOS may ask
+    # PowerPoint for folder access on first use; reusing this exact directory
+    # avoids prompting again for every lecture's temporary bundle directory.
+    work = out_dir.parent / ".alfa-render"
+    if work.exists():
+        for child in work.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
     work.mkdir(parents=True, exist_ok=True)
     shutil.copy(pptx, work / "deck.pptx")
-    subprocess.run(
-        ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(work),
-         str(work / "deck.pptx")],
-        check=True, capture_output=True,
-    )
+    pdf = work / "deck.pdf"
+    rendered_with_powerpoint = False
+    powerpoint_available = sys.platform == "darwin" and Path("/Applications/Microsoft PowerPoint.app").exists()
+    if powerpoint_available:
+        # Use Microsoft's renderer when available to preserve Office fonts,
+        # spacing, shapes and line wrapping. Work on the temporary copy above;
+        # the user's original presentation is never edited.
+        script = '''on run argv
+  set sourcePath to item 1 of argv
+  set pdfPath to item 2 of argv
+  tell application "Microsoft PowerPoint"
+    open POSIX file sourcePath
+    save active presentation in POSIX file pdfPath as save as PDF
+    close active presentation saving no
+  end tell
+end run'''
+        try:
+            subprocess.run(["osascript", "-e", script, str(work / "deck.pptx"), str(pdf)],
+                           check=True, capture_output=True, timeout=35 * 60)
+            rendered_with_powerpoint = pdf.is_file() and pdf.stat().st_size > 0
+        except (subprocess.SubprocessError, OSError):
+            # Keep import available on Macs where PowerPoint is installed but
+            # automation is unavailable or the Office export fails.
+            pdf.unlink(missing_ok=True)
+    if not rendered_with_powerpoint:
+        pdf.unlink(missing_ok=True)
+        subprocess.run(
+            ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(work),
+             str(work / "deck.pptx")],
+            check=True, capture_output=True,
+        )
     subprocess.run(
         ["pdftoppm", "-png", "-scale-to-x", str(width), "-scale-to-y", "-1",
          str(work / "deck.pdf"), str(work / "page")],
@@ -289,13 +360,17 @@ def render_slides(pptx: Path, out_dir: Path, width: int) -> int:
     slides_dir.mkdir(exist_ok=True)
     for index, page in enumerate(pages, start=1):
         shutil.move(str(page), slides_dir / f"{index:03d}.png")
-    shutil.rmtree(work)
-    return len(pages)
+    for child in work.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    return len(pages), "PowerPoint" if rendered_with_powerpoint else "LibreOffice"
 
 
 def rerender(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     """Re-render only the slide images of an existing bundle (e.g. after installing fonts)."""
-    out_dir = bundles_root / sha256_file(pptx)[:12]
+    out_dir = bundles_root / bundle_fingerprint(pptx)
     if not (out_dir / "manifest.json").exists():
         raise SystemExit(f"no bundle to re-render in {out_dir}; run a normal build first")
     shutil.rmtree(out_dir / "slides", ignore_errors=True)
@@ -305,7 +380,7 @@ def rerender(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
 
 def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
     validate_pptx_container(pptx)
-    fingerprint = sha256_file(pptx)[:12]
+    fingerprint = bundle_fingerprint(pptx)
     out_dir = bundles_root / fingerprint
     if (out_dir / "manifest.json").exists():
         # Backfill text and build steps on older bundles without rerendering media.
@@ -318,10 +393,10 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
                   "potentially animated PowerPoint chart: visual compatibility review required")
         manifest["problems"] = [x for x in manifest.get("problems", [])
                                 if x.get("problem") not in legacy and x.get("problem") not in UNSUPPORTED_TEXT.values()]
-        needs_steps = manifest.get("buildVersion") != 1
+        needs_steps = manifest.get("buildVersion") != BUNDLE_BUILD_VERSION
         if needs_steps:
             attach_builds(pptx, out_dir, width, deck, manifest["slides"], manifest["problems"])
-            manifest["buildVersion"] = 1
+            manifest["buildVersion"] = BUNDLE_BUILD_VERSION
         manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         write_indexes(bundles_root, fingerprint)
         print(f"bundle already built, slide text refreshed: {out_dir}")
@@ -332,17 +407,24 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
 
     deck = Presentation(str(pptx))
     slide_w, slide_h = deck.slide_width, deck.slide_height
-    page_count = render_slides(pptx, out_dir, width)
+    page_count, render_engine = render_slides(pptx, out_dir, width)
 
     video_cache = {}
     problems = []
+    if render_engine != "PowerPoint" and sys.platform == "darwin" and Path("/Applications/Microsoft PowerPoint.app").exists():
+        problems.append({"slide": 1, "problem": "تعذّر التصدير عبر PowerPoint؛ استُخدم LibreOffice كبديل"})
     slides = []
     for index, slide in enumerate(deck.slides, start=1):
         compatibility = slide_compatibility(slide)
         videos = []
         for shape in iter_shapes(slide.shapes):
-            for rid in video_targets(shape):
+            for rid, is_video_link in unique_embedded_video_targets(shape, slide):
                 rel = slide.part.rels[rid]
+                if rel.is_external and is_video_link:
+                    # Some PowerPoint files carry both an external placeholder
+                    # and an embedded p14:media relationship for the same clip.
+                    # The embedded relationship is handled in the next iteration.
+                    continue
                 if rel.is_external:
                     problems.append({"slide": index, "problem": "external video link", "target": rel.target_ref})
                     continue
@@ -402,9 +484,10 @@ def build(pptx: Path, bundles_root: Path, width: int = 1920) -> Path:
         "id": fingerprint,
         "source": pptx.name,
         "slideCount": len(slides),
+        "renderEngine": render_engine,
         "aspect": round(slide_w / slide_h, 6),
         "slides": slides,
-        "buildVersion": 1,
+        "buildVersion": BUNDLE_BUILD_VERSION,
         "problems": problems,
     }
     (out_dir / "manifest.json").write_text(

@@ -2,17 +2,18 @@
 
 ## تجهيز البرنامج مرة واحدة
 
-يلزم macOS، Google Chrome، Node.js 22، Python 3، LibreOffice، Poppler، FFmpeg ومكتبات Python. يمكن تثبيت المفقود بواسطة Homebrew:
+يلزم macOS، Google Chrome، Node.js 22، Python 3، LibreOffice، Poppler وFFmpeg. ثبّت البرامج الخارجية مرة واحدة:
 
 ```bash
 brew install node python poppler ffmpeg
 brew install --cask libreoffice
-python3 -m pip install python-pptx lxml Pillow
 ```
+
+لا تثبّت مكتبات Python يدوياً. عند أول تشغيل لـ **Start ALFA.command** ينشئ البرنامج بيئة خاصة داخل `.venv` ويثبت `python-pptx` و`lxml` و`Pillow` تلقائياً، ثم يستخدمها للفحص والاستيراد. إذا احتاجها مجدداً، يكتشف ذلك ويصلح البيئة تلقائياً.
 
 ## الاستخدام اليومي
 
-1. افتح **Start ALFA.command** بالنقر المزدوج من مجلد المشروع. قد يحتاج macOS تأكيد تشغيل الملف أول مرة.
+1. افتح **Start ALFA.command** بالنقر المزدوج من مجلد المشروع. قد يحتاج macOS تأكيد تشغيل الملف أول مرة. اترك نافذة Terminal مفتوحة أثناء الاستخدام.
 2. افتح `http://localhost:4173/#presenter` إذا لم تُفتح تلقائياً.
 3. اقرأ رمز المحاضر من Terminal؛ لا تشاركه مع الطلبة.
 4. اختر PPTX من الواجهة ثم «استيراد وفتح المحاضرة» مع رمز المحاضر.
