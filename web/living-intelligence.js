@@ -121,6 +121,7 @@ export function findTimeBridge(query, entries, currentBundle, { courseId = null,
     if (!match.ok) continue;
     found.push({ bundle: row.bundle, lecture: clip(row.lecture, 100), slide: row.slide,
       excerpt: clip(row.text, 240), similarity: match.similarity,
+      sourceKind: ["slide", "notes", "approved-scene"].includes(row.sourceKind) ? row.sourceKind : "slide",
       reason: "تشابه محلي مع مراعاة الأرقام والنفي والاتجاه؛ راجع المرجع قبل عرضه" });
   }
   return found.sort((a, b) => b.similarity - a.similarity).slice(0, 3);
