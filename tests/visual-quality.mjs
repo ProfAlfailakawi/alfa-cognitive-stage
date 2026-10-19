@@ -35,6 +35,8 @@ for (const [value, expected] of [["0%", "0"], ["37.5%", "37.5"], ["100%", "100"]
   const rendered = renderInfographic({ type: "stat", title: "نتيجة", lines: [value, "من المشاركين"] });
   assert.ok(rendered.includes('style="--v:' + expected + '"'), "ring must use the precise spoken percentage");
 }
+const zeroBars = renderInfographic({ type: "bars", title: "المشاركة", lines: ["الفئة الأولى | 0%", "الفئة الثانية | 80%"] });
+assert.ok(zeroBars.includes('width="0"'), "zero percent must produce a genuinely empty bar");
 const selectedTheme = styleScene({ ...dense, theme: "ember" }, { storage: { getItem: () => null, setItem: () => {} } });
 assert.equal(selectedTheme.theme, "ember", "explicit scene theme survives automatic mode and density gate");
 console.log("visual quality: dense layouts restrained, lecturer content intact");
