@@ -85,6 +85,17 @@ try {
   await say("الشريحة التالية");
   check("with the switch off, nothing moves", (await meta()).includes("6 من"), await meta());
   check("return commands still work (they are separate)", true);
+  await presenter.check("#director-nav");
+  // Reset to slide 3: direct natural language skips its remaining PowerPoint clicks.
+  await presenter.click("#home"); // closes any digression first
+  await presenter.evaluate(() => document.querySelector("#lecture-picker")?.blur());
+  await presenter.waitForTimeout(800);
+  await say("روح للشريحة ثلاثة");
+  check("jump to slide 3", (await meta()).includes("3 من"), await meta());
+  await say("خلونا نروح للشريحة اللي بعدها");
+  check("natural Kuwaiti next-slide request bypasses build clicks", (await meta()).includes("4 من"), await meta());
+  await say("في الشريحة التالية راح نشوف النتائج");
+  check("mentioning another slide within an explanation stays put", (await meta()).includes("4 من"), await meta());
 } catch (error) {
   console.log("FAIL  unexpected: " + (error.stack || error));
   failures.push("unexpected");

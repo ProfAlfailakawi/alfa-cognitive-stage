@@ -28,6 +28,10 @@ export function createSpeechDirector({
   let consecutiveErrors = 0;
   let wanted = false;     // the lecturer asked for listening and has not stopped it
   let engine = "unknown"; // "local" | "cloud" once chosen
+  // Some browsers reject ar-KW but support ar-SA or generic Arabic.
+  // Retry only language errors, never microphone permission failures.
+  const languageChoices = [lang, ...["ar-SA", "ar"].filter((item) => item !== lang)];
+  let languageIndex = 0;
   let localStatus = null;  // what the browser said about the on-device language pack
   let stopOnline = null;
   let stableTimer = null;
@@ -70,7 +74,9 @@ export function createSpeechDirector({
         const observed = firstInterimAt === null ? null : finishedAt - firstInterimAt;
         const interimToFinalMs = observed !== null && observed >= 0 && observed < 120000 ? observed : null;
         firstInterimAt = null;
-        if (text === lastFinal && finishedAt - lastTime < 3500) continue;
+        // Drop one recognizer echo, without swallowing a lecturer's next genuine
+        // "التالية" 1–2 seconds later (common during PowerPoint builds).
+        if (text === lastFinal && finishedAt - lastTime < 700) continue;
         lastFinal = text;
         lastTime = finishedAt;
         const handlerStart = now();
@@ -91,8 +97,14 @@ export function createSpeechDirector({
       const error = String(event?.error || "unknown").slice(0, 50);
       metrics.errors++;
       metrics.lastError = error;
-      if (["not-allowed", "service-not-allowed", "audio-capture", "language-not-supported"].includes(error)) {
-        enabled = false; // Never retry after a denied permission or unavailable microphone.
+      if (error === "language-not-supported" && languageIndex < languageChoices.length - 1) {
+        languageIndex++;
+        recognition.lang = languageChoices[languageIndex];
+        // The browser will end this recognition session; onend handles the retry.
+        consecutiveErrors = 0;
+        status("لهجة التعرف الصوتي غير مدعومة؛ أجرب العربية " + recognition.lang + " تلقائياً.");
+      } else if (["not-allowed", "service-not-allowed", "audio-capture", "language-not-supported"].includes(error)) {
+        enabled = false; // Never retry after a denied permission or exhausted language options.
       } else if (["network", "no-speech"].includes(error)) {
         consecutiveErrors = Math.min(3, consecutiveErrors + 1);
       }
@@ -151,6 +163,8 @@ export function createSpeechDirector({
       lastFinal = "";
       lastTime = 0;
       lastInterimTime = 0;
+      languageIndex = 0;
+      if (recognition) recognition.lang = languageChoices[languageIndex];
       emit();
     }
     enabled = true;
@@ -184,6 +198,6 @@ export function createSpeechDirector({
       status("معلّق أثناء تشغيل الفيديو");
     } else if (enabled) begin();
   }
-  return { start, stop, setMediaPlaying, deviceChanged, diagnostics: () => ({ ...metrics, engine, localStatus }), engine: () => engine,
+  return { start, stop, setMediaPlaying, deviceChanged, diagnostics: () => ({ ...metrics, engine, localStatus, language: languageChoices[languageIndex] }), engine: () => engine,
     supported: Boolean(Ctor) };
 }

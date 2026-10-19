@@ -92,6 +92,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Infographic layer sits over the slide and keeps its aspect ratio */
 .info-layer { position: absolute; inset: 0; }
+.controls .emergency { background: #153b38; color: #fff; border: 1px solid #153b38; font-weight: 800; box-shadow: 0 3px 14px rgba(21,59,56,.12); }
+.controls .emergency:hover { background: #235951; color: #fff; }
+.controls .direct-slide { border: 1px solid var(--accent); color: var(--accent); font-weight: 800; }
+.controls .direct-slide:hover { background: var(--wash); }
+@media (prefers-color-scheme: dark) {
+  .controls .emergency { background: #d0ecdd; color: #19372e; border-color: #d0ecdd; }
+  .controls .emergency:hover { background: #b9dece; color: #19372e; }
+}
 .info-layer svg { width: 100%; height: 100%; display: block; }
 .info-form { display: grid; gap: 0.5rem; border: 1px solid var(--hair); border-radius: 14px; padding: 0.75rem; background: var(--wash); }
 .info-form select, .info-form input, .info-form textarea {
