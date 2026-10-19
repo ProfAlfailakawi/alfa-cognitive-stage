@@ -181,7 +181,7 @@ export function validateKnowledgeSnapshot(value, bundle) {
       value.revision > 1000000) throw Error("ملف الشبكة لا يطابق المحاضرة أو يحتوي بيانات غير صالحة");
   const ids = new Set();
   for (const n of value.nodes) {
-    if (!n || typeof n.id !== "string" || !/^n[1-9]\\d{0,6}$/.test(n.id) || ids.has(n.id) ||
+    if (!n || typeof n.id !== "string" || !/^n[1-9]\d{0,6}$/.test(n.id) || ids.has(n.id) ||
         !NODE_TYPES.includes(n.type) || n.status !== "approved" ||
         typeof n.text !== "string" || !n.text.trim() || n.text.length > 300 ||
         !n.source || n.source.version !== 1 || n.source.bundle !== bundle ||
@@ -231,8 +231,8 @@ export function evaluateScenarioFormula(expression, unit = "") {
   if (typeof expression !== "string" || expression.length > 140 || !expression.trim() ||
       typeof unit !== "string" || unit.length > 30 || /[<>]/.test(unit))
     throw Error("الصيغة أو الوحدة غير صالحة");
-  const input = expression.replace(/\\s+/g, "");
-  if (!/^[0-9.+\\-*/()%]+$/.test(input)) throw Error("الصيغة تدعم الأرقام والأقواس والعمليات فقط");
+  const input = expression.replace(/\s+/g, "");
+  if (!/^[0-9.+\-*/()%]+$/.test(input)) throw Error("الصيغة تدعم الأرقام والأقواس والعمليات فقط");
   let at = 0, operations = 0;
   const bound = (v) => {
     if (!Number.isFinite(v) || Math.abs(v) > 1e12) throw Error("ناتج خارج الحدود المسموحة");
@@ -253,7 +253,7 @@ export function evaluateScenarioFormula(expression, unit = "") {
       value = sum(depth + 1);
       if (input[at++] !== ")") throw Error("الأقواس غير متوازنة");
     } else {
-      const match = /^(?:\\d+(?:\\.\\d*)?|\\.\\d+)/.exec(input.slice(at));
+      const match = /^(?:\d+(?:\.\d*)?|\.\d+)/.exec(input.slice(at));
       if (!match) throw Error("قيمة عددية غير صالحة");
       at += match[0].length;
       value = Number(match[0]);
