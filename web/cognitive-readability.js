@@ -70,17 +70,31 @@ export function roomKnowledgePages(graph) {
   return pages.length ? pages : [{nodes:[],edges:[]}];
 }
 
-/** Browser-facing measurement. Never silently shrink an illegible paragraph to make it fit. */
+/**
+ * Check actual laid-out text glyph rectangles against the nearest clipping surface.
+ * scrollHeight is not reliable on flex/grid text with min-height:max-content: it
+ * can exceed clientHeight even though every Arabic glyph is visibly contained.
+ */
+export function roomTextFits(node, tolerance = 3) {
+  if (!node?.isConnected || !node.ownerDocument?.createRange) return false;
+  const outer=node.closest(".cognitive-node,.cognitive-outcome,.cognitive-pulse-item,.cognitive-stage-body");
+  if (!outer) return false;
+  const rect=outer.getBoundingClientRect();
+  const stage=node.closest(".cognitive-card-stage")?.getBoundingClientRect();
+  const range=node.ownerDocument.createRange();
+  range.selectNodeContents(node);
+  const textRects=[...range.getClientRects()].filter((r)=>r.width>0 && r.height>0);
+  range.detach?.();
+  const contained=(r,b)=>r.left>=b.left-tolerance && r.right<=b.right+tolerance &&
+    r.top>=b.top-tolerance && r.bottom<=b.bottom+tolerance;
+  return textRects.length>0 && textRects.every((r)=>
+    contained(r,rect) && (!stage || contained(r,stage)));
+}
+/** Accurate, visual DOM readiness; no content is ever shortened to make a test pass. */
 export function roomReadabilityStatus(layer) {
-  if (!layer || typeof layer.querySelectorAll !== "function") return {ok:false,reason:"missing-layer"};
-  const samples = [...layer.querySelectorAll(".cognitive-node p,.cognitive-question,.cognitive-revealed-result,.cognitive-bridge-quote,.cognitive-pulse-item h3")];
-  const clipped = samples.some((node) => node.clientHeight > 0 && (
-    node.scrollHeight > node.clientHeight + 2 || node.scrollWidth > node.clientWidth + 2));
-  const stage = layer.getBoundingClientRect?.();
-  const outside = samples.some((node) => {
-    const r = node.getBoundingClientRect();
-    return stage && (r.left < stage.left - 2 || r.right > stage.right + 2 ||
-      r.top < stage.top - 2 || r.bottom > stage.bottom + 2);
-  });
-  return {ok:!clipped && !outside,clipped,outside,count:samples.length};
+  if (!layer || typeof layer.querySelectorAll!=="function") return {ok:false,reason:"missing-layer"};
+  const samples=[...layer.querySelectorAll(
+    ".cognitive-node p,.cognitive-question,.cognitive-revealed-result,.cognitive-bridge-quote,.cognitive-pulse-item h3")];
+  const clipped=samples.some((node)=>!roomTextFits(node));
+  return {ok:!clipped,clipped,outside:clipped,count:samples.length};
 }
