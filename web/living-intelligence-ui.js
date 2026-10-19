@@ -123,7 +123,7 @@ export function renderCognitiveProjection(stage, value) {
 export function mountLivingIntelligence(mount, context) {
   const bundle = context.getBundle();
   let graph = loadKnowledge(bundle), graphPage = 0, scenarios = readScenarios(bundle);
-  let currentScenario = null, suggestion = null, referenceResults = [];
+  let currentScenario = null, lastRevealedBranch = null, suggestion = null, referenceResults = [];
   let referenceStamp = 0, referenceCache = new Map(), referenceVersion = "";
   const root = make("details", "", "cognitive-drawer");
   root.id = "cognitive-drawer";
@@ -361,6 +361,7 @@ export function mountLivingIntelligence(mount, context) {
   btn(scenarioActions, "احفظ السيناريو", () => {
     try {
       const s = validateScenario({ title: title.value, question: question.value, type: kind.value,
+        slide: context.getSlide(),
         options: choices.value.split("\n").filter(Boolean).map((line) => {
           const [text, result, explanation, reference] = line.split("|").map((v) => v.trim());
           return { text, result, explanation, reference };
@@ -374,6 +375,7 @@ export function mountLivingIntelligence(mount, context) {
   }, "primary");
   btn(scenarioActions, "اعرض السؤال", () => {
     if (!currentScenario) { say("احفظ السيناريو أولاً"); return; }
+    lastRevealedBranch = null;
     safeProject({ kind:"whatif", title: currentScenario.title, question: currentScenario.question,
       options: currentScenario.options.map((o) => o.text), revealed:false });
   });
@@ -395,9 +397,27 @@ export function mountLivingIntelligence(mount, context) {
     const i = Number(branchSelect.value);
     const option = currentScenario.options[i];
     if (!option) return;
-    safeProject({ kind:"whatif", title:currentScenario.title, question:currentScenario.question,
+    if (safeProject({ kind:"whatif", title:currentScenario.title, question:currentScenario.question,
       options:currentScenario.options.map((o) => o.text), revealed:true, chosen:i,
-      result:option.result + (option.explanation ? " — " + option.explanation : "") });
+      result:option.result + (option.explanation ? " — " + option.explanation : "") })) {
+      lastRevealedBranch = { scenario: currentScenario, option };
+    }
+  });
+  btn(scenarioActions, "أضف نتيجة الفرع للمسرح المعرفي", () => {
+    if (!lastRevealedBranch) { say("اعتمد واعرض نتيجة الفرع أولاً."); return; }
+    const { scenario, option } = lastRevealedBranch;
+    const literal = "فرع اختاره المحاضر: " + option.text + ". نتيجة السيناريو: " + option.result +
+      ". تفسير المحاضر: " + option.explanation;
+    try {
+      const source = sourceRecord({ bundle, slide: context.getSlide(), kind: "lecturer",
+        originalText: literal, approved: true });
+      const result = appendKnowledge(graph, { type: "example", text: literal.slice(0, 300), source,
+        parentId: graph.nodes[0]?.id || null });
+      graph = result.graph; saveKnowledge(graph); summaryGraph();
+      graphPage = Math.max(0, Math.ceil(graph.nodes.length / 6) - 1);
+      safeProject(audienceGraph(graph, graphPage));
+      say("أُضيف الفرع المحدد والنتيجة التي كتبها المحاضر، دون الادعاء أنه خيار الأغلبية.");
+    } catch (e) { say(e.message); }
   });
   btn(scenarioActions, "إخفاء النشاط", () => context.hide());
   const calculator = make("details"); calculator.append(make("summary","حساب حتمي معتمد (لا محاكاة سببية)"));
@@ -450,6 +470,10 @@ export function mountLivingIntelligence(mount, context) {
     },
     onSpeech(raw) {
       if (context.videoPlaying() || !raw || !root.isConnected) return;
+      if (/(?:ماذا لو|شنو لو|لو غيرنا|لو غيّرنا)/.test(String(raw))) {
+        const scenario = scenarios.find((s) => s.slide === context.getSlide());
+        if (scenario) say("يوجد سيناريو «" + scenario.title + "» لهذه الشريحة. يمكنك اختياره وعرضه بعد المراجعة.");
+      }
       const candidates = (activeSlide().elements || []).filter((s) =>
         eligibleShape(s, activeSlide(), context.getStep()) && s.text && s.text.length >= 6 &&
         String(raw).includes(s.text));
