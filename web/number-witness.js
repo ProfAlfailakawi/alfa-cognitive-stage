@@ -20,9 +20,17 @@ export function numberFacts(text) {
     const value = Number(m[1]);
     const percent = Boolean(m[2]) || (tokens[i + 1] && PERCENT_AFTER.test(tokens[i + 1].norm));
     if (!percent && (value >= 1900 && value <= 2100 || value < 10)) return;
-    const near = [...tokens.slice(Math.max(0, i - CONTEXT_REACH), i), ...tokens.slice(i + 1, i + 1 + CONTEXT_REACH)]
+    // A numeric fact belongs to its own clause; do not borrow words from a neighbouring percentage.
+    const clauseStart = Math.max(0, i - CONTEXT_REACH);
+    let start = i;
+    while (start > clauseStart && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[start - 1].norm) && !/^\d/.test(tokens[start - 1].raw)) start--;
+    let end = i + 1;
+    while (end < tokens.length && end - i <= CONTEXT_REACH && !/^(?:و|ثم|لكن|بينما)$/.test(tokens[end].norm) && !/^\d/.test(tokens[end].raw)) end++;
+    const preceding = tokens.slice(start, i);
+    // Do not attach the next metric label to a previous percentage (e.g. 90% ونسبة الرضا 68%).
+    const near = (preceding.some((t) => contentWords(t.raw).length) ? preceding : tokens.slice(i + 1, end))
       .filter((t) => !/^\d/.test(t.raw) && !PERCENT_AFTER.test(t.norm)).map((t) => t.raw).join(" ");
-    const subject = new Set(contentWords(near).map((w) => w.stem));
+    const subject = new Set(contentWords(near).map((w) => w.stem).filter((w) => !["نسب", "عدد", "قيم", "معدل"].includes(w)));
     facts.push({ value, unit: percent ? "%" : "", subject });
   });
   return facts;
@@ -39,7 +47,7 @@ export function checkSpoken(spoken, slideText) {
   if (!printed.length) return null;
   for (const s of said) {
     // If the slide also prints this exact number (with the same unit) the lecturer is simply quoting it.
-    if (printed.some((p) => p.unit === s.unit && p.value === s.value)) continue;
+    if (printed.some((p) => p.unit === s.unit && p.value === s.value && [...s.subject].some((w) => p.subject.has(w)))) continue;
     for (const p of printed) {
       if (p.unit !== s.unit || p.value === s.value) continue;
       const shared = [...s.subject].filter((w) => p.subject.has(w));
