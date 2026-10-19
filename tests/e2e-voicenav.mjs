@@ -65,6 +65,9 @@ try {
   await presenter.waitForTimeout(3700);
   await say("التالية");
   check("…then the next build, exactly like the button", (await meta()).includes("حركة 1"), await meta());
+  await say("انتقل للشريحة التالية");
+  check("«انتقل للشريحة التالية» skips the remaining builds and shows the next slide",
+    (await meta()).includes("4 من"), await meta());
 
   // video guard
   await say("آخر شريحة");
