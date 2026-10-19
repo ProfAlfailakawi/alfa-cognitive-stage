@@ -20,7 +20,10 @@ export function numberFacts(text) {
     const value = Number(m[1]);
     const percent = Boolean(m[2]) || (tokens[i + 1] && PERCENT_AFTER.test(tokens[i + 1].norm));
     if (!percent && (value >= 1900 && value <= 2100 || value < 10)) return;
-    const boundary = (t) => /^(?:و|ثم|لكن|بينما)$/.test(t.norm);\n    let start = i; while (start > 0 && i - start < CONTEXT_REACH && !boundary(tokens[start - 1])) start--;\n    let end = i + 1; while (end < tokens.length && end - i <= CONTEXT_REACH && !boundary(tokens[end])) end++;\n    const near = [...tokens.slice(start, i), ...tokens.slice(i + 1, end)]
+    const boundary = (t) => /^(?:و|ثم|لكن|بينما)$/.test(t.norm);
+    let start = i; while (start > 0 && i - start < CONTEXT_REACH && !boundary(tokens[start - 1])) start--;
+    let end = i + 1; while (end < tokens.length && end - i <= CONTEXT_REACH && !boundary(tokens[end])) end++;
+    const near = [...tokens.slice(start, i), ...tokens.slice(i + 1, end)]
       .filter((t) => !/^\d/.test(t.raw) && !PERCENT_AFTER.test(t.norm)).map((t) => t.raw).join(" ");
     const subject = new Set(contentWords(near).map((w) => w.stem));
     facts.push({ value, unit: percent ? "%" : "", subject });
