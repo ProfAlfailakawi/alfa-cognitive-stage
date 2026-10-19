@@ -1291,6 +1291,12 @@ function receiveVoteAdminMessage(event) {
   const iframe = document.getElementById("vote-iframe");
   if (!iframe || event.source !== iframe.contentWindow) return;
   const data = event.data;
+  if (data?.alfaPulseSummary && typeof data.alfaPulseSummary === "object") {
+    let currentCode = null;
+    try { currentCode = new URL(pollScreen.url).searchParams.get("s"); } catch {}
+    if (currentCode && data.alfaPulseSummary.code === currentCode) cognitive?.addPollSummary(data.alfaPulseSummary);
+    return;
+  }
   if (data?.alfaScenarioPollReady === true) { document.getElementById("project-poll")?.click(); return; }
   if (data?.alfaVoicePollResult) {
     const { action, ok, note } = data.alfaVoicePollResult;
