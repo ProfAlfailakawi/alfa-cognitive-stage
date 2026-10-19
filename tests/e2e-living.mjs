@@ -133,8 +133,10 @@ try {
       JSON.stringify(geometry));
   }
   await presenter.emulateMedia({reducedMotion:"reduce"});
-  const motion=await presenter.evaluate(()=>getComputedStyle(document.querySelector(".cognitive-node")||document.createElement("div")).animationName);
-  check("reduced motion accepted", motion === "none" || !document.querySelectorAll /* evaluated safely below */ );
+  await whatif.getByRole("button",{name:"اعرض السؤال"}).click();
+  const motion=await presenter.locator(".cognitive-node").first()
+    .evaluate((element)=>getComputedStyle(element).animationName);
+  check("reduced motion accepted", motion === "none", motion);
 } catch (error) {
   console.error(error);
   failures.push("exception: "+error.message);
