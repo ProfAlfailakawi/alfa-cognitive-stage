@@ -76,6 +76,31 @@ try {
   check("emergency return restores original image",await presenter.locator("#slide-img").getAttribute("src")===slideBefore);
   check("emergency return clears audience",await audience.locator(".cognitive-projection").count()===0);
 
+  // Real presenter X-Ray controls operate on pixel-grounded synthetic fixture bounds.
+  const xray = await open(1);
+  await xray.locator(".cognitive-shape-choice input").first().check();
+  await xray.getByRole("button",{name:"ركّز على الاختيار"}).click();
+  await audience.waitForSelector(".cognitive-xray .cognitive-focus-box");
+  const focus = await audience.locator(".cognitive-focus-box").first()
+    .evaluate((el)=>({left:parseFloat(el.style.left),width:parseFloat(el.style.width)}));
+  check("X-Ray focuses original slide coordinates without moving image",
+    Math.abs(focus.left - 12)<.1 && Math.abs(focus.width - 40)<.1 &&
+      await presenter.locator("#slide-img").getAttribute("src")===slideBefore);
+  await xray.locator(".cognitive-shape-choice input").nth(1).check();
+  await xray.getByRole("button",{name:"ركّز على الاختيار"}).click();
+  await audience.waitForFunction(()=>document.querySelectorAll(".cognitive-focus-box").length===2);
+  check("X-Ray supports two original elements",await audience.locator(".cognitive-focus-box").count()===2);
+  await wait(480);
+  if(shots) await audience.locator("#stage").screenshot({path:join(shots,"xray-16x9.png")});
+  await presenter.locator("#home").click();
+  await audience.waitForFunction(()=>!document.querySelector(".cognitive-xray"));
+  await xray.getByRole("button",{name:"تحديد بالنقر على معاينة الشريحة"}).click();
+  const stageSize=await presenter.locator("#stage").boundingBox();
+  await presenter.locator("#stage").click({position:{x:stageSize.width*.2,y:stageSize.height*.43}});
+  await audience.waitForSelector(".cognitive-xray .cognitive-focus-box");
+  check("X-Ray preview click selects a safely mapped shape",await audience.locator(".cognitive-focus-box").count()===1);
+  await presenter.locator("#home").click();
+
   // Recover approved knowledge after a presenter refresh; no transcript is exported.
   await presenter.reload();
   await presenter.waitForSelector("#cognitive-drawer");
