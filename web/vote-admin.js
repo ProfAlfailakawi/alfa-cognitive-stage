@@ -73,6 +73,28 @@ function renderPolls(state) {
       warning.className = "meta";
       warning.textContent = group.warning || "هذه مقارنة لتوزيع الإجابات، وليست إثباتاً لتحسّن التعلم أو مشاركة الطلاب أنفسهم.";
       item.append(warning);
+      if (group.correctIndex !== null && group.correctIndex !== undefined && group.values[group.correctIndex]) {
+        const correct = group.values[group.correctIndex];
+        item.append(Object.assign(document.createElement("p"), { className: "meta",
+          textContent: "الإجابة التي اعتمدها المحاضر: " + correct.option + " — " +
+          correct.firstPercent + "% قبل، " + correct.lastPercent + "% بعد. ليست دليلاً سببياً." }));
+      }
+      if (group.beforeId) {
+        const add = document.createElement("button");
+        add.type = "button"; add.textContent = "أضف توزيع التصويت للمسرح المعرفي";
+        add.onclick = () => {
+          const actual = compareLinkedBeforeAfter(latestPollState?.polls || [])
+            .find((x) => x.beforeId === group.beforeId && x.afterId === group.afterId);
+          if (!actual) { $("poll-msg").textContent = "تعذّر التحقق من الجولتين."; return; }
+          window.parent.postMessage({ alfaPulseSummary: {
+            code, question: actual.question, totals: actual.firstTotal && actual.lastTotal ?
+              [actual.firstTotal, actual.lastTotal] : [actual.firstTotal, actual.lastTotal],
+            values: actual.values, beforeId: actual.beforeId, afterId: actual.afterId
+          } }, location.origin);
+          $("poll-msg").textContent = "أرسلت المقارنة الفعلية إلى أدوات المحاضر.";
+        };
+        item.append(add);
+      }
       container.append(item);
     }
   }
