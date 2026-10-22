@@ -228,7 +228,7 @@ body:has(.presenter) { background: var(--wash); }
 .resume-banner { padding: .55rem .8rem; border-radius: 12px; border: 1px solid var(--accent); background: var(--wash); font-size: .92rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 .trial-report, .rehearse-stage { white-space: pre-wrap; font: inherit; background: var(--wash); border: 1px solid var(--hair); border-radius: 12px; padding: .6rem .8rem; margin: .4rem 0; }
 .trial-label[aria-pressed="true"] { border-color: var(--accent); background: var(--wash); }
-.guest-badge { position: fixed; inset-block-end: .6rem; inset-inline-start: .6rem; padding: .25rem .6rem; border-radius: 999px; background: var(--wash); border: 1px solid var(--hair); font-size: .8rem; color: var(--soft); z-index: 5; }
+.guest-badge { position: fixed; inset-block-end: .6rem; inset-inline-start: .6rem; padding: .25rem .6rem; border-radius: 999px; background: var(--wash); border: 1px solid var(--hair); font-size: .8rem; color: var(--soft); z-index: 5; pointer-events: none; max-inline-size: calc(100vw - 1.2rem); }
 .resume-banner[hidden], .guest-badge[hidden] { display: none; }
 
 /* ---- Scene motion: calm entrances, CSS only. Text is always the exact final text; nothing "counts up". ---- */
@@ -687,14 +687,14 @@ body:has(.presenter) {
   .presenter .controls { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
   .presenter .controls #prev, .presenter .controls #next { min-height: 56px; min-width: 0; font-size: 1.1rem; }
   .presenter .controls #next { order: -1; }
-  .presenter .controls .emergency, .presenter .controls .direct-slide, .presenter .controls select { grid-column: 1 / -1; }
+  .presenter .controls .emergency, .presenter .controls .direct-slide, .presenter .controls select, .presenter .controls #playvid { grid-column: 1 / -1; }
   .presenter .controls .emergency { min-height: 52px; }
   .presenter .controls #playvid, .presenter .controls #open-audience, .presenter .controls #open-vote, .presenter .controls #toggle-info { padding-inline: .5rem; }
   .presenter .controls select { max-width: none; }
   .presenter .side { overflow: visible; background: transparent; border-top: 1px solid var(--hair); padding: .75rem .6rem 2rem; }
 }
 @media (max-width: 420px) {
-  .presenter .controls #open-audience { grid-column: 1 / -1; }
+  .presenter .controls #open-audience, .presenter .controls #open-vote, .presenter .controls #toggle-info { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .presenter button, .presenter .side summary::after { transition: none !important; }
@@ -940,4 +940,11 @@ body main.review:has(> .tag:only-child)::before { margin-inline: auto; }
   .review section:nth-of-type(5) { --i: 4; } .review section:nth-of-type(6) { --i: 5; } .review section:nth-of-type(7) { --i: 6; }
   .review section:nth-of-type(n+8) { --i: 7; }
   .loading, .error { animation: r2-fade var(--dur-2) var(--ease-out) backwards; }
+}
+
+/* Touch screens: quiet chips and the clock select keep a comfortable 44px target (desktop keeps the compact size). */
+@media (pointer: coarse) {
+  .presenter .side :is(.library-body, .cognitive-actions, .director-actions, .import-actions, .voting-drawer .director-actions) button:not(.primary),
+  .presenter .side button:not(.primary), .presenter .bar .clock-box select { min-height: 44px; }
+  input[type="checkbox"], input[type="radio"] { inline-size: 24px; block-size: 24px; }
 }
