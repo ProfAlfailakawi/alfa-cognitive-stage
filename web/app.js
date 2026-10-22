@@ -858,7 +858,7 @@ function backOneLevel() {
 
 function toggleVideo() {
   if (!videoEl) return;
-  if (videoEl.paused) videoEl.play();
+  if (videoEl.paused) videoEl.play()?.catch?.(() => {}); // A quick pause/seek interrupts play(); that is not an error.
   else videoEl.pause();
 }
 
