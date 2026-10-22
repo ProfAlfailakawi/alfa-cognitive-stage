@@ -557,7 +557,28 @@ function renderReadiness() {
     summary.reproducedBuildSlides.length + " تعمل خطوة بخطوة).";
   const verdict = document.createElement("p");
   verdict.textContent = summary.summary;
-  target.replaceChildren(info, verdict);
+  // Decorative at-a-glance tiles built from the same real counts as the sentence below (screen readers read the sentence).
+  const tiles = document.createElement("div");
+  tiles.className = "ready-tiles";
+  tiles.setAttribute("aria-hidden", "true");
+  const tile = (value, label, ratio) => {
+    const t = document.createElement("div");
+    t.className = "ready-tile";
+    const n = document.createElement("b"); n.textContent = String(value);
+    const l = document.createElement("span"); l.textContent = label;
+    t.append(n, l);
+    if (typeof ratio === "number") {
+      const track = document.createElement("i"); track.className = "ready-track";
+      const fill = document.createElement("u"); fill.style.setProperty("--v", String(Math.max(0, Math.min(1, ratio))));
+      track.append(fill); t.append(track);
+    }
+    return t;
+  };
+  tiles.append(tile(summary.slideCount, "شريحة"), tile(summary.embeddedVideoCount, "فيديو"),
+    tile(summary.animatedSlides.length, "بحركة أصلية"),
+    tile(summary.reproducedBuildSlides.length, "خطوة بخطوة",
+      summary.animatedSlides.length ? summary.reproducedBuildSlides.length / summary.animatedSlides.length : undefined));
+  target.replaceChildren(tiles, info, verdict);
   const mediaButton = document.createElement("button");
   mediaButton.id = "media-preflight-run";
   mediaButton.type = "button";
