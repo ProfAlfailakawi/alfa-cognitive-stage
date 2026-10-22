@@ -41,6 +41,7 @@ try {
   assert.equal(h["referrer-policy"], "no-referrer");
   assert.equal(h["x-frame-options"], "SAMEORIGIN");
   assert.ok(!/unsafe-inline/.test(h["content-security-policy"].match(/script-src[^;]*/)[0]), "scripts are never inline");
+  assert.match(h["content-security-policy"].match(/connect-src[^;]*/)[0], /^connect-src 'self' https:\/\/orbitq8\.web\.app$/, "connect-src allows only self and the Orbit origin");
   assert.equal((await call(p, { path: "/api/admin/check" })).headers["x-content-type-options"], "nosniff", "API responses are hardened too");
   // ---- traversal and odd paths never reach files outside web/ or bundles/ ----
   for (const path of ["/../server/server.mjs", "/..%2fserver/server.mjs", "/%2e%2e/server/server.mjs", "/..%5cserver%5cserver.mjs", "/bundles/../../server/server.mjs",

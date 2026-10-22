@@ -48,7 +48,7 @@ const types = {
 
 // Defence in depth: no inline scripts, no third-party origins, no MIME sniffing, no framing by other sites.
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
-  "media-src 'self' blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; " +
+  "media-src 'self' blob:; font-src 'self'; connect-src 'self' https://orbitq8.web.app; frame-src 'self'; object-src 'none'; base-uri 'none'; " +
   "form-action 'self'; frame-ancestors 'self'";
 function hardenHeaders(res) {
   res.setHeader("X-Content-Type-Options", "nosniff");
