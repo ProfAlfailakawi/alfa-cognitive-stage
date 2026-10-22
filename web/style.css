@@ -948,3 +948,51 @@ body main.review:has(> .tag:only-child)::before { margin-inline: auto; }
   .presenter .side button:not(.primary), .presenter .bar .clock-box select { min-height: 44px; }
   input[type="checkbox"], input[type="radio"] { inline-size: 24px; block-size: 24px; }
 }
+
+/* ==========================================================================
+   Round 3 — final polish layer (presentation only; last in the file so it wins).
+   Student pages may only load /style.css (server allow-list), so this layer lives here.
+   No new motion: everything below is static styling.
+   ========================================================================== */
+:root { --line: color-mix(in srgb, var(--ink) 22%, transparent); }
+
+/* Visually hidden, still read by assistive tech (page-level headings). */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* A closed <details> shows only its summary; its content is not focusable either. Make that explicit. */
+details:not([open]) > :not(summary) { display: none !important; }
+
+/* Scrollable lecturer rail is keyboard reachable; give its focus ring room inside the box. */
+.presenter .side:focus-visible { outline-offset: -3px; }
+
+/* Student send button ("إرسال"): the generic .opt background used to paint it canvas-on-canvas. */
+.vote .opt.primary { background: var(--accent); color: var(--canvas); border-color: transparent; box-shadow: 0 2px 0 color-mix(in srgb, var(--ink) 22%, transparent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .vote .opt.primary { color: #06241d; } }
+.vote .opt.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); }
+
+/* Fields read as fields: a visible edge, not a whisper. */
+.vote input[type="text"], .vote textarea, #question-text, .word-input { border: 1px solid var(--line) !important; background: var(--canvas); color: var(--ink); min-height: 48px; }
+.vote input[type="text"]:focus-visible, #question-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.admin textarea, .admin input[type=text], .admin input[type=password], .admin input[type=number], .admin select { border-color: var(--line); }
+
+/* Student page rhythm: the understanding pulse is its own group, clearly apart from the question above it. */
+body main.vote + section.vote { margin-top: 1.4rem; padding-top: 1.3rem; border-top: 1px solid var(--hair); }
+body main.vote + section.vote ~ section.vote { border-top: 0; margin-top: 0; padding-top: .2rem; }
+#pulse .opt { min-height: 60px; }
+
+/* Console form controls follow the palette. */
+.presenter input[type="checkbox"], .presenter input[type="radio"] { accent-color: var(--jade); }
+.presenter input[type="file"]::file-selector-button {
+  font: inherit; font-weight: 600; margin-inline-end: .7rem; padding: .35rem .8rem; min-height: 36px; cursor: pointer;
+  color: var(--ink); background: rgba(238, 243, 241, .08); border: 1px solid var(--hair); border-radius: 10px;
+}
+.presenter input[type="file"]::file-selector-button:hover { background: rgba(238, 243, 241, .14); }
+
+/* Vote console: the session code is the one thing the lecturer reads aloud, so it leads; the link is quiet and left-to-right. */
+.admin #session-line { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin: .5rem 0 .2rem; font-variant-numeric: tabular-nums; }
+.admin #join-url { direction: ltr; text-align: center; font-size: .8rem; line-height: 1.6; margin: .4rem 0 1rem; }
+.admin .card > .actions:first-child { margin-bottom: .2rem; }
+.admin h2 { font-size: 1.25rem; margin-bottom: .6rem; }
+.admin .poll { box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 6%, transparent); }
+/* The rail itself scrolls; the notes block grows with its text instead of being a second scroller. */
+.presenter .side .notes { overflow: visible; }
