@@ -76,6 +76,14 @@ jobs:
           node --check web/lecture-coach.js
           node --check web/review-builder.js
           node --check web/audience-sim.js
+          node --check web/trial-replay.js
+          node --check web/director-tuner.js
+          node --check web/director-tuning-store.js
+          node --check web/question-triage.js
+          node --check web/hybrid-similarity.js
+          node --check web/slide-matcher.js
+          node --check server/neural-embed.mjs
+          node --check tools/fetch-embedder.mjs
       - name: JS unit regression
         run: |
           npm run test:build-steps
@@ -91,6 +99,7 @@ jobs:
           npm run test:security
           npm run test:library
           npm run test:engagement
+          npm run test:semantic
           npm run test:insight
           npm run test:field-trial
           npm run test:readiness
@@ -145,6 +154,8 @@ jobs:
         run: npm run test:e2e-insight
       - name: Resume after a crash, field trial with labelling, timed rehearsal, course map and guest mode
         run: npm run test:e2e-field
+      - name: Local semantic slide matching (hint path runs only where the model is installed)
+        run: npm run test:e2e-semantic
       - name: Animated scenes - no clipping, calm motion, reduced-motion, exact text
         run: npm run test:e2e-scenes
       - name: Spoken slide navigation - strict commands, video guard, undo

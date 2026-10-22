@@ -4,14 +4,17 @@ import { embed, cosine, contentWords } from "./semantic-index.js";
 
 const SAME_TOPIC = 0.42;
 
-export function clusterQuestions(questions) {
+/** `similarity(a, b)` may replace the lexical comparison (a, b are the question objects); it must return 0..1. */
+export function clusterQuestions(questions, { similarity } = {}) {
   const visible = (Array.isArray(questions) ? questions : []).filter((q) => q && !q.flagged && typeof q.text === "string");
   const vectors = visible.map((q) => embed(q.text));
   const parent = visible.map((_, i) => i);
   const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   for (let i = 0; i < visible.length; i++) {
     for (let j = i + 1; j < visible.length; j++) {
-      if (vectors[i].size >= 2 && vectors[j].size >= 2 && cosine(vectors[i].vec, vectors[j].vec) >= SAME_TOPIC) parent[find(j)] = find(i);
+      const related = similarity ? similarity(visible[i], visible[j]) >= SAME_TOPIC
+        : vectors[i].size >= 2 && vectors[j].size >= 2 && cosine(vectors[i].vec, vectors[j].vec) >= SAME_TOPIC;
+      if (related) parent[find(j)] = find(i);
     }
   }
   const groups = new Map();

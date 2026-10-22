@@ -32,7 +32,12 @@ export function createFieldRecorder({ bundle, storage: custom, now = () => Date.
       return true;
     },
     stop() { if (current) { current.endedAt = now(); save(); current = null; } },
-    utterance({ text, slide, engine = "" }) { return add("utterance", { text: clip(text, 400), slide, engine: clip(engine, 20) }); },
+    /** `context` is the little the director needs to be replayed later: mode, media state and the scene on screen. */
+    utterance({ text, slide, engine = "", context }) {
+      const ctx = context ? { mode: clip(context.mode, 10), media: Boolean(context.media),
+        overlay: Array.isArray(context.overlay) ? context.overlay.slice(0, 6).map((l) => clip(l, 120)) : null } : undefined;
+      return add("utterance", { text: clip(text, 400), slide, engine: clip(engine, 20), ...(ctx ? { ctx } : {}) });
+    },
     decision({ slide, action, kind, why, opportunity, confidence, utteranceId, spec }) {
       return add("decision", { slide, action: clip(action, 20), kind: clip(kind, 20), why: clip(Array.isArray(why) ? why.at(-1) : why, 120),
         opportunity: opportunity ? clip(opportunity, 20) : null, confidence: Number.isFinite(confidence) ? confidence : 0,

@@ -104,6 +104,15 @@ try {
   check("student text is never executed as HTML", await lecturer.evaluate(() => window.__pwned === undefined) &&
     (await lecturer.locator("#student-questions").innerText()).includes("<script>") === true);
 
+  // ---- triage: the few groups worth answering now, administrative questions apart, one click per group ----
+  const triage = await lecturer.textContent("#triage-top");
+  check("the inbox leads with the most-asked group", triage.includes("الأهم الآن") && /3 طلاب/.test(triage) && !triage.includes("ابن الكلب"), triage.slice(0, 240));
+  check("an administrative question is separated from content questions", (await lecturer.locator("#triage-admin").count()) === 1 && (await lecturer.textContent("#triage-admin")).includes("إداري"));
+  const beforeCount = await lecturer.locator("#student-questions > div.poll").count();
+  await lecturer.locator("#triage-top .triage-done").first().click();
+  await lecturer.waitForFunction((n) => document.querySelectorAll("#student-questions > div.poll").length === n, beforeCount - 3, { timeout: 8000 });
+  check("answering a group removes all its paraphrased questions at once", true);
+
   // ---- section comparison ----
   const second = (await (await api("/sessions", "POST")).json()).code;
   await api(`/sessions/${second}`, "PUT", { label: "شعبة 2 — الثلاثاء" });

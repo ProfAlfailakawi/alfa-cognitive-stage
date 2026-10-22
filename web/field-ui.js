@@ -4,6 +4,8 @@ import { analyzeTrial, trialToMarkdown } from "./field-recorder.js";
 import { expectedQuestions } from "./audience-sim.js";
 import { planRehearsal, summarizeRehearsal } from "./rehearsal-audience.js";
 import { buildCourseMap } from "./course-map.js";
+import { tuneFromTrials, tuningSummary } from "./director-tuner.js";
+import { loadTuning, saveTuning, clearTuning, isCustomTuning } from "./director-tuning-store.js";
 
 const el = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props);
@@ -12,7 +14,7 @@ const el = (tag, props = {}, ...children) => {
 };
 const ago = (ms) => (ms < 90000 ? "قبل أقل من دقيقتين" : "قبل " + Math.round(ms / 60000) + " دقيقة");
 
-export function mountFieldTools(mount, { getToken, getBundle, getSlides, goToSlide, recorder, resume, restoreStage, noteFeature }) {
+export function mountFieldTools(mount, { getToken, getBundle, getSlides, goToSlide, recorder, resume, restoreStage, noteFeature, applyTuning = () => {} }) {
   const banner = el("div", { className: "resume-banner", id: "resume-banner", hidden: true });
   const drawer = el("details", { className: "library-drawer", id: "field-drawer" }, el("summary", { textContent: "المحاضرة التجريبية وخريطة المقرر وبروفة الجمهور" }));
   const body = el("div", { className: "library-body" });
@@ -81,6 +83,28 @@ export function mountFieldTools(mount, { getToken, getBundle, getSlides, goToSli
         a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
       };
       body.append(save);
+    }
+    // 1b. Sensitivity from the lecturer's own labels (replay of the recorded lectures under other settings)
+    if (recorder.trials().length) {
+      body.append(el("h4", { textContent: "ضبط حساسية المخرج من تصنيفاتك" }));
+      const result = el("p", { id: "tune-result", className: "meta", role: "status" });
+      const current = loadTuning();
+      const active = el("p", { id: "tune-active", className: "meta", textContent: isCustomTuning(current)
+        ? `الضبط المعتمد: ثقة ≥ ${Math.round(current.minConfidence * 100)}٪، فاصل ${Math.round(current.gapMs / 1000)} ث، ${current.maxPerSlide} مشاهد للشريحة.` : "الضبط الحالي: الافتراضي." });
+      const suggest = el("button", { type: "button", id: "tune-suggest", textContent: "أعد تشغيل محاضراتي واقترح ضبطاً" });
+      suggest.onclick = () => {
+        const r = tuneFromTrials(recorder.trials(), getSlides());
+        result.textContent = tuningSummary(r);
+        document.getElementById("tune-apply")?.remove();
+        if (r.recommended) {
+          const apply = el("button", { type: "button", id: "tune-apply", textContent: "اعتمد هذا الضبط", onclick: () => {
+            saveTuning(r.tuning, { labelled: r.labelled }); applyTuning(r.tuning); say("اعتُمد الضبط الجديد؛ يسري من الجملة القادمة."); void render(); } });
+          result.after(apply);
+        }
+      };
+      const reset = el("button", { type: "button", id: "tune-reset", textContent: "رجوع للضبط الافتراضي", hidden: !isCustomTuning(current),
+        onclick: () => { clearTuning(); applyTuning(loadTuning()); say("عاد المخرج للضبط الافتراضي."); void render(); } });
+      body.append(active, suggest, result, reset);
     }
     body.append(el("button", { type: "button", id: "trial-clear", textContent: "مسح كل التسجيلات", onclick: () => { recorder.clear(); say("مُسحت التسجيلات."); void render(); } }));
 

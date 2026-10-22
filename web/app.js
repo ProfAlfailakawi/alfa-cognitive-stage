@@ -26,6 +26,8 @@ import { interpretNaturalNav, interpretStageReturn } from "./voice-intent.js";
 import { THEMES } from "./scene-theme.js";
 import { styleScene } from "./scene-stylist.js";
 import { createFieldRecorder } from "./field-recorder.js";
+import { loadTuning } from "./director-tuning-store.js";
+import { createSlideMatcher, createRemoteEmbedder } from "./slide-matcher.js";
 import { createResume } from "./resume-state.js";
 import { createNumberWitness } from "./number-witness.js";
 import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
@@ -54,7 +56,7 @@ let currentOverlay = null; // spec of the scene now on screen, for return snapsh
 const returnStack = createReturnStack();
 let cognitive = null;
 let cognitiveProjection = null;
-const brain = createDirectorBrain();
+const brain = createDirectorBrain({ tuning: loadTuning() });
 const meter = createLatencyMeter();
 let lastVoiceHealth = null;
 let sessionLog = { slide() {}, scene() {}, declined() {}, video() {}, digression() {}, current: () => null, clear() {}, end() {} };
@@ -278,6 +280,8 @@ function showSlide(index, step = 0) {
   if (role === "presenter") {
     directorRuntime.pending = null;
     brain.resetSlide();
+    postSlideToVoteFrame();
+    hideSlideHint();
   }
   const img = document.getElementById("slide-img");
   const generation = ++slideGeneration;
@@ -392,6 +396,14 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
           <p class="meta" id="director-status" aria-live="polite">المايك متوقف. لا توجد طلبات API.</p>
           <p class="meta" id="director-voice-health" aria-label="تشخيص استجابة التعرف الصوتي" hidden></p>
           <p class="meta" id="director-last"></p>
+          <p class="meta" id="semantic-status" hidden></p>
+          <div id="slide-hint" class="director-proposal" hidden>
+            <span id="slide-hint-text"></span>
+            <div class="director-actions">
+              <button class="primary" type="button" id="slide-hint-go">انتقل</button>
+              <button type="button" id="slide-hint-dismiss">تجاهل</button>
+            </div>
+          </div>
           <div id="director-proposal" class="director-proposal" hidden>
             <div id="director-reason"></div>
             <div class="director-actions">
@@ -429,6 +441,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
   };
   document.getElementById("vote-iframe").addEventListener("load", () => {
     if (directorRuntime.questionDraft) postPollDraft(directorRuntime.questionDraft);
+    postSlideToVoteFrame();
   });
   document.getElementById("project-poll").onclick = () => {
     recorder?.note("poll");
@@ -487,6 +500,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
     getToken: directorAdminToken, getBundle: () => state.bundle, getSlides: () => state.slides,
     goToSlide: (index) => go(index),
     recorder, resume: resumeStore, restoreStage: restoreStageState, noteFeature: (name) => recorder.note(name),
+    applyTuning: (tuning) => brain.setTuning(tuning),
   });
   cognitive = mountLivingIntelligence(document.getElementById("cognitive-mount"), {
     getBundle: () => state.bundle, getSlide: () => state.index, getStep: () => state.step,
@@ -845,6 +859,35 @@ function showDirectorProposal(proposal, reason) {
   if (description) description.textContent = reason;
   if (panel) panel.hidden = false;
 }
+// Optional local semantic matching: only when the lecturer installed the embedding model (npm run fetch:embedder).
+// It suggests a jump when what is being said is clearly about another slide; it never moves the stage by itself.
+let slideMatcher = null, semanticChecked = 0, slideHintTimer = 0, slideHintTarget = 0;
+async function ensureSemanticMatching() {
+  if (role !== "presenter" || slideMatcher || Date.now() - semanticChecked < 60000 || !directorAdminToken()) return;
+  semanticChecked = Date.now();
+  const remote = createRemoteEmbedder({ getToken: directorAdminToken });
+  const status = await remote.status();
+  const line = document.getElementById("semantic-status");
+  if (line) { line.hidden = false; line.textContent = status.available ? "المطابقة الدلالية المحلية: متاحة — قد أقترح الانتقال لشريحة تتحدث عنها."
+    : "المطابقة الدلالية المحلية: غير مثبتة (" + (status.reason || "غير متاحة") + ")."; }
+  if (status.available) slideMatcher = createSlideMatcher({ getSlides: () => state.slides, embedder: remote });
+}
+function hideSlideHint() { clearTimeout(slideHintTimer); slideHintTarget = 0; const box = document.getElementById("slide-hint"); if (box) box.hidden = true; }
+async function suggestSlide(utterance) {
+  void ensureSemanticMatching();
+  if (!slideMatcher || videoEls.some((v) => !v.paused)) return;
+  const at = state.index;
+  const match = await slideMatcher.match(utterance).catch(() => null);
+  if (!match?.confident || match.best === state.index || state.index !== at || match.best === slideHintTarget) return;
+  const box = document.getElementById("slide-hint");
+  if (!box) return;
+  slideHintTarget = match.best;
+  document.getElementById("slide-hint-text").textContent = `يبدو أنك تتحدث عن الشريحة ${match.best} (الآن على ${state.index}).`;
+  box.hidden = false;
+  recorder?.note("slidehint");
+  clearTimeout(slideHintTimer);
+  slideHintTimer = setTimeout(hideSlideHint, 15000);
+}
 function directorAdminToken() {
   return document.getElementById("director-admin-token")?.value.trim() ||
     sessionStorage.getItem("alfa-admin-token") || "";
@@ -1044,7 +1087,9 @@ function receiveDirectorSpeech(text, meta = {}) {
   };
   const context = directorContext();
   const decision = brain.observe(raw, context);
-  const heardId = recorder?.recording() ? recorder.utterance({ text: raw, slide: state.index, engine: meta.engine }) : null;
+  void suggestSlide(raw);
+  const heardId = recorder?.recording() ? recorder.utterance({ text: raw, slide: state.index, engine: meta.engine,
+    context: { mode: context.mode, media: context.mediaPlaying, overlay: context.overlay?.lines } }) : null;
   if (heardId) recorder.decision({ slide: state.index, action: decision.action, kind: decision.kind, why: decision.why, opportunity: decision.opportunity,
     confidence: decision.confidence, utteranceId: heardId, spec: decision.spec });
   const slip = numberWitness.check(state.index, raw, context.slide.text + " " + context.slide.notes);
@@ -1151,8 +1196,10 @@ function setupDirector() {
   navigator.mediaDevices?.addEventListener?.("devicechange", () => speech.deviceChanged());
   const start = document.getElementById("director-start");
   const stop = document.getElementById("director-stop");
-  start.onclick = () => speech.start();
+  start.onclick = () => { semanticChecked = 0; void ensureSemanticMatching(); speech.start(); };
   stop.onclick = () => speech.stop();
+  document.getElementById("slide-hint-go").onclick = () => { const n = slideHintTarget; hideSlideHint(); if (n) go(n); };
+  document.getElementById("slide-hint-dismiss").onclick = hideSlideHint;
   document.getElementById("director-accept").onclick = () => {
     const pending = directorRuntime.pending;
     if (pending?.retract) { clearDirectorProposal(); backOneLevel(); setDirectorStatus("أُخفي المشهد بعد تراجعك عن المعلومة."); return; }
@@ -1280,6 +1327,10 @@ function renderPollScreen(data) {
     overlay.append(bars);
   }
   root.append(overlay);
+}
+// The question inbox ranks questions about the slide on screen higher, so it needs to know which one that is.
+function postSlideToVoteFrame() {
+  try { document.getElementById("vote-iframe")?.contentWindow?.postMessage({ alfaSlideContext: { slide: state.index } }, location.origin); } catch {}
 }
 function postPollDraft(question) {
   directorRuntime.questionDraft = String(question || "").slice(0, 200);

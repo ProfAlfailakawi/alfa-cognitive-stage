@@ -27,6 +27,7 @@ for (const [method, path, ok] of [
   ["GET", "/", false], ["GET", "/app.js", false], ["GET", "/index.html", false], ["GET", "/bundles/x/manifest.json", false],
   ["GET", "/api/sessions/ABC234/presenter", false], ["POST", "/api/sessions", false], ["DELETE", "/api/sessions/ABC234/questions/1", false],
   ["GET", "/api/memory/library", false], ["GET", "/api/local-token", false],
+  ["POST", "/api/embed", false], ["GET", "/api/embed/status", false],
   ["POST", "/api/lectures/import", false], ["GET", "/api/admin/check", false], ["GET", "/vote-admin.html", false],
   ["GET", "/fonts/../server/server.mjs", false],
 ]) assert.equal(studentSurfaceAllows(method, path), ok, method + " " + path);
