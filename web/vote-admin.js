@@ -1,5 +1,6 @@
 import { compareRounds, compareLinkedBeforeAfter, exportAggregateCsv, summarizePollDistribution } from "./poll-analytics.js";
 import { clusterQuestions, recurringTerms, reexplainSuggestions, groupByObjective, compareSections } from "./engagement-insights.js";
+import { triageQuestions } from "./question-triage.js";
 // Lecturer's voting console: create a session, add questions, open/close/reveal, see results.
 const $ = (id) => document.getElementById(id);
 const KEY = "alfa-admin-token";
@@ -8,6 +9,7 @@ let adminToken = sessionStorage.getItem(KEY) || "";
 let code = sessionStorage.getItem(SESSION_KEY) || "";
 let refreshTimer = null;
 let latestPollState = null;
+let currentSlide = null; // the slide on the presenter's screen, sent by the host page
 
 async function call(method, path, body) {
   const res = await fetch(`/api${path}`, {
@@ -188,6 +190,47 @@ function renderObjectives(polls) {
   }
 }
 
+async function dismissGroup(ids, button) {
+  button.disabled = true;
+  try {
+    await Promise.all(ids.map((id) => call("DELETE", "/sessions/" + code + "/questions/" + id)));
+    await refreshOpenQuestions();
+  } catch (error) {
+    button.disabled = false;
+    $("poll-msg").textContent = error.message;
+  }
+}
+// "الأهم الآن": the few groups worth the lecturer's next minute, plus administrative questions that one reply settles.
+function makeTriageBox(triage) {
+  const box = document.createElement("div");
+  box.className = "poll";
+  box.id = "triage-top";
+  box.append(Object.assign(document.createElement("strong"), { textContent: "الأهم الآن (مرتّبة من أسئلة الطلبة، دون حكم على صحتها)" }));
+  const row = (c) => {
+    const line = document.createElement("div");
+    line.className = "triage-item";
+    const who = c.size > 1 ? c.size + " طلاب" : "طالب واحد";
+    line.append(Object.assign(document.createElement("p"), { textContent: `[${c.kindLabel}] ${who}${c.slide ? " · شريحة " + c.slide : ""} — «${c.representative}»` }));
+    if (c.why.length) line.append(Object.assign(document.createElement("small"), { className: "meta", textContent: c.why.join(" · ") }));
+    const done = document.createElement("button");
+    done.type = "button"; done.className = "triage-done";
+    done.textContent = c.size > 1 ? `أجبتُ — أزل المجموعة (${c.size})` : "أجبتُ — أزل السؤال";
+    done.addEventListener("click", () => void dismissGroup(c.ids, done));
+    line.append(done);
+    return line;
+  };
+  for (const c of triage.top) box.append(row(c));
+  if (triage.waiting) box.append(Object.assign(document.createElement("p"), { className: "meta", textContent: `و${triage.waiting} مجموعات أخرى أقل أولوية في القائمة أدناه.` }));
+  if (triage.logistics.length) {
+    const admin = document.createElement("details");
+    admin.id = "triage-admin";
+    admin.append(Object.assign(document.createElement("summary"), { textContent: `أسئلة إدارية (${triage.logistics.reduce((n, c) => n + c.size, 0)}) — رد واحد يكفي` }));
+    for (const c of triage.logistics) admin.append(row(c));
+    box.append(admin);
+  }
+  return box;
+}
+
 function makeQuestionRow(item) {
   const row = document.createElement("div");
   row.className = "poll";
@@ -238,6 +281,8 @@ async function refreshOpenQuestions() {
     const clean = questions.filter((q) => !q.flagged), flagged = questions.filter((q) => q.flagged);
     const clusters = clusterQuestions(clean);
     const tips = reexplainSuggestions(clusters, clean.length);
+    const triage = triageQuestions(clean, { currentSlide });
+    if (triage.top.length || triage.logistics.length) insights.append(makeTriageBox(triage));
     const summary = document.createElement("div");
     summary.className = "poll";
     const head = document.createElement("strong");
@@ -411,6 +456,13 @@ window.addEventListener("message", (event) => {
         $("poll-msg").textContent = "فُتح سيناريو ماذا لو على جلسة التصويت الحالية.";
       } catch (e) { $("poll-msg").textContent = e.message; }
     })();
+    return;
+  }
+  const context = event.data?.alfaSlideContext;
+  if (context && Number.isInteger(context.slide)) {
+    const changed = currentSlide !== context.slide;
+    currentSlide = context.slide;
+    if (changed && $("student-questions-drawer")?.open) void refreshOpenQuestions();
     return;
   }
   const voice = event.data?.alfaVoicePoll;

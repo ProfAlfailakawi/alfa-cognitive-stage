@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { createVoteStore, VoteError } from "./votes.mjs";
 import { createLibrary, deleteBundle, LibraryError } from "./library.mjs";
 import { createQuestionBank, QuestionBankError } from "./question-bank.mjs";
+import { createNeuralEmbedder, EmbedError } from "./neural-embed.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 try { loadEnvFile(join(root, ".env")); } catch (err) { if (err.code !== "ENOENT") throw err; }
@@ -25,6 +26,7 @@ const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data
 const scenes = createSceneStore({ file: process.env.SCENES_FILE || join(root, "data", "scenes.json") });
 const library = createLibrary({ file: process.env.LIBRARY_FILE || join(root, "data", "library.json"), bundlesRoot });
 const bank = createQuestionBank({ file: process.env.QUESTION_BANK_FILE || join(root, "data", "question-bank.json") });
+const embedder = createNeuralEmbedder({ dir: resolve(process.env.ALFA_EMBED_DIR || join(root, "data", "embedder")), model: process.env.ALFA_EMBED_MODEL || undefined });
 const MAX_BODY = 4096;
 const retentionDays = () => Math.max(1, Math.min(3650, Number(process.env.ALFA_RETENTION_DAYS) || 180));
 const tokenHours = () => Math.max(0, Math.min(720, Number(process.env.ALFA_VOTER_TOKEN_HOURS ?? 24)));
@@ -162,6 +164,20 @@ async function handleApi(req, res, path) {
       if (err instanceof SceneStoreError) return sendJson(res, err.status, { error: err.message });
       throw err;
     }
+  }
+  if (resource === "embed") {
+    requireAdmin(req);
+    try {
+      if (req.method === "GET" && code === "status") return sendJson(res, 200, embedder.status());
+      if (req.method === "POST" && !code) {
+        const body = await readBody(req, 128 * 1024);
+        return sendJson(res, 200, { model: embedder.model, vectors: await embedder.embed(body.texts) });
+      }
+    } catch (err) {
+      if (err instanceof EmbedError) return sendJson(res, err.status, { error: err.message });
+      throw err;
+    }
+    throw new VoteError("غير موجود", 404);
   }
   if (resource === "data") {
     requireAdmin(req);

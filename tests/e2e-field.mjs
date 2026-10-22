@@ -5,6 +5,7 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { recordLecture } from "./tuning-fixture.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const port = 4301, base = `http://localhost:${port}`, ADMIN = "field-test-token-0123456789abcd", A = "abcdef012345", B = "fedcba543210";
@@ -91,11 +92,37 @@ try {
     for (let i = 0; i < n; i++) await rows.nth(i).locator("button", { hasText: /^(صمته )?مناسب$/ }).click(); // the list re-renders each time
     const after = await page.textContent("#trial-report");
     check("labels turn into a precision figure only past 5 labelled decisions", n >= 5 && after.includes("100٪"), `labelled rows: ${n}`);
+    await page.click("#tune-suggest");
+    check("replay tuning refuses to suggest from too few labelled decisions", /يلزم 10 قرارات مصنّفة/.test(await page.textContent("#tune-result")), await page.textContent("#tune-result"));
+    check("no tuning is applied by merely asking", (await page.textContent("#tune-active")).includes("الافتراضي") && await page.locator("#tune-apply").count() === 0);
     const [download] = await Promise.all([page.waitForEvent("download"), page.click("#trial-export")]);
     const exported = JSON.parse(readFileSync(await download.path(), "utf8"));
     check("the export is the trial as JSON with the recorded text", exported.format === "alfa-field-trial-v1" && exported.trial.events.some((e) => e.type === "utterance" && e.text.includes("طلعت")));
+    check("each recorded sentence keeps the context needed to replay it", exported.trial.events.filter((e) => e.type === "utterance").every((e) => e.ctx && e.ctx.mode && e.ctx.media === false));
     await page.click("#trial-clear");
     check("clearing removes every trial from the browser", await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("alfa-trial-v1:")).length) === 0);
+    await ctx.close();
+  }
+  // ======== sensitivity tuning from a labelled, recorded lecture ========
+  {
+    const slides = JSON.parse(readFileSync(join(bundles, A, "manifest.json"), "utf8")).slides;
+    const trial = recordLecture({ label: "seed", slides });
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1700 } });
+    await ctx.addInitScript(([bundle, json]) => { if (!localStorage.getItem("alfa-trial-v1:" + bundle) && !sessionStorage.getItem("seeded")) { localStorage.setItem("alfa-trial-v1:" + bundle, json); sessionStorage.setItem("seeded", "1"); } }, [A, JSON.stringify([trial])]);
+    const page = await newPresenter(ctx);
+    await page.locator("#field-drawer summary").click();
+    await page.waitForSelector("#tune-suggest");
+    await page.click("#tune-suggest");
+    await page.waitForSelector("#tune-apply");
+    const text = await page.textContent("#tune-result");
+    check("the suggestion is derived from the labels and reports out-of-sample evidence", /90٪/.test(text) && /خارج العينة/.test(text), text);
+    check("nothing changed until the lecturer adopts it", await page.evaluate(() => localStorage.getItem("alfa-director-tuning-v1")) === null);
+    await page.click("#tune-apply");
+    const saved = JSON.parse(await page.evaluate(() => localStorage.getItem("alfa-director-tuning-v1")));
+    check("adopting stores the new sensitivity", saved.tuning.minConfidence === 0.9 && saved.labelled === 16, JSON.stringify(saved));
+    check("the active setting is shown", (await page.textContent("#tune-active")).includes("90٪"));
+    await page.click("#tune-reset");
+    check("the lecturer can return to the defaults", await page.evaluate(() => localStorage.getItem("alfa-director-tuning-v1")) === null && (await page.textContent("#tune-active")).includes("الافتراضي"));
     await ctx.close();
   }
   // ======== kept questions, timed rehearsal, course map ========

@@ -234,7 +234,20 @@ const NARRATIVE = /(?:مره (?:واحد|وحده|كنت|كان)|صار لي م�
 const CORRECTION = /(?:عفوا|اقصد|قصدي|التصحيح|اصحح|مو قصدي|بل الصحيح|لا غلطت|غلطت)/;
 const RETRACT = /(?:انسوا اللي قلت|انسوا هالمعلومه|مو صحيح اللي قلت|تراجع عن|المعلومه غلط|الرقم غلط|هذا غلط)/;
 
-export function createDirectorBrain({ now = () => Date.now() } = {}) {
+/**
+ * Sensitivity knobs. The defaults reproduce the original behaviour exactly; `web/director-tuner.js` may suggest
+ * other values from the lecturer's own labelled lectures, and only the lecturer can adopt them.
+ */
+export const DEFAULT_TUNING = Object.freeze({ minConfidence: 0, gapMs: GAP_MS, maxPerSlide: MAX_PER_SLIDE });
+export function sanitizeTuning(input) {
+  const n = (v, lo, hi, fallback) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Math.min(hi, Math.max(lo, Number(v))) : fallback);
+  return { minConfidence: n(input?.minConfidence, 0, 0.99, DEFAULT_TUNING.minConfidence),
+    gapMs: Math.round(n(input?.gapMs, 3000, 60000, DEFAULT_TUNING.gapMs)),
+    maxPerSlide: Math.round(n(input?.maxPerSlide, 1, 10, DEFAULT_TUNING.maxPerSlide)) };
+}
+
+export function createDirectorBrain({ now = () => Date.now(), tuning: initialTuning } = {}) {
+  let tuning = sanitizeTuning(initialTuning);
   let window = [];
   let story = null;
   let topic = new Set();
@@ -437,9 +450,10 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
         return status(decision, "فرصة بدون بيانات كافية لبناء مشهد محلي");
       }
       if (mode === "shadow") return status({ ...decision, action: "observe" }, "وضع الظل");
+      if (decision.confidence < tuning.minConfidence) return status({ ...decision, action: "none" }, "أقل من حد الحساسية الذي اعتمدته");
       const count = perSlide.get(slideIndex) || 0;
-      if (count >= MAX_PER_SLIDE) return status({ ...decision, action: "none" }, "بلغ الحد الأعلى لاقتراحات هذه الشريحة");
-      if (t - lastShownAt < GAP_MS && decision.kind !== "steps") return status({ ...decision, action: "none" }, "فترة هدوء بعد المشهد السابق");
+      if (count >= tuning.maxPerSlide) return status({ ...decision, action: "none" }, "بلغ الحد الأعلى لاقتراحات هذه الشريحة");
+      if (t - lastShownAt < tuning.gapMs && decision.kind !== "steps") return status({ ...decision, action: "none" }, "فترة هدوء بعد المشهد السابق");
       const auto = (mode === "balanced" && decision.confidence >= 0.95 && ["stat", "steps", "study"].includes(decision.kind) ||
         mode === "balanced" && decision.confidence >= 0.96 && decision.kind === "bars" && decision.spec.lines.length === 2 ||
         mode === "balanced" && decision.confidence >= 0.95 && decision.kind === "compare" && decision.spec.lines.length === 1 && /^(?:من|كانت)/.test(decision.spec.lines[0]) ||
@@ -451,6 +465,8 @@ export function createDirectorBrain({ now = () => Date.now() } = {}) {
 
   return {
     observe,
+    setTuning(next) { tuning = sanitizeTuning(next); },
+    tuning: () => ({ ...tuning }),
     // Reversible navigation commands may act on a stable interim transcript; nothing else may.
     peekReturn(text) {
       const kind = interpretSpeech(numeralizePercents(String(text || "")))?.kind;
