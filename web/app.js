@@ -419,7 +419,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
               <button type="button" id="director-clear-scenes">مسح مشاهد هذه المحاضرة المحفوظة</button>
               <button type="button" id="director-clear-all-scenes">مسح كل ذاكرة المشاهد</button>
             </div>
-          </details> : ""}
+          </details>
         </section>
         <div><div class="label">ملاحظات المحاضر</div></div>
         <div class="notes" id="notes"></div>
