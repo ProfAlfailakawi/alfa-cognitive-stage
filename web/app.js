@@ -332,7 +332,8 @@ function renderPresenter() {
           <select id="lecture-picker" aria-label="اختيار المحاضرة"></select>
         </div>
       </div>
-      <aside class="side">
+      <section class="side" aria-label="أدوات المحاضر" tabindex="0">
+        <h2 class="sr-only">أدوات المحاضر</h2><h3 class="sr-only">الأقسام</h3>
         <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
         <div id="lecture-import-mount"></div>
         <div id="library-mount"></div>
@@ -423,7 +424,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
         </section>
         <div><div class="label">ملاحظات المحاضر</div></div>
         <div class="notes" id="notes"></div>
-      </aside>
+      </section>
     </section>`;
   setAspect(state.aspect);
   document.getElementById("prev").onclick = () => retreat();
