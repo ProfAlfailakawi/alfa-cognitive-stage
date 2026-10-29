@@ -699,9 +699,11 @@ function renderPresenterPanels() {
   const next = state.slides[state.index];
   const thumb = document.getElementById("next-thumb");
   if (thumb) {
-    thumb.innerHTML = next
-      ? `<img src="/bundles/${state.bundle}/${next.image}" alt="الشريحة ${state.index + 1}" />`
-      : "<p>نهاية العرض</p>";
+    // Built as elements, never as an HTML string: the lecture id and image path come from the URL and the manifest.
+    const preview = next
+      ? Object.assign(document.createElement("img"), { src: `/bundles/${state.bundle}/${next.image}`, alt: `الشريحة ${state.index + 1}` })
+      : Object.assign(document.createElement("p"), { textContent: "نهاية العرض" });
+    thumb.replaceChildren(preview);
   }
 }
 
@@ -1562,7 +1564,11 @@ function setupClock() {
 
 async function boot() {
   const current = await fetch("/bundles/current.json").then((r) => r.json()).catch(() => null);
-  state.bundle = params.get("bundle") || (current && current.id);
+  // A lecture id is a plain folder name (the shape every other module already enforces). Anything else in the
+  // link (quotes, "#", "../") is ignored, so a crafted link cannot inject markup or point fetches elsewhere.
+  const validBundle = (value) => typeof value === "string" && /^[a-zA-Z0-9_-]{4,64}$/.test(value);
+  const asked = params.get("bundle");
+  state.bundle = validBundle(asked) ? asked : validBundle(current?.id) ? current.id : null;
   if (!state.bundle) {
     if (role === "presenter") {
       app.replaceChildren();
@@ -1576,7 +1582,22 @@ async function boot() {
     sessionLog = createSessionLog({ bundle: state.bundle });
     addEventListener("pagehide", () => sessionLog.end());
   }
-  const manifest = await fetch(`/bundles/${state.bundle}/manifest.json`).then((r) => r.json());
+  const manifest = await fetch(`/bundles/${state.bundle}/manifest.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (!manifest || !Array.isArray(manifest.slides) || !manifest.slides.length) {
+    // An old link or a reopened students' tab can name a lecture that was deleted: say so instead of "loading" forever.
+    const note = Object.assign(document.createElement("p"), { className: "error", textContent: role === "presenter"
+      ? "تعذر فتح هذه المحاضرة؛ ربما حُذفت أو لم يكتمل تحويلها."
+      : "تعذر فتح هذه المحاضرة على شاشة الطلبة. افتحها من جديد من صفحة المحاضر (زر «فتح نافذة الطلبة»)." });
+    note.setAttribute("role", "alert");
+    app.replaceChildren(note);
+    if (role === "presenter") {
+      if (validBundle(current?.id) && current.id !== state.bundle) {
+        note.append(" ", Object.assign(document.createElement("a"), { href: "/#presenter", textContent: "افتح المحاضرة الحالية" }));
+      }
+      mountImportPanel(app, { empty: true });
+    }
+    return;
+  }
   state.manifest = manifest;
   state.slides = manifest.slides;
   state.count = manifest.slideCount;

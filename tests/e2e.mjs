@@ -338,6 +338,18 @@ try {
 
   check("audience page has no JavaScript errors", audienceErrors.length === 0, audienceErrors.join(" | "));
 
+  // A crafted ?bundle= link cannot inject markup (the next-slide preview used to be an HTML string).
+  const crafted = await context.newPage();
+  await crafted.goto(`${base}/?bundle=${encodeURIComponent(bundleId + '/manifest.json#"><h1 id="pwned">X</h1><i x="')}#presenter`);
+  await crafted.waitForSelector("#meta");
+  check("a crafted lecture link cannot inject markup", (await crafted.locator("#pwned").count()) === 0);
+  // A link to a deleted lecture explains itself instead of "loading" forever.
+  await crafted.goto(`${base}/?bundle=ffffffffffff#audience`);
+  await crafted.waitForSelector("#app [role=alert]", { timeout: 8000 }).catch(() => {});
+  check("a deleted lecture's audience link shows a clear message",
+    (await crafted.textContent("#app")).includes("تعذر فتح هذه المحاضرة"));
+  await crafted.close();
+
   await presenter.screenshot({ path: join(root, "tests/presenter.png") });
   await audience.screenshot({ path: join(root, "tests/audience.png") });
 } catch (err) {
