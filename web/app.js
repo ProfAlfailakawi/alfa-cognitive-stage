@@ -1504,10 +1504,18 @@ function applyRemote(message) {
 }
 
 function setupKeys() {
+  // Did focus arrive by Tab (a keyboard user) rather than by a click?
+  let keyboardFocus = false;
+  document.addEventListener("pointerdown", () => { keyboardFocus = false; }, true);
+  document.addEventListener("keydown", (event) => { if (event.key === "Tab") keyboardFocus = true; }, true);
   document.addEventListener("keydown", (event) => {
     if (role !== "presenter") return;
     const target = event.target;
     if (target instanceof HTMLElement && target.closest("input,textarea,select,[contenteditable=true]")) return;
+    // A keyboard user who reached a button, drawer heading or link with Tab activates it with Space/Enter.
+    // After a mouse click, a clicker's Space still turns the slide (the button is blurred below).
+    if (keyboardFocus && (event.key === " " || event.key === "Enter") && target instanceof HTMLElement &&
+        target.matches("button, summary, a[href]")) return;
     if (target instanceof HTMLButtonElement) target.blur();
     switch (event.key) {
       case "ArrowRight":
