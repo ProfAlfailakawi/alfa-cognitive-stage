@@ -64,8 +64,18 @@ function safePath(base, urlPath) {
   return full === base || full.startsWith(base + sep) ? full : null;
 }
 
+// A read error after the headers went out (a lecture deleted while its video streams) ends this response, not the server.
+function streamFile(res, file, range) {
+  const stream = createReadStream(file, range);
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
+}
+
 async function sendFile(req, res, file) {
   const stat = await fs.stat(file);
+  // A folder ("/fonts/", "/bundles/<id>/") is a plain 404. Streaming it used to throw EISDIR outside any handler and
+  // stop the whole server, and any web page open in the lecturer's browser could trigger that with one <img src>.
+  if (!stat.isFile()) throw new Error("not a file");
   const type = types[extname(file).toLowerCase()] || "application/octet-stream";
   const range = req.headers.range;
   res.setHeader("Content-Type", type);
@@ -89,10 +99,10 @@ async function sendFile(req, res, file) {
       "Content-Range": `bytes ${start}-${end}/${stat.size}`,
       "Content-Length": end - start + 1,
     });
-    return createReadStream(file, { start, end }).pipe(res);
+    return streamFile(res, file, { start, end });
   }
   res.writeHead(200, { "Content-Length": stat.size });
-  createReadStream(file).pipe(res);
+  streamFile(res, file);
 }
 
 function sendJson(res, status, body) {

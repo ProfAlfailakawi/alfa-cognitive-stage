@@ -50,6 +50,11 @@ try {
     assert.ok([403, 404].includes(r.status) || r.status === 400, path + " -> " + r.status);
     assert.ok(!r.body.includes("createServer") && !r.body.includes("OPENAI") && !r.body.includes("[core]"), path + " leaked content");
   }
+  // ---- a folder path is a plain 404 and never stops the server (any page in the lecturer's browser can request one) ----
+  for (const path of ["/fonts/", "/fonts", "/vendor/", "/fonts/%2e"]) {
+    assert.equal((await call(p, { path })).status, 404, path + " is a folder, not a file");
+  }
+  assert.equal((await call(p, { path: "/api/admin/check", headers: { "x-admin-token": ADMIN } })).status, 200, "the server is still up after folder requests");
   // ---- the lecturer's token is handed only to this machine's own same-origin page (nothing to type, nothing for a phone) ----
   const own = await call(p, { path: "/api/local-token", headers: { "sec-fetch-site": "same-origin" } });
   assert.equal(own.status, 200); assert.equal(JSON.parse(own.body).token, ADMIN);
