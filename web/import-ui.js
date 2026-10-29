@@ -38,6 +38,16 @@ export function mountImportPanel(mount, { empty = false } = {}) {
     document.getElementById("director-admin-token")?.value.trim() ||
     sessionStorage.getItem("alfa-admin-token") || "";
   const setStatus = (message) => { report.textContent = message; };
+  // First run (no lecture yet) never mounted the director, so nothing fetched this machine's token and the lecturer had
+  // to copy it from Terminal. Ask the local server the same way the presenter and voting pages do (phones are refused).
+  if (!token()) {
+    fetch("/api/local-token", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((data) => {
+      if (typeof data?.token !== "string" || !data.token) return;
+      try { sessionStorage.setItem("alfa-admin-token", data.token); } catch {}
+      secret.value ||= data.token;
+      secret.hidden = true;
+    }).catch(() => {});
+  } else secret.hidden = true;
   check.addEventListener("click", async () => {
     if (!token()) { setStatus("أدخل رمز المحاضر أولاً."); return; }
     check.disabled = true;
