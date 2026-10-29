@@ -64,5 +64,12 @@ try {
   assert.equal(inbox.find((q) => q.text.includes("ابن الكلب")).flagged, true, "abuse is accepted but flagged for the lecturer");
   assert.equal(inbox.find((q) => q.text.includes("الألعاب")).flagged, false);
   assert.ok(!JSON.stringify(inbox).match(/token|phone/), "questions keep no device identity");
+  // A programming class may answer "constructor": it is counted like any word and never touches Object.prototype.
+  const cs = store.createSession(), wp = store.createPoll(cs, { kind: "words", question: "Keyword?" });
+  store.setStatus(cs, wp.id, "open");
+  assert.deepEqual(store.submitWords(cs, phone(7), ["constructor", "class"]), { accepted: 2, rejected: 0 });
+  assert.deepEqual(store.presenterState(cs).polls[0].words.map((w) => [w.word, w.count]), [["class", 1], ["constructor", 1]]);
+  assert.equal(Object.hasOwn(Object, "count"), false, "no write to a built-in object");
+  assert.throws(() => store.hideWord(cs, wp.id, "tostring", true), (e) => e.status === 404, "only real words can be hidden");
   console.log("engagement store: word cloud with moderation/limits/hiding, objectives, PII refusal, flagged questions, labels passed");
 } finally { rmSync(dir, { recursive: true, force: true }); }

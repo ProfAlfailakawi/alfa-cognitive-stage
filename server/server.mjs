@@ -64,8 +64,18 @@ function safePath(base, urlPath) {
   return full === base || full.startsWith(base + sep) ? full : null;
 }
 
+// A read error after the headers went out (a lecture deleted while its video streams) ends this response, not the server.
+function streamFile(res, file, range) {
+  const stream = createReadStream(file, range);
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
+}
+
 async function sendFile(req, res, file) {
   const stat = await fs.stat(file);
+  // A folder ("/fonts/", "/bundles/<id>/") is a plain 404. Streaming it used to throw EISDIR outside any handler and
+  // stop the whole server, and any web page open in the lecturer's browser could trigger that with one <img src>.
+  if (!stat.isFile()) throw new Error("not a file");
   const type = types[extname(file).toLowerCase()] || "application/octet-stream";
   const range = req.headers.range;
   res.setHeader("Content-Type", type);
@@ -79,9 +89,11 @@ async function sendFile(req, res, file) {
   res.setHeader("Cache-Control", cachePolicy);
   if (range) {
     const match = /bytes=(\d*)-(\d*)/.exec(range);
-    let start = match && match[1] ? Number(match[1]) : 0;
-    let end = match && match[2] ? Number(match[2]) : stat.size - 1;
-    if (!match || (!match[1] && !match[2]) || start > end || end >= stat.size) {
+    // RFC 9110: "bytes=-500" is the LAST 500 bytes, and an end past the file is clamped to the last byte.
+    const suffix = match && !match[1] && match[2] ? Math.min(Number(match[2]), stat.size) : null;
+    let start = suffix !== null ? stat.size - suffix : match && match[1] ? Number(match[1]) : 0;
+    let end = suffix !== null || !(match && match[2]) ? stat.size - 1 : Math.min(Number(match[2]), stat.size - 1);
+    if (!match || (!match[1] && !match[2]) || suffix === 0 || start > end || start >= stat.size) {
       res.writeHead(416, { "Content-Range": `bytes */${stat.size}` });
       return res.end();
     }
@@ -89,10 +101,10 @@ async function sendFile(req, res, file) {
       "Content-Range": `bytes ${start}-${end}/${stat.size}`,
       "Content-Length": end - start + 1,
     });
-    return createReadStream(file, { start, end }).pipe(res);
+    return streamFile(res, file, { start, end });
   }
   res.writeHead(200, { "Content-Length": stat.size });
-  createReadStream(file).pipe(res);
+  streamFile(res, file);
 }
 
 function sendJson(res, status, body) {

@@ -50,6 +50,21 @@ try {
     assert.ok([403, 404].includes(r.status) || r.status === 400, path + " -> " + r.status);
     assert.ok(!r.body.includes("createServer") && !r.body.includes("OPENAI") && !r.body.includes("[core]"), path + " leaked content");
   }
+  // ---- a folder path is a plain 404 and never stops the server (any page in the lecturer's browser can request one) ----
+  for (const path of ["/fonts/", "/fonts", "/vendor/", "/fonts/%2e"]) {
+    assert.equal((await call(p, { path })).status, 404, path + " is a folder, not a file");
+  }
+  assert.equal((await call(p, { path: "/api/admin/check", headers: { "x-admin-token": ADMIN } })).status, 200, "the server is still up after folder requests");
+  // ---- byte ranges follow RFC 9110 (video players seek with them) ----
+  const full = (await call(p, { path: "/style.css" })).body, size = Buffer.byteLength(full);
+  const tail = await call(p, { path: "/style.css", headers: { range: "bytes=-10" } });
+  assert.equal(tail.status, 206); assert.equal(tail.headers["content-range"], `bytes ${size - 10}-${size - 1}/${size}`, "a suffix range is the LAST bytes");
+  const long = await call(p, { path: "/style.css", headers: { range: "bytes=0-999999999" } });
+  assert.equal(long.status, 206); assert.equal(long.headers["content-range"], `bytes 0-${size - 1}/${size}`, "an end past the file is clamped");
+  for (const range of [`bytes=${size}-`, "bytes=9-3", "bytes=-0", "bytes=-"]) {
+    assert.equal((await call(p, { path: "/style.css", headers: { range } })).status, 416, range);
+  }
+  assert.equal((await call(p, { path: "/style.css", headers: { range: "bytes=0-1" } })).headers["content-range"], `bytes 0-1/${size}`);
   // ---- the lecturer's token is handed only to this machine's own same-origin page (nothing to type, nothing for a phone) ----
   const own = await call(p, { path: "/api/local-token", headers: { "sec-fetch-site": "same-origin" } });
   assert.equal(own.status, 200); assert.equal(JSON.parse(own.body).token, ADMIN);

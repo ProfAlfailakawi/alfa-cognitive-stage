@@ -340,8 +340,11 @@ export function createVoteStore({ file = null } = {}) {
       const display = clean(entry, 24);
       const k = wordKey(display);
       if (!k || !moderate(display).ok) { rejected++; continue; }
-      if (!p.words[k] && Object.keys(p.words).length >= MAX_DISTINCT_WORDS) { rejected++; continue; }
-      (p.words[k] ||= { word: display, count: 0 }).count++;
+      // Own keys only: an English word such as "constructor" must count, not reach Object.prototype.
+      const known = Object.hasOwn(p.words, k);
+      if (!known && Object.keys(p.words).length >= MAX_DISTINCT_WORDS) { rejected++; continue; }
+      if (!known) p.words[k] = { word: display, count: 0 };
+      p.words[k].count++;
       accepted++;
     }
     s.wordDevices.set(key, used + list.length);
@@ -350,7 +353,7 @@ export function createVoteStore({ file = null } = {}) {
   }
   function hideWord(code, id, key, hidden = true) {
     const p = poll(code, id);
-    if (p.kind !== "words" || typeof key !== "string" || !p.words[key]) throw new VoteError("الكلمة غير موجودة", 404);
+    if (p.kind !== "words" || typeof key !== "string" || !Object.hasOwn(p.words, key)) throw new VoteError("الكلمة غير موجودة", 404);
     p.hidden = hidden ? [...new Set([...p.hidden, key])] : p.hidden.filter((k) => k !== key);
     persist();
     return { ok: true };
