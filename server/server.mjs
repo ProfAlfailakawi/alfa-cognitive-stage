@@ -89,9 +89,11 @@ async function sendFile(req, res, file) {
   res.setHeader("Cache-Control", cachePolicy);
   if (range) {
     const match = /bytes=(\d*)-(\d*)/.exec(range);
-    let start = match && match[1] ? Number(match[1]) : 0;
-    let end = match && match[2] ? Number(match[2]) : stat.size - 1;
-    if (!match || (!match[1] && !match[2]) || start > end || end >= stat.size) {
+    // RFC 9110: "bytes=-500" is the LAST 500 bytes, and an end past the file is clamped to the last byte.
+    const suffix = match && !match[1] && match[2] ? Math.min(Number(match[2]), stat.size) : null;
+    let start = suffix !== null ? stat.size - suffix : match && match[1] ? Number(match[1]) : 0;
+    let end = suffix !== null || !(match && match[2]) ? stat.size - 1 : Math.min(Number(match[2]), stat.size - 1);
+    if (!match || (!match[1] && !match[2]) || suffix === 0 || start > end || start >= stat.size) {
       res.writeHead(416, { "Content-Range": `bytes */${stat.size}` });
       return res.end();
     }
