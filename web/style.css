@@ -996,3 +996,16 @@ body main.vote + section.vote ~ section.vote { border-top: 0; margin-top: 0; pad
 .admin .poll { box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 6%, transparent); }
 /* The rail itself scrolls; the notes block grows with its text instead of being a second scroller. */
 .presenter .side .notes { overflow: visible; }
+
+
+/* iPhone Duo folded postures only. Unsupported/disabled Safari preview features
+   leave the existing site styles unchanged on every other device and posture. */
+@media (device-posture: folded) and (horizontal-viewport-segments: 2) {
+  html, body, .app { min-width: 0; max-width: 100%; }
+}
+@media (device-posture: folded) and (vertical-viewport-segments: 2) {
+  html, body, .app { min-width: 0; max-width: 100%; }
+}
+@media (device-posture: folded) and (orientation: landscape) and (max-height: 520px) {
+  html { scroll-padding-block: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-bottom)); }
+}
