@@ -73,7 +73,7 @@ function renderPolls(state) {
       }
       const warning = document.createElement("p");
       warning.className = "meta";
-      warning.textContent = group.warning || "هذه مقارنة لتوزيع الإجابات، وليست إثباتاً لتحسّن التعلم أو مشاركة الطلاب أنفسهم.";
+      warning.textContent = group.warning || (group.caution ? group.caution.join(" ") : "") || "هذه مقارنة لتوزيع الإجابات، وليست إثباتاً لتحسّن التعلم أو مشاركة الطلاب أنفسهم.";
       item.append(warning);
       if (group.correctIndex !== null && group.correctIndex !== undefined && group.values[group.correctIndex]) {
         const correct = group.values[group.correctIndex];

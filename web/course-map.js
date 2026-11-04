@@ -15,9 +15,11 @@ export function buildCourseMap(lectures, texts = {}) {
     return { bundle: l.bundle, title: l.title || l.bundle, sessions: l.sessions || 0, confusing, questions: asked };
   });
   const recurring = [];
+  const vecs = new Map(); // each slide text is embedded once, not once per lecture pair
+  const vecOf = (x) => { let v = vecs.get(x); if (!v) { v = embed(x.text); vecs.set(x, v); } return v; };
   for (let i = 0; i < rows.length; i++) for (let j = i + 1; j < rows.length; j++) {
     for (const a of rows[i].confusing) for (const b of rows[j].confusing) {
-      const va = embed(a.text), vb = embed(b.text);
+      const va = vecOf(a), vb = vecOf(b);
       if (va.size < 3 || vb.size < 3) continue;
       const sim = cosine(va.vec, vb.vec);
       if (sim >= R.similar) recurring.push({ a: { lecture: rows[i].title, slide: a.slide }, b: { lecture: rows[j].title, slide: b.slide }, similarity: Number(sim.toFixed(2)) });
