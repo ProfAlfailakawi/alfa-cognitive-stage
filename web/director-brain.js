@@ -226,6 +226,34 @@ function detectActivity(spoken) {
   if (minutes !== null) lines.push("المدة: " + minutes + (minutes === 1 ? " دقيقة" : minutes === 2 ? " دقيقتان" : minutes <= 10 ? " دقائق" : " دقيقة"));
   return { type: "activity", title: "نشاط", lines };
 }
+// Explicit cause -> effect: "A يؤدي الى B", "A بسبب B", "A لان B". Both sides must be full clauses the lecturer said;
+// nothing is paraphrased and a clause that would need cutting is refused (the scene is optional, never lossy).
+const ILA = "[إاأ]ل[ىي]";
+const CAUSE_FWD = new RegExp(`\\s(?:[يت]ؤدي ${ILA}|[يت]ودي ${ILA}|[أا]دى ${ILA}|[أا]دت ${ILA}|[يت]سبب|[يت]نتج عنه|[يت]نتج عنها|[يت]قود ${ILA})\\s`);
+const CAUSE_BACK = /\s(?:بسبب|نتيجة ل|نتيجه ل|لأن|لان)\s/;
+function detectCause(raw) {
+  // Matched on the lecturer's own spelling (diacritics only removed) so the scene keeps her/his exact words.
+  const text = raw.trim().replace(/[\u064b-\u065f\u0670]/g, "").replace(CLAUSE_TRIM, "").replace(/\s+/g, " ");
+  if (text.split(" ").length > 26 || /[؟?]$/.test(raw.trim()) || /^(?:ليش|لماذا|ليه|شنو|ايش|إيش|وش|هل|كيف|منو|متى)(?=\s|$)/.test(text)) return null; // a question has not given its answer yet
+  let cause, effect, m;
+  if ((m = text.match(CAUSE_FWD))) { cause = text.slice(0, m.index); effect = text.slice(m.index + m[0].length); }
+  else if ((m = text.match(CAUSE_BACK))) { effect = text.slice(0, m.index); cause = text.slice(m.index + m[0].length); }
+  else return null;
+  cause = cause.replace(CLAUSE_TRIM, ""); effect = effect.replace(CLAUSE_TRIM, "");
+  const ok = (c) => c.split(" ").length >= 2 && c.length <= 70;
+  if (!ok(cause) || !ok(effect)) return null;
+  return { type: "flow", title: "السبب والنتيجة", lines: [cause, effect] };
+}
+// An example the lecturer introduces explicitly becomes an optional quote card of that sentence (verbatim). A bare "مثلا" inside a sentence does not.
+const EXAMPLE_LEAD = /^(?:مثال(?: على ذلك)?(?=\s|$)|كمثال|على سبيل المثال|خلوني اعطيكم مثال|خذوا مثال|ناخذ مثال|لنفترض|لو افترضنا|تخيلوا)/;
+function detectExample(raw) {
+  const clean = raw.trim().replace(/\s+/g, " ");
+  if (clean.length < 25 || clean.length > 200) return null;
+  const lead = normalizeArabic(clean).match(EXAMPLE_LEAD);
+  // A bare lead-in ("خلوني أعطيكم مثال من الجامعة") has no example yet: the card needs at least four more words after the cue.
+  if (!lead || normalizeArabic(clean).slice(lead[0].length).trim().split(/\s+/).filter(Boolean).length < 4) return null;
+  return { type: "quote", title: "مثال", lines: [clean] };
+}
 const CYCLIC = /(?:دوره|حلقه|يتكرر|مستمره|دائريه|مره ثانيه ونرجع للاول)/;
 const SHIFT_MARKER = /(?:الحين نتكلم عن|الحين نتحدث عن|ننتقل الى|نروح لموضوع|موضوع ثاني|نغير الموضوع|نبدا موضوع|نتكلم الحين عن)/;
 const EXAMPLE = /(?:مثلا|على سبيل المثال|على سبيل الافتراض|خلوني اعطيكم مثال|خذوا مثال|تخيلوا|تخيل|لو افترضنا|فرضا|اتذكر مره من المرات)/;
@@ -256,6 +284,8 @@ export function createDirectorBrain({ now = () => Date.now(), tuning: initialTun
   let lastShownAt = 0, lastKey = "", lastKeyAt = 0;
   let pendingStat = null; // "25% مقارنة مع…" left hanging, waiting for the second number
   const perSlide = new Map();
+  const shownKeys = new Set(); // slide|kind|content of scenes already put on screen: the same scene is not offered twice on a slide
+  let lastDecisionKey = "";
 
   function status(decision, why) { decision.why.push(why); return decision; }
   function blank(extra = {}) {
@@ -302,7 +332,7 @@ export function createDirectorBrain({ now = () => Date.now(), tuning: initialTun
     // sentence itself carries a number, and never sentences that already produced a scene.
     const carriesNumber = /\d|%|بالمي|بالمئ|في المي|في المئ/.test(normalizeArabic(spoken0));
     const recent = carriesNumber
-      ? window.filter((w) => t - w.at < 25000 && !w.used).slice(-3).map((w) => numeralizePercents(w.text)).join(" ")
+      ? window.filter((w) => t - w.at < 25000 && !w.used && w.slide === slideIndex).slice(-3).map((w) => numeralizePercents(w.text)).join(" ")
       : "";
     const normalized = normalizeArabic(spoken);
 
@@ -409,6 +439,14 @@ export function createDirectorBrain({ now = () => Date.now(), tuning: initialTun
       }
     }
     if (!found) {
+      const cause = detectCause(raw);
+      if (cause) found = { kind: "cause", confidence: 0.78, spec: cause, utterance: raw };
+      else {
+        const example = detectExample(raw);
+        if (example) found = { kind: "example", confidence: 0.72, spec: example, utterance: raw };
+      }
+    }
+    if (!found) {
       const takeaway = lecturerTakeaway(raw);
       if (takeaway) found = { kind: "quote", confidence: 0.84, spec: takeaway, utterance: raw };
     }
@@ -437,9 +475,10 @@ export function createDirectorBrain({ now = () => Date.now(), tuning: initialTun
     }
 
     // 6. Pacing and duplicates.
-    const key = d.kind + ":" + (d.spec?.lines?.[0] || raw.slice(0, 35));
+    const key = d.kind + ":" + (d.spec?.lines?.join("|") || raw.slice(0, 35));
     if (key === lastKey && t - lastKeyAt < 15000) return status({ ...d, action: "none" }, "تكرار قريب");
-    lastKey = key; lastKeyAt = t;
+    if (d.spec && shownKeys.has(slideIndex + "|" + key)) return status({ ...d, action: "none" }, "سبق عرض هذا المشهد في هذه الشريحة");
+    lastKey = key; lastKeyAt = t; lastDecisionKey = key;
     return finalize(d);
 
     function finalize(decision) {
@@ -474,10 +513,12 @@ export function createDirectorBrain({ now = () => Date.now(), tuning: initialTun
     },
     noteShown(slideIndex) {
       lastShownAt = now();
+      if (lastDecisionKey) { if (shownKeys.size > 200) shownKeys.clear(); shownKeys.add(slideIndex + "|" + lastDecisionKey); }
       perSlide.set(slideIndex, (perSlide.get(slideIndex) || 0) + 1);
     },
-    resetSlide() { story = null; },
-    reset() { window = []; story = null; topic = new Set(); topicStack = []; perSlide.clear(); lastShownAt = 0; },
+    // Entering a slide (including coming back to it) starts its suggestion count afresh and drops half-heard context.
+    resetSlide(slideIndex) { story = null; pendingStat = null; if (slideIndex !== undefined) perSlide.delete(slideIndex); },
+    reset() { window = []; story = null; topic = new Set(); topicStack = []; perSlide.clear(); shownKeys.clear(); pendingStat = null; lastShownAt = 0; },
     snapshot: () => ({ window: window.length, topicWords: topic.size, topics: topicStack.length, storyOpen: Boolean(story) }),
   };
 }

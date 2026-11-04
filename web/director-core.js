@@ -1,11 +1,24 @@
 // Pure, offline teaching-event detector. No network, no invented research.
 import { extractSpokenSteps } from "./spoken-steps.js";
-export function normalizeArabic(value) {
+// Pure and called with the same long slide/notes text on every utterance, so long inputs are memoised (small bounded cache).
+const NORM_CACHE = new Map();
+const NORM_MIN = 48, NORM_MAX_ENTRIES = 64;
+function normalizeRaw(value) {
   return String(value || "").replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x660))
     .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x6f0))
     .replace(/٪/g, "%")
     .replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
     .replace(/[\u064b-\u065f]/g, "").replace(/\s+/g, " ").trim();
+}
+export function normalizeArabic(value) {
+  const text = typeof value === "string" ? value : String(value || "");
+  if (text.length < NORM_MIN) return normalizeRaw(text);
+  const hit = NORM_CACHE.get(text);
+  if (hit !== undefined) return hit;
+  const out = normalizeRaw(text);
+  if (NORM_CACHE.size >= NORM_MAX_ENTRIES) NORM_CACHE.delete(NORM_CACHE.keys().next().value);
+  NORM_CACHE.set(text, out);
+  return out;
 }
 
 /**
