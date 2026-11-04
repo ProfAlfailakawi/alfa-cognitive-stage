@@ -35,17 +35,21 @@ export function splitLines(value, limit = 24) {
  * Fit ALL of the text into `rows` rows by shrinking the font (never by cutting words). A longer text means a smaller
  * font, down to 55%; below that it keeps every word and simply uses more rows.
  */
+export const MIN_TEXT_PX = 14; // projector floor in the 960x540 viewBox: text is never drawn smaller, it takes more rows instead
 export function fitText(value, { size = 21, limit = 24, rows = 3, lh = 28 } = {}) {
+  const floor = Math.min(1, Math.max(0.55, MIN_TEXT_PX / size));
   const longest = Math.max(1, ...String(value).split(/\s+/).map((w) => w.length));
-  for (let scale = 1; scale >= 0.55; scale -= 0.05) {
-    const l = Math.max(Math.floor(limit / scale), 1);
+  const out = (lines, scale) => ({ lines, size: Math.round(size * scale * 10) / 10, lh: Math.round(lh * scale * 10) / 10 });
+  for (let scale = 1; scale >= floor - 1e-9; scale -= 0.05) {
+    const s = Math.max(scale, floor);
+    const l = Math.max(Math.floor(limit / s), 1);
     if (l < longest) continue; // a single long word must fit the width too
     const lines = splitLines(value, l);
-    if (lines.length <= rows) return { lines, size: Math.round(size * scale * 10) / 10, lh: Math.round(lh * scale * 10) / 10 };
+    if (lines.length <= rows) return out(lines, s);
   }
-  const scale = Math.min(0.55, limit / longest);
-  const lines = splitLines(value, Math.max(Math.floor(limit / Math.min(0.55, scale)), longest));
-  return { lines, size: Math.round(size * Math.min(0.55, scale) * 10) / 10, lh: Math.round(lh * Math.min(0.55, scale) * 10) / 10 };
+  const scale = Math.min(floor, limit / longest);
+  const finalScale = Math.max(scale, Math.min(floor, MIN_TEXT_PX / size));
+  return out(splitLines(value, Math.max(Math.floor(limit / finalScale), longest)), finalScale);
 }
 
 /** Centred, wrapped, RTL text. `accent` colours the last word (the title style). `ui` marks fixed scene captions (numbers, ordinals) that are not the lecturer's words. */

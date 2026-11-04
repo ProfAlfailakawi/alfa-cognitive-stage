@@ -96,7 +96,7 @@ export function renderStructuredScene(type, title, lines) {
     const arcs = pts.map(([x, y], i) => { const [nx, ny] = pts[(i + 1) % n];
       return `<line class="m-draw" style="--i:${i + 1}" pathLength="1" x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="${C.blue2}" stroke-width="3.5" marker-end="url(#a)"/>`; }).join("");
     const nodes = lines.map((v, i) => { const [x, y] = pts[i];
-      return item("pop", i + 1, v, bubble(x.toFixed(1), y.toFixed(1), 33, pickIcon(v)) + numChip((x + 27).toFixed(1), (y - 27).toFixed(1), i + 1, 12) +
+      return item("pop", i + 1, v, bubble(x.toFixed(1), y.toFixed(1), 33, pickIcon(v)) + numChip((x + 28).toFixed(1), (y - 28).toFixed(1), i + 1, 14) +
         labelMid(shortLabel(v, 3), x, y + (y < cy ? -62 : 64), { size: 22, limit: 14, rows: 2, lh: 24, weight: 800, family: FONT.display })); }).join("");
     const defs = `<marker id="a" viewBox="0 0 10 10" refX="26" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${C.blue2}"/></marker>`;
     return frame(title, arcs + nodes, defs);
