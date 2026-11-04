@@ -47,29 +47,34 @@ export function createContextualCognitiveDirector({now=()=>Date.now(),cooldownMs
     const at=now(), raw=String(rawText||"").trim().slice(0,1200);
     if (!raw || raw.length<12 || CORRECTION.test(normalize(raw))) return null;
     const signal=cognitiveSpeechCue(raw);
-    const evidence=contextEvidence(raw,slide,graph,at);
-    recent.push({text:raw,at,slide:active});
-    while(recent.length>4 || (recent.length && at-recent[0].at>60000))recent.shift();
-    if (!signal) return null;
+    // The costly slide/graph evidence is computed only for an utterance that can actually produce a cue; the utterance is
+    // remembered for the "said before" check on every path, after the evidence (so it never matches itself).
+    const finish=(result)=>{
+      recent.push({text:raw,at,slide:active});
+      while(recent.length>4 || (recent.length && at-recent[0].at>60000))recent.shift();
+      return result;
+    };
+    if (!signal) return finish(null);
     const fingerprint=signal.kind+"#"+normalize(signal.kind==="bridge"?signal.query:signal.text);
     if ((fingerprint===lastKey && at-lastTime<cooldownMs) ||
-        (dismissed.get(fingerprint)||-Infinity)>at) return null;
+        (dismissed.get(fingerprint)||-Infinity)>at) return finish(null);
     // Normal spoken narration must not break the cooldown even when it has a topic match.
-    if(at-lastTime<cooldownMs) return null;
+    if(at-lastTime<cooldownMs) return finish(null);
     if (signal.kind==="bridge") {
       // Recall searches require a specific named concept; otherwise there is no safe target.
-      if(contentWords(signal.query).length<2) return null;
+      if(contentWords(signal.query).length<2) return finish(null);
       lastKey=fingerprint;lastTime=at;
-      return {kind:"bridge",query:signal.query,evidence,reason:"إشارة صريحة لاسترجاع مفهوم سابق"};
+      return finish({kind:"bridge",query:signal.query,evidence:contextEvidence(raw,slide,graph,at),reason:"إشارة صريحة لاسترجاع مفهوم سابق"});
     }
     const norm=normalize(raw);
     const type=KINDS.find(([,regex])=>regex.test(norm));
-    if(!type) return null;
+    if(!type) return finish(null);
     // Do not attempt to construct a combined or inferred statement out of nearby utterances.
     lastKey=fingerprint;lastTime=at;
-    return {kind:"knowledge",text:signal.text,nodeType:type[0],reason:type[2],evidence,
+    const evidence=contextEvidence(raw,slide,graph,at);
+    return finish({kind:"knowledge",text:signal.text,nodeType:type[0],reason:type[2],evidence,
       needsSourceReview:!evidence.onSlide&&!evidence.approved,
-      groundedIn:"literal lecturer utterance"};
+      groundedIn:"literal lecturer utterance"});
   }
   function dismiss(cue) {
     if(!cue)return;
