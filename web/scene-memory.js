@@ -31,12 +31,6 @@ function read(bundle, storage) {
     return Array.isArray(value) ? value : [];
   } catch { return []; }
 }
-function numericTokens(text) {
-  const normalized = normalizeArabic(text).toLowerCase()
-    .replace(/(\d+(?:[.,]\d+)?)\s*(?:بالمئه|بالمائه|بالميه|في الميه)/g, "$1%");
-  return [...new Set([...normalized.matchAll(/\d+(?:[.,]\d+)?\s*%?/g)]
-    .map(([value]) => value.replace(/\s+/g, "").replace(",", ".")))].sort();
-}
 function opaqueId(text) { // Not security: just keeps readable words out of the cross-lecture index.
   let h = 0xcbf29ce484222325n;
   for (const ch of String(text)) { h ^= BigInt(ch.codePointAt(0)); h = (h * 0x100000001b3n) & 0xffffffffffffffffn; }
@@ -87,16 +81,33 @@ function storedForm(item) {
   }
   return null;
 }
+// Recall runs on every utterance, so the parsed + decoded form of each store is kept until its stored text changes
+// (any write, here or in another tab, changes the string and drops the entry). Bounded: one entry per storage key.
+const PREPARED = new Map();
+function prepared(storage, key, isGlobal) {
+  let raw = null;
+  try { raw = storage.getItem(key); } catch { return []; }
+  const hit = PREPARED.get(key);
+  if (hit && hit.raw === raw && hit.global === isGlobal) return hit.items;
+  let list = [];
+  try { const value = JSON.parse(raw || "[]"); list = Array.isArray(value) ? (isGlobal ? value.slice(-GLOBAL_LIMIT) : value) : []; } catch { list = []; }
+  const items = [];
+  for (const item of list) {
+    if (!item || !item.spec || !Array.isArray(item.spec.lines)) continue;
+    const stored = storedForm(item);
+    if (stored) items.push({ item, stored });
+  }
+  if (PREPARED.size > 300) PREPARED.clear();
+  PREPARED.set(key, { raw, global: isGlobal, items });
+  return items;
+}
 export function recallScene({ bundle, slide, utterance }, customStorage) {
   const storage = storageOrNull(customStorage);
   if (!storage || !bundle) return null;
   const query = embed(String(utterance));
   if (query.size < 2) return null;
   let best = null, max = 0;
-  for (const item of read(bundle, storage)) {
-    if (!item || !item.spec || !Array.isArray(item.spec.lines)) continue;
-    const stored = storedForm(item);
-    if (!stored) continue;
+  for (const { item, stored } of prepared(storage, PREFIX + String(bundle), false)) {
     const verdict = compatible(query, stored, {
       threshold: item.slide === slide ? THRESHOLD.sameSlide : THRESHOLD.sameLecture });
     if (verdict.ok && verdict.similarity > max) {
@@ -106,10 +117,8 @@ export function recallScene({ bundle, slide, utterance }, customStorage) {
   if (best) return { spec: best.spec, utterance: best.utterance, similarity: max };
   // Cross-lecture reuse is stricter and always goes through the presenter's confirmation.
   if (query.size < 3) return null;
-  for (const item of readGlobal(storage)) {
-    if (!item || item.bundle === bundle || !item.spec) continue;
-    const stored = storedForm(item);
-    if (!stored) continue;
+  for (const { item, stored } of prepared(storage, GLOBAL_KEY, true)) {
+    if (item.bundle === bundle) continue;
     const verdict = compatible(query, stored, { threshold: THRESHOLD.crossLecture });
     if (verdict.ok && verdict.similarity > max) {
       try { validateSpec(item.spec); best = item; max = verdict.similarity; } catch {}
