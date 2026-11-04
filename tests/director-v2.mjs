@@ -78,9 +78,9 @@ for (const t of ["لماذا السهر يؤدي الى ضعف التركيز؟"
 {
   const b = mk(); const sample = ["طيب الحين نبدأ بالموضوع الجديد", "السهر الطويل يؤدي الى ضعف التركيز في المحاضرة", "في دراسة 68 بالمية من الطلبة", "خلونا نشوف الشريحة اللي بعدها"];
   for (let i = 0; i < 100; i++) { adv(20000); b.observe(sample[i % 4], slide(i % 9, "نص الشريحة ".repeat(80))); } // warm-up (JIT) is not what the lecturer feels
-  const t0 = performance.now();
+  const c0 = process.cpuUsage(); // CPU time, not wall time: a busy machine must not fail the test
   for (let i = 0; i < 400; i++) { adv(20000); b.observe(sample[i % 4], slide(i % 9, "نص الشريحة ".repeat(80))); }
-  const per = (performance.now() - t0) / 400;
+  const c1 = process.cpuUsage(c0); const per = (c1.user + c1.system) / 1000 / 400;
   console.log(`director observe: ${per.toFixed(2)} ms/utterance`);
   assert.ok(per < 5, "director decision must stay far below the latency budget");
 }
