@@ -112,6 +112,18 @@ for (const malformed of ["0/0", "3/(2-2)", "1+abc", "Math.random()", "2**3",
   assert.throws(() => evaluateScenarioFormula(malformed), undefined, malformed);
 }
 assert.throws(() => evaluateScenarioFormula("1+2", "<script>"));
+// Formula v2: the spellings the hint promises, clean rounding, and the documented limits.
+assert.equal(evaluateScenarioFormula("١٢٠×(١+١٥٪)").result, 138);
+assert.equal(evaluateScenarioFormula("10÷4 − 1").result, 1.5);
+assert.equal(evaluateScenarioFormula("0.1+0.2").result, 0.3, "no floating-point noise");
+assert.equal(evaluateScenarioFormula("120+15%").result, 120.15, "a bare % is divide-by-100 (documented), not percent-of");
+assert.equal(evaluateScenarioFormula("--5").result, 5);
+assert.equal(evaluateScenarioFormula("(".repeat(14) + "1" + ")".repeat(14)).result, 1);
+assert.throws(() => evaluateScenarioFormula("(".repeat(16) + "1" + ")".repeat(16)), /متداخلة/);
+assert.throws(() => evaluateScenarioFormula(Array(70).fill("1").join("+")), /معقدة/);
+assert.throws(() => evaluateScenarioFormula("1e3"), undefined, "exponent notation is refused");
+assert.throws(() => evaluateScenarioFormula("999999999999*999999999999"), /حدود/);
+assert.throws(() => evaluateScenarioFormula("5%%x"));
 const spokenSlide={elements:[{...box, text:"الألعاب التعليمية تعزز الدافعية"}]};
 assert.equal(suggestXrayFromSpeech("الألعاب التعليمية تعزز الدافعية",spokenSlide)?.id,"s1-e2");
 assert.equal(suggestXrayFromSpeech("الألعاب التعليمية لا تعزز الدافعية",spokenSlide),null);

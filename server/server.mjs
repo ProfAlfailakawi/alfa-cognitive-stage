@@ -47,8 +47,11 @@ const types = {
 };
 
 // Defence in depth: no inline scripts, no third-party origins, no MIME sniffing, no framing by other sites.
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
-  "media-src 'self' blob:; font-src 'self'; connect-src 'self' https://orbitq8.web.app; frame-src 'self'; object-src 'none'; base-uri 'none'; " +
+// Privacy: nothing leaves this machine by default. The optional ORBIT error sensor sends scrubbed error notes to an external host, so it is
+// off unless the lecturer starts the server with ALFA_ORBIT=1.
+const ORBIT_ON = process.env.ALFA_ORBIT === "1";
+const CSP = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; ` +
+  `media-src 'self' blob:; font-src 'self'; connect-src 'self'${ORBIT_ON ? " https://orbitq8.web.app" : ""}; frame-src 'self'; object-src 'none'; base-uri 'none'; ` +
   "form-action 'self'; frame-ancestors 'self'";
 function hardenHeaders(res) {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -87,6 +90,15 @@ async function sendFile(req, res, file) {
     : [".png", ".jpg"].includes(extension) ? "private, max-age=600"
     : "no-cache";
   res.setHeader("Cache-Control", cachePolicy);
+  // Validators let the browser revalidate the 60+ app scripts with a tiny 304 instead of re-downloading them on every
+  // slide-change or reload over classroom Wi-Fi. Weak tag from size + mtime: no hashing, no file reads.
+  const etag = `W/"${stat.size.toString(16)}-${Math.round(stat.mtimeMs).toString(16)}"`;
+  res.setHeader("ETag", etag);
+  res.setHeader("Last-Modified", stat.mtime.toUTCString());
+  if (!range && String(req.headers["if-none-match"] || "").split(",").some((t) => t.trim() === etag)) {
+    res.writeHead(304);
+    return res.end();
+  }
   if (range) {
     const match = /bytes=(\d*)-(\d*)/.exec(range);
     // RFC 9110: "bytes=-500" is the LAST 500 bytes, and an end past the file is clamped to the last byte.
@@ -441,6 +453,10 @@ const handler = async (req, res) => {
     if (!file) {
       res.writeHead(403);
       return res.end();
+    }
+    if (!ORBIT_ON && path === "/orbit-sensor.js") {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" });
+      return res.end("/* ORBIT sensor disabled: start with ALFA_ORBIT=1 to enable it */");
     }
     await sendFile(req, res, file);
   } catch (err) {

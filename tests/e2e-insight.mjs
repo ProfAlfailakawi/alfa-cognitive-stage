@@ -43,6 +43,7 @@ try {
   const { code } = await (await api("/sessions", { method: "POST", body: "{}" })).json();
   const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   await context.addInitScript(FAKE);
+  await context.addInitScript(() => { try { localStorage.setItem("alfa.directorMode", "balanced"); } catch {} }); // the lecturer chose the automatic mode (default is approve-everything)
   await context.addInitScript(([t, c]) => { try { sessionStorage.setItem("alfa-admin-token", t); sessionStorage.setItem("alfa-current-voting-session", c); } catch {} }, [ADMIN, code]);
   const presenter = await context.newPage();
   presenter.on("pageerror", (e) => { console.log("presenter pageerror: " + e); failures.push("presenter pageerror"); });

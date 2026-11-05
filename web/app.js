@@ -279,7 +279,7 @@ function showSlide(index, step = 0) {
   if (role === "presenter") insight?.slideChanged();
   if (role === "presenter") {
     directorRuntime.pending = null;
-    brain.resetSlide();
+    brain.resetSlide(index);
     postSlideToVoteFrame();
     hideSlideHint();
   }
@@ -1001,7 +1001,7 @@ function revealDirectorScene(proposal, source = "approved") {
 function directorContext() {
   const slide = state.slides[state.index - 1] || {};
   return { slide: { index: state.index, text: String(slide.text || ""), notes: String(slide.notes || "") },
-    overlay: currentOverlay, mode: document.getElementById("director-mode")?.value || "balanced",
+    overlay: currentOverlay, mode: document.getElementById("director-mode")?.value || "safe",
     mediaPlaying: videoEls.some((el) => !el.paused) };
 }
 function revealAndRecord(proposal, { automatic = false } = {}) {
@@ -1218,6 +1218,11 @@ function setupDirector() {
   });
   directorRuntime.speech = speech;
   navigator.mediaDevices?.addEventListener?.("devicechange", () => speech.deviceChanged());
+  // Nothing reaches the students without the lecturer: the director starts in the approve-everything mode, and an
+  // automatic mode applies only if the lecturer chose it before (remembered on this device, never assumed).
+  const modeSelect = document.getElementById("director-mode");
+  try { const saved = localStorage.getItem("alfa.directorMode"); if (saved && [...modeSelect.options].some((o) => o.value === saved)) modeSelect.value = saved; else modeSelect.value = "safe"; } catch { modeSelect.value = "safe"; }
+  modeSelect.addEventListener("change", () => { try { localStorage.setItem("alfa.directorMode", modeSelect.value); } catch { /* optional */ } });
   const start = document.getElementById("director-start");
   const stop = document.getElementById("director-stop");
   start.onclick = () => { semanticChecked = 0; void ensureSemanticMatching(); speech.start(); };

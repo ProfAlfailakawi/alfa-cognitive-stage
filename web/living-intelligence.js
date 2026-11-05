@@ -239,7 +239,9 @@ export function evaluateScenarioFormula(expression, unit = "") {
   if (typeof expression !== "string" || expression.length > 140 || !expression.trim() ||
       typeof unit !== "string" || unit.length > 30 || /[<>]/.test(unit))
     throw Error("الصيغة أو الوحدة غير صالحة");
-  const input = expression.replace(/\s+/g, "");
+  // The hint promises "+ − × ÷" and Arabic-Indic digits, so those spellings are accepted (mapped one-to-one to the ASCII operators).
+  const input = expression.replace(/\s+/g, "").replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x6f0))
+    .replace(/[×✕·]/g, "*").replace(/÷/g, "/").replace(/[−–—]/g, "-").replace(/٫/g, ".").replace(/٪/g, "%");
   if (!/^[0-9.+\-*\/()%]+$/.test(input)) throw Error("الصيغة تدعم الأرقام والأقواس والعمليات فقط");
   let at = 0, operations = 0;
   const bound = (v) => {
@@ -290,7 +292,8 @@ export function evaluateScenarioFormula(expression, unit = "") {
   }
   const result = sum(0);
   if (at !== input.length) throw Error("الصيغة تحتوي رمزاً غير متوقع");
-  return { result: bound(result), unit: unit.trim(), formula: expression.trim(),
+  // Binary floating point must not leak into the classroom (0.1+0.2 is 0.3, not 0.30000000000000004).
+  return { result: Number(bound(result).toPrecision(12)), unit: unit.trim(), formula: expression.trim(),
     operation: "expression", inputs: [] };
 }
 

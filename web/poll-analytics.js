@@ -1,5 +1,6 @@
 // Anonymous aggregate distributions, not student-level profiles or learning diagnoses.
 function identity(p) { return JSON.stringify([p.question, p.options]); }
+export const MIN_SAMPLE=8; // below this many participants a distribution is shown with a warning, never as a finding
 const percentage=(n,total)=>total?100*n/total:0;
 export function compareRounds(polls) {
   const groups=new Map();
@@ -16,8 +17,10 @@ export function compareRounds(polls) {
     const first=sequence[0],last=sequence.at(-1);
     const a=first.total||0,b=last.total||0;
     if (!a || !b) continue;
+    const caution=["الجولتان قد تضمان مشاركين مختلفين؛ الفرق وصف لتوزيعين وليس دليلاً على أثر الشرح أو على التعلّم."];
+    if (Math.min(a,b)<MIN_SAMPLE) caution.push(`عدد المشاركين قليل (أقل من ${MIN_SAMPLE})؛ لا تبنِ قراراً على هذا الفرق.`);
     results.push({
-      question:first.question,firstId:first.id,lastId:last.id,firstTotal:a,lastTotal:b,
+      question:first.question,firstId:first.id,lastId:last.id,firstTotal:a,lastTotal:b,caution,
       values:first.options.map((option,i)=>({
         option,
         firstPercent:Number(percentage(first.counts[i]||0,a).toFixed(1)),
@@ -40,7 +43,7 @@ export function summarizePollDistribution(poll) {
   const total = poll.total;
   if (!total) return { kind: "empty",
     text: "لا توجد إجابات بعد؛ انتظر مشاركة الطلبة قبل تفسير التوزيع." };
-  if (total < 8) return { kind: "small",
+  if (total < MIN_SAMPLE) return { kind: "small",
     text: "عدد المشاركات قليل؛ انتظر مزيداً من الإجابات قبل مناقشة نمط الاختيارات." };
   const sorted = [...poll.counts].sort((a,b) => b-a);
   const largest = sorted[0] / total;
@@ -93,7 +96,7 @@ export function compareLinkedBeforeAfter(polls) {
         return { option, firstPercent: +first.toFixed(1), lastPercent: +last.toFixed(1),
           deltaPoints: +(last - first).toFixed(1) };
       }),
-      warning: Math.min(a, b) < 8
+      warning: Math.min(a, b) < MIN_SAMPLE
         ? "حجم المشاركات محدود؛ لا تعمم النتيجة. لا يوجد ربط بين هويات المشاركين."
         : "التغير في توزيع الإجابات ليس دليلاً سببياً على أثر الشرح، وقد يختلف المشاركون." });
   }
