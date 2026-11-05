@@ -35,21 +35,23 @@ export function splitLines(value, limit = 24) {
  * Fit ALL of the text into `rows` rows by shrinking the font (never by cutting words). A longer text means a smaller
  * font, down to 55%; below that it keeps every word and simply uses more rows.
  */
-export const MIN_TEXT_PX = 14; // projector floor in the 960x540 viewBox: text is never drawn smaller, it takes more rows instead
+export const MIN_TEXT_PX = 14; // projector floor (960x540 viewBox): honoured whenever the text still fits its box
 export function fitText(value, { size = 21, limit = 24, rows = 3, lh = 28 } = {}) {
-  const floor = Math.min(1, Math.max(0.55, MIN_TEXT_PX / size));
   const longest = Math.max(1, ...String(value).split(/\s+/).map((w) => w.length));
   const out = (lines, scale) => ({ lines, size: Math.round(size * scale * 10) / 10, lh: Math.round(lh * scale * 10) / 10 });
-  for (let scale = 1; scale >= floor - 1e-9; scale -= 0.05) {
-    const s = Math.max(scale, floor);
-    const l = Math.max(Math.floor(limit / s), 1);
-    if (l < longest) continue; // a single long word must fit the width too
-    const lines = splitLines(value, l);
-    if (lines.length <= rows) return out(lines, s);
+  // First choice: shrink no further than the legibility floor. If that cannot fit the box, shrink as before (down to 55%)
+  // rather than overflow the card: a clipped sentence is worse than a smaller one. Nothing is ever cut.
+  const floor = Math.min(1, Math.max(0.55, MIN_TEXT_PX / size));
+  for (const lowest of [floor, 0.55]) {
+    for (let scale = 1; scale >= lowest - 1e-9; scale -= 0.05) {
+      const l = Math.max(Math.floor(limit / scale), 1);
+      if (l < longest) continue; // a single long word must fit the width too
+      const lines = splitLines(value, l);
+      if (lines.length <= rows) return out(lines, Math.max(scale, lowest));
+    }
   }
-  const scale = Math.min(floor, limit / longest);
-  const finalScale = Math.max(scale, Math.min(floor, MIN_TEXT_PX / size));
-  return out(splitLines(value, Math.max(Math.floor(limit / finalScale), longest)), finalScale);
+  const scale = Math.min(0.55, limit / longest);
+  return out(splitLines(value, Math.max(Math.floor(limit / Math.min(0.55, scale)), longest)), Math.min(0.55, scale));
 }
 
 /** Centred, wrapped, RTL text. `accent` colours the last word (the title style). `ui` marks fixed scene captions (numbers, ordinals) that are not the lecturer's words. */

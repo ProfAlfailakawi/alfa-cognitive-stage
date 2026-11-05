@@ -105,6 +105,7 @@ jobs:
           npm run test:readiness
           npm run test:poll-analytics
           npm run test:living
+          npm run test:perf
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'

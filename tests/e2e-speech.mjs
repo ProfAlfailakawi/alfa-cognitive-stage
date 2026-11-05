@@ -37,6 +37,8 @@ const FAKE = () => {
 async function open(options = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   await context.addInitScript(FAKE);
+  // The director now starts in the approve-everything mode; these tests exercise the automatic path, so the lecturer "chose" it earlier.
+  if (options.mode !== "default") await context.addInitScript(() => { try { localStorage.setItem("alfa.directorMode", "balanced"); } catch {} });
   if (options.localStatus) await context.addInitScript((s) => { window.__localStatus = s; }, options.localStatus);
   const presenter = await context.newPage(), audience = await context.newPage();
   for (const [n, p] of [["presenter", presenter], ["audience", audience]]) p.on("pageerror", (e) => { console.log(n + " pageerror: " + e); failures.push(n + " pageerror"); });
@@ -48,6 +50,17 @@ async function open(options = {}) {
 }
 const status = (p) => p.locator("#director-status").textContent();
 try {
+  // ---- default mode: nothing reaches the students without the lecturer's approval ----
+  {
+    const { context, presenter, audience } = await open({ mode: "default" });
+    check("the director starts in the approve-everything mode", (await presenter.locator("#director-mode").inputValue()) === "safe");
+    await presenter.click("#director-start");
+    await presenter.waitForFunction(() => window.__starts === 1);
+    await presenter.evaluate(() => window.__say("في دراسة طلعت", "في دراسة طلعت إن ٦٨ بالمية من الطلبة استفادوا"));
+    await presenter.waitForTimeout(1800);
+    check("a spoken statistic is NOT shown to the audience without approval", (await audience.locator(".info-layer svg").count()) === 0);
+    await context.close();
+  }
   // ---- cloud engine, full path with latency ----
   {
     const { context, presenter, audience } = await open();
