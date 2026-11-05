@@ -1,6 +1,8 @@
 // Student voting page. No account: each device gets a random token stored locally.
 const app = document.getElementById("app");
 const sessionCode = new URLSearchParams(location.search).get("s") || "";
+// Incomplete link: the understanding-pulse buttons cannot work without a session, so disable them.
+if (!sessionCode) for (const id of ["pulse-got", "pulse-lost"]) document.getElementById(id)?.setAttribute("disabled", "");
 const POLL_MS = 2000;
 
 function deviceToken() {
