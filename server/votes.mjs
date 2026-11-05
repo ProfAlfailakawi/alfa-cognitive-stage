@@ -186,7 +186,9 @@ export function createVoteStore({ file = null } = {}) {
       item.closedAt = Date.now();
     };
     if (status === "open") {
-      if (p.pulsePhase && Array.isArray(p.archive)) throw new VoteError("لا يمكن إعادة فتح جولة قياس مؤرشفة", 409);
+      // An archived poll (device tokens already dropped) keeps its counts in p.archive; votes cast after
+      // reopening would land in p.votes, which counts() ignores, so they would be silently lost.
+      if (Array.isArray(p.archive)) throw new VoteError(p.pulsePhase ? "لا يمكن إعادة فتح جولة قياس مؤرشفة" : "لا يمكن إعادة فتح جولة أُرشفت نتائجها", 409);
       // Only one question is open at a time, so students always see the active one.
       for (const other of session(code).polls) if (other.status === "open" && other !== p) seal(other);
     }

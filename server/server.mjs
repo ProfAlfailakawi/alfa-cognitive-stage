@@ -461,6 +461,8 @@ const handler = async (req, res) => {
     await sendFile(req, res, file);
   } catch (err) {
     if (err instanceof VoteError) return sendJson(res, err.status, { error: err.message });
+    // Unknown paths and missing files stay a quiet 404; anything else is a real fault, so leave a trace.
+    if (!(err && (err.code === "ENOENT" || err.code === "ENOTDIR" || err.code === "EISDIR"))) console.error("request failed:", err);
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("غير موجود");
   }
