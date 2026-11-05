@@ -49,13 +49,13 @@
       <div class="card">
         <h2>سؤال جديد</h2>
         <div class="row">
-          <input type="text" id="q-text" placeholder="نص السؤال" maxlength="200" />
+          <input type="text" id="q-text" aria-label="نص السؤال" placeholder="نص السؤال" maxlength="200" />
           <select id="q-kind" aria-label="نوع السؤال">
             <option value="choice">اختيار من متعدد</option>
             <option value="words">سحابة كلمات (حتى 3 كلمات لكل طالب)</option>
           </select>
-          <textarea id="q-opts" rows="4" placeholder="خيار في كل سطر (2 إلى 6)"></textarea>
-          <input type="text" id="q-objective" maxlength="150" placeholder="هدف التعلم (اختياري، يكتبه المحاضر)" />
+          <textarea id="q-opts" rows="4" aria-label="خيار في كل سطر (2 إلى 6)" placeholder="خيار في كل سطر (2 إلى 6)"></textarea>
+          <input type="text" id="q-objective" maxlength="150" aria-label="هدف التعلم (اختياري، يكتبه المحاضر)" placeholder="هدف التعلم (اختياري، يكتبه المحاضر)" />
           <label><input type="checkbox" id="q-change" /> السماح بتغيير الإجابة</label>
           <label><input type="checkbox" id="q-before-after" /> سؤال قبل وبعد الشرح (جولتان منفصلتان)</label>
           <label>رقم الإجابة الصحيحة المعتمدة (اختياري، 1 إلى 6)
