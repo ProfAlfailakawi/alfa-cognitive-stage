@@ -1149,7 +1149,7 @@ section.vote[aria-label] { position: relative; }
 
 /* Wide / landscape: the question stays beside the answers instead of a lone narrow column. */
 @media (min-width: 560px) {
-  .vote { max-width: 860px; }
+  body .vote { max-width: 860px; }
   body main.vote:has(> .q) {
     display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); column-gap: clamp(1.5rem, 4vw, 3rem); align-content: start; align-items: start;
   }
