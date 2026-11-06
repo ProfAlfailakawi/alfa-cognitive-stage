@@ -1086,3 +1086,158 @@ body .presenter .main { padding-block-start: calc(.5rem + env(safe-area-inset-to
 body .presenter .side { padding-block-start: calc(.75rem + env(safe-area-inset-top)); }
 body .vote, body .review, body .admin { padding-block-start: calc(1.25rem + env(safe-area-inset-top)); }
 @media (max-width: 599px) { body .presenter .side { padding-block-start: .75rem; } }
+
+/* ==========================================================================
+   Round 4 — beauty layer (presentation only; last in the file so it wins).
+   Audience stage, student vote, review and vote console. No logic, no new markup:
+   everything hangs off existing classes and ids. Motion stays transform/opacity only
+   and sits inside prefers-reduced-motion: no-preference.
+   ========================================================================== */
+
+/* ---- Audience: a lit slide on a deep, quiet backdrop ---- */
+body:has(.audience) { background: #0a1317; }
+html:has(.audience) { background: #0a1317; }
+.audience {
+  background:
+    radial-gradient(70% 55% at 50% 38%, rgba(95, 208, 180, .16), transparent 70%),
+    radial-gradient(50% 40% at 85% 100%, rgba(226, 178, 92, .10), transparent 70%),
+    #0a1317;
+}
+@media (max-aspect-ratio: 3/2) {
+  .audience .stage {
+    width: min(94vw, calc(94dvh * var(--aspect)));
+    border-radius: clamp(8px, 1.6vw, 16px); overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .09), 0 0 90px rgba(95, 208, 180, .16), 0 30px 70px rgba(0, 0, 0, .55);
+  }
+}
+
+/* ---- Student vote: surfaces, hierarchy, and a real use of the wide canvas ---- */
+body:has(.vote) {
+  background:
+    radial-gradient(60% 280px at 100% 0, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+    radial-gradient(50% 240px at 0 0, color-mix(in srgb, var(--brass) 18%, transparent), transparent 70%),
+    var(--canvas);
+  background-attachment: fixed;
+}
+.vote .q::before {
+  content: "سؤال مباشر"; display: block; width: fit-content; margin-bottom: .5rem; padding: .05rem .8rem;
+  font-family: "Cairo", system-ui, sans-serif; font-size: .8rem; font-weight: 700; line-height: 1.7; letter-spacing: 0;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 999px;
+}
+.vote .opt.primary, .vote button.primary.opt { justify-content: center; text-align: center; font-size: 1.15rem; font-weight: 700; letter-spacing: 0; }
+.vote .opt.primary { display: flex; align-items: center; gap: .5rem; min-height: 58px; }
+.vote .word-input {
+  font-size: 1.15rem !important; padding: .7rem 1rem !important; border-radius: 14px !important; min-height: 56px;
+  background: var(--canvas) !important; box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.vote .word-input:focus-visible { outline: 0; border-color: var(--accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent); }
+#word-form { padding-bottom: 2px; }
+.vote #options > button.opt { font-size: 1.12rem; line-height: 1.6; }
+.vote #options > button.opt:not(:disabled):active { border-color: var(--accent); }
+.vote .result .row { box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 7%, transparent); font-weight: 600; }
+.vote .result .row > div:first-child { line-height: 1.6; }
+.vote .status#note { color: var(--soft); font-size: 1rem; }
+#pulse #pulse-got:active, #pulse #pulse-lost:active { transform: scale(.98); }
+#pulse .opt { font-size: 1.25rem; box-shadow: 0 2px 0 color-mix(in srgb, var(--ink) 12%, transparent), 0 10px 24px color-mix(in srgb, var(--ink) 6%, transparent); }
+section.vote[aria-label] { position: relative; }
+#pulse::before { content: none; }
+#pulse-message:empty, #question-message:empty { display: none; }
+#ask-lecturer { box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 6%, transparent); }
+#ask-lecturer > summary { font-size: 1.05rem; }
+#question-text { min-height: 6.5rem; font-size: 1.05rem; padding: .8rem 1rem !important; }
+
+/* Wide / landscape: the question stays beside the answers instead of a lone narrow column. */
+@media (min-width: 560px) {
+  .vote { max-width: 860px; }
+  body main.vote:has(> .q) {
+    display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); column-gap: clamp(1.5rem, 4vw, 3rem); align-content: start; align-items: start;
+  }
+  body main.vote:has(> .q)::before { grid-column: 1 / -1; }
+  body main.vote:has(> .q) > .q { grid-column: 1; grid-row: 2; font-size: clamp(1.5rem, 3vw, 2.1rem); line-height: 1.4; position: sticky; top: 1.2rem; }
+  body main.vote:has(> .q) > .status#note { grid-column: 1; grid-row: 3; align-self: start; }
+  body main.vote:has(> .q) > .result { grid-column: 2; grid-row: 2 / span 3; }
+  body main.vote:has(> .q) > :is(#cloud, div:not(.result)) { grid-column: 1 / -1; }
+  #pulse .opt { min-height: 68px; }
+}
+/* Folded landscape / short windows: pull everything up so the answer area shows without a long scroll. */
+@media (max-height: 480px) {
+  body main.vote { padding-top: calc(.8rem + env(safe-area-inset-top)); }
+  body main.vote::before { width: 2.1rem; height: 2.1rem; margin-bottom: -.3rem; }
+  .vote .q::before { display: none; }
+  .vote .q { font-size: 1.35rem; margin: 0; }
+  .vote .word-input { min-height: 48px; padding-block: .45rem !important; }
+  .vote .opt.primary { min-height: 52px; }
+  #pulse .opt { min-height: 56px; }
+  body main.vote + section.vote { margin-top: .6rem; padding-top: .8rem; }
+}
+
+/* ---- Review: a hero, a calmer timeline, a wider reading column ---- */
+body .review { max-width: 760px; }
+body:has(.review) {
+  background:
+    radial-gradient(70% 320px at 100% 0, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+    radial-gradient(45% 260px at 0 0, color-mix(in srgb, var(--brass) 16%, transparent), transparent 70%),
+    var(--canvas);
+}
+.review h1::before {
+  content: "مراجعة المحاضرة"; display: block; width: fit-content; margin-bottom: .55rem; padding: .05rem .85rem;
+  font-family: "Cairo", system-ui, sans-serif; font-size: .8rem; font-weight: 700; line-height: 1.7;
+  color: var(--ember); background: color-mix(in srgb, var(--brass) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brass) 55%, transparent); border-radius: 999px;
+}
+.review section::before { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 8%, transparent); font-family: var(--font-label); font-weight: 400; font-size: 1.05rem; }
+.review h2 { font-size: 1.3rem; }
+.review ul { box-shadow: 0 10px 26px color-mix(in srgb, var(--ink) 6%, transparent); background: color-mix(in srgb, var(--canvas) 70%, var(--wash)); padding: .8rem 1rem; }
+.review li { font-size: 1.05rem; }
+.review section .tag { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); font-weight: 600; }
+@media (min-width: 640px) { body .review { padding-inline: 1.75rem; } .review h1 { font-size: 2.2rem; } .review li { font-size: 1.12rem; } }
+@media (max-height: 480px) {
+  body main.review::before { display: none; }
+  body .review h1 { margin: .2rem 0 1.1rem; font-size: 1.6rem; }
+  .review h1::before { margin-bottom: .2rem; }
+  body .review section { padding-bottom: 1rem; }
+}
+
+/* ---- Vote console: a header, tidy fields, no cramped numeric label ---- */
+.admin h1 { display: flex; align-items: center; gap: .7rem; font-size: 2.2rem; line-height: 1.3; margin-bottom: .1rem; }
+.admin h1::before {
+  content: ""; width: 2.6rem; height: 2.6rem; flex: none; background: var(--t-vote) center / contain no-repeat;
+}
+.admin h1::after { content: ""; flex: 1; height: 3px; border-radius: 3px; background: linear-gradient(270deg, var(--brass), transparent); opacity: .7; }
+.admin .card { box-shadow: 0 14px 34px color-mix(in srgb, var(--ink) 6%, transparent); background: color-mix(in srgb, var(--canvas) 40%, var(--wash)); }
+.admin .card h2 { display: flex; align-items: center; gap: .5rem; }
+.admin .card h2::before { content: ""; width: .5rem; height: 1.2rem; border-radius: 4px; background: var(--accent); flex: none; }
+.admin .poll { background: var(--canvas); box-shadow: 0 6px 16px color-mix(in srgb, var(--ink) 5%, transparent); }
+.admin .poll > strong { font-size: 1.05rem; line-height: 1.6; }
+.admin .meta { line-height: 1.7; }
+.admin label:has(> input[type=number]) { display: grid; gap: .35rem; line-height: 1.6; }
+.admin label:has(> input[type=number]) input { width: 100%; max-width: none; }
+.admin #session-line { display: inline-block; padding: .1rem .9rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); color: var(--accent); }
+.admin #join-url:empty, .admin #session-line:empty { display: none; }
+.admin .actions button:not(.primary) { background: var(--canvas); }
+.admin #auth { max-width: 520px; }
+@media (max-height: 480px) {
+  .admin h1 { font-size: 1.6rem; }
+  .admin h1::before { width: 2rem; height: 2rem; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vote .word-input { transition: border-color var(--dur-2) ease, box-shadow var(--dur-2) ease; }
+  .vote .bar > span { transition: width .6s var(--ease-out); }
+}
+
+/* ---- Presenter: short landscape (folded Duo) — hint that the key row scrolls, calmer drawer headers ---- */
+@media (max-height: 480px) and (min-width: 560px) {
+  .presenter .controls { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); padding-inline-end: 28px; }
+  .presenter .side :is(.import-panel, #library-drawer, #insight-drawer, #field-drawer, .cognitive-drawer, .readiness-drawer, .voting-drawer) > summary { gap: .5rem; font-size: .84rem; }
+  .presenter .side :is(.import-panel, #library-drawer, #insight-drawer, #field-drawer, .cognitive-drawer, .readiness-drawer, .voting-drawer) > summary::before { width: 1.6rem; height: 1.6rem; }
+  .presenter .side :is(.import-panel, .voting-drawer, .readiness-drawer, .library-drawer, .cognitive-drawer, .director-box) { padding: .5rem .65rem; }
+}
+.presenter .side :is(.pulse-line, .witness-line) { margin-block: .1rem .25rem; }
+@media (max-width: 480px) {
+  body .review section { padding-inline-end: 0; padding-inline-start: 0; padding-right: 2.6rem; }
+  .review section::before { width: 1.9rem; height: 1.9rem; font-size: .95rem; }
+  .review section:not(:last-of-type)::after { inset-inline-start: .95rem; top: 2.1rem; }
+  .review ul { padding: .65rem .8rem; }
+  .review li { font-size: 1rem; }
+}
