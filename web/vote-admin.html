@@ -2,12 +2,12 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>إدارة التصويت</title>
   <link rel="stylesheet" href="style.css" />
   <style>
     .admin { max-width: 980px; margin: 0 auto; padding: 1.25rem; display: grid; gap: 1.25rem; }
-    .admin .grid { display: grid; grid-template-columns: 280px 1fr; gap: 1.25rem; align-items: start; }
+    .admin .grid { display: grid; grid-template-columns: minmax(220px, 280px) 1fr; gap: 1.25rem; align-items: start; }
     .admin textarea, .admin input[type=text], .admin input[type=password] {
       font: inherit; width: 100%; padding: 0.6rem; border-radius: 10px; border: 1px solid var(--hair); background: var(--canvas); color: var(--ink);
     }
@@ -22,7 +22,7 @@
     .word-chip { border: 1px solid var(--hair); border-radius: 999px; padding: .2rem .6rem; font-size: .9rem; }
     .word-chip.hidden-word { opacity: .5; text-decoration: line-through; }
     .word-chip button { min-height: 28px; padding: .1rem .5rem; font-size: .75rem; margin-inline-start: .3rem; }
-    @media (max-width: 760px) { .admin .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 599px) { .admin .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
