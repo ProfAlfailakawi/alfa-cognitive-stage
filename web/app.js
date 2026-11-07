@@ -38,6 +38,8 @@ const params = new URLSearchParams(location.search);
 const role = location.hash === "#audience" ? "audience" : "presenter";
 // Typing tools (manual scene form, typed test sentence, token box) exist only for developers/tests: ?dev=1. The lecturer works by voice.
 const DEV = new URLSearchParams(location.search).has("dev");
+// The lecturer sees a calm PowerPoint-style console. Everything else still runs but stays out of sight; ?tools=1 (or ?dev=1) shows it.
+const TOOLS = DEV || new URLSearchParams(location.search).has("tools");
 const audienceRequestId = role === "audience"
   ? Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("")
   : null;
@@ -309,7 +311,7 @@ function renderAudience() {
 
 function renderPresenter() {
   app.innerHTML = `
-    <section class="presenter">
+    <section class="presenter${TOOLS ? "" : " clean"}">
       <div class="main">
         <div class="bar">
           <div class="meta" id="meta"></div>
@@ -335,7 +337,7 @@ function renderPresenter() {
       </div>
       <section class="side" aria-label="أدوات المحاضر" tabindex="0">
         <h2 class="sr-only">أدوات المحاضر</h2><h3 class="sr-only">الأقسام</h3>
-        <div><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
+        <div class="side-next"><div class="label">الشريحة التالية</div><div class="next" id="next-thumb"></div></div>
         <div id="lecture-import-mount"></div>
         <div id="library-mount"></div>
         <div id="insight-mount"></div>
@@ -423,7 +425,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
             </div>
           </details>
         </section>
-        <div><div class="label">ملاحظات المحاضر</div></div>
+        <div class="notes-label"><div class="label">ملاحظات المحاضر</div></div>
         <div class="notes" id="notes"></div>
       </section>
     </section>`;
@@ -713,9 +715,15 @@ function buildFilmstrip() {
     const button = event.target instanceof Element ? event.target.closest(".film-item") : null;
     if (!button) return;
     const target = Number(button.dataset.index);
-    if (target !== state.index) go(target);
+    if (target !== state.index) jumpTo(target);
     button.blur(); // a clicker's Space must still turn the slide, not re-press this thumbnail
   };
+}
+// A jump from the strip is a digression: remember where the lecture was so the return key brings it back.
+function jumpTo(target) {
+  const anchor = returnStack.peek() || captureStageState();
+  go(target);
+  returnStack.enter(() => anchor);
 }
 function markFilmstrip() {
   const strip = document.getElementById("filmstrip");
