@@ -329,7 +329,7 @@ function renderPresenter() {
           <button id="playvid">تشغيل الفيديو</button>
           <button class="emergency" id="home" aria-label="إغلاق المشهد والعودة للشريحة الأصلية">↩ ارجع للشريحة الأصلية (E)</button>
           <button class="direct-slide" id="next-slide" aria-label="انتقل للشريحة التالية دون بقية حركات الشريحة">انتقل للشريحة اللي بعدها ↶</button>
-          <button id="open-audience">فتح نافذة الطلبة</button>
+          <button id="open-audience">ابدأ العرض</button>
           <button id="open-vote">التصويت</button>
           ${DEV ? '<button id="toggle-info">إنفوجرافيك</button>' : ""}
           <select id="lecture-picker" aria-label="اختيار المحاضرة"></select>
@@ -483,8 +483,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
   if (infoHide) infoHide.onclick = () => {
     if (returnStack.active()) backOneLevel(); else hideInfographic(true);
   };
-  document.getElementById("open-audience").onclick = () =>
-    window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
+  document.getElementById("open-audience").onclick = () => startShow();
   showSlide(state.index);
   setupDirector();
   setupSceneTheme();
@@ -730,6 +729,27 @@ function markFilmstrip() {
   const current = strip.children[state.index - 1];
   if (current) current.scrollIntoView({ block: "nearest", inline: "center",
     behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+// "Start show", like PowerPoint: the students' window opens at once and, when the browser lets us see a second
+// display, moves onto it at full size. Without a second display it opens normally and F (or a double click) fills the screen.
+async function startShow() {
+  const popup = window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
+  if (!popup) { setDirectorStatus("المتصفح منع نافذة العرض. اسمح بالنوافذ المنبثقة لهذه الصفحة ثم اضغط «ابدأ العرض»."); return; }
+  let placed = false;
+  try {
+    if ("getScreenDetails" in window) {
+      const external = (await window.getScreenDetails()).screens.find((screen) => !screen.isPrimary);
+      if (external) {
+        popup.moveTo(external.availLeft, external.availTop);
+        popup.resizeTo(external.availWidth, external.availHeight);
+        placed = true;
+      }
+    }
+  } catch { /* permission declined or unsupported: the window simply stays where the browser put it */ }
+  setDirectorStatus(placed
+    ? "بدأ العرض على الشاشة الثانية. اضغط F داخل نافذة العرض لملء الشاشة."
+    : "بدأ العرض. اسحب نافذة العرض إلى البروجكتر ثم اضغط F داخلها لملء الشاشة.");
 }
 
 function renderPresenterPanels() {
@@ -1693,6 +1713,12 @@ async function boot() {
     if (role === "audience") applyRemote(message);
   };
   if (role === "audience") {
+    const toggleFullscreen = () => {
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      else document.documentElement.requestFullscreen?.().catch(() => {});
+    };
+    document.addEventListener("keydown", (event) => { if (event.key === "f" || event.key === "F") toggleFullscreen(); });
+    document.addEventListener("dblclick", toggleFullscreen);
     renderAudience();
     send({ type: "hello", requestId: audienceRequestId });
   } else {

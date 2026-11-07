@@ -90,6 +90,12 @@ try {
     (await calm.locator("#filmstrip .film-item.is-current").getAttribute("data-index")) === "3");
   await calm.click("#home");
   check("return with nothing to return to leaves the slide alone", (await calm.textContent("#meta")).includes("3 من"));
+  // "Start show": one click opens the students' window (the way PowerPoint starts the slide show).
+  check("the show button reads Start show", (await calm.textContent("#open-audience")).trim() === "ابدأ العرض");
+  const [showWin] = await Promise.all([context.waitForEvent("page"), calm.click("#open-audience")]);
+  await showWin.waitForLoadState();
+  check("Start show opens the audience window", showWin.url().includes("#audience"));
+  await showWin.close();
   await calm.close();
 
   // A fresh lecturer browser can restore approved scenes from other lecture bundles.
