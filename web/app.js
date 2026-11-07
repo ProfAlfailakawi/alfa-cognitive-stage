@@ -318,10 +318,10 @@ function renderPresenter() {
           <div class="meta clock-box"><span id="clock">00:00</span>
             <select id="planned-minutes" aria-label="مدة المحاضرة المخططة"></select>
             <span id="clock-hint" class="clock-hint"></span></div>
+          <div class="meta" id="wallclock" aria-label="الوقت الآن"></div>
           <div class="clock-track" aria-hidden="true"><span id="clock-fill"></span></div>
         </div>
         <div class="stage-wrap">${stageHtml()}</div>
-        <nav class="filmstrip" id="filmstrip" aria-label="شرائح المحاضرة"></nav>
 
         <div class="controls">
           <button id="prev" aria-label="الشريحة السابقة">السابقة</button>
@@ -330,6 +330,7 @@ function renderPresenter() {
           <button class="emergency" id="home" aria-label="إغلاق المشهد والعودة للشريحة الأصلية">↩ ارجع للشريحة الأصلية (E)</button>
           <button class="direct-slide" id="next-slide" aria-label="انتقل للشريحة التالية دون بقية حركات الشريحة">انتقل للشريحة اللي بعدها ↶</button>
           <button id="open-audience">ابدأ العرض</button>
+          <button id="end-show" type="button" hidden>إنهاء العرض</button>
           <button id="open-vote">التصويت</button>
           ${DEV ? '<button id="toggle-info">إنفوجرافيك</button>' : ""}
           <select id="lecture-picker" aria-label="اختيار المحاضرة"></select>
@@ -425,12 +426,15 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
             </div>
           </details>
         </section>
-        <div class="notes-label"><div class="label">ملاحظات المحاضر</div></div>
+        <div class="notes-label"><div class="label">ملاحظات المحاضر</div>
+          <div class="notes-size"><button id="notes-smaller" type="button" aria-label="تصغير خط الملاحظات">أ−</button><button id="notes-bigger" type="button" aria-label="تكبير خط الملاحظات">أ+</button></div></div>
         <div class="notes" id="notes"></div>
       </section>
+      <nav class="filmstrip" id="filmstrip" aria-label="شرائح المحاضرة"></nav>
     </section>`;
   setAspect(state.aspect);
   buildFilmstrip();
+  setupNotesSize();
   document.getElementById("prev").onclick = () => retreat();
   document.getElementById("next").onclick = () => advance();
   document.getElementById("next-slide").onclick = () => {
@@ -733,11 +737,37 @@ function markFilmstrip() {
 
 // "Start show", like PowerPoint: the students' window opens at once and, when the browser lets us see a second
 // display, moves onto it at full size. Without a second display it opens normally and F (or a double click) fills the screen.
+let showWindow = null;
+function endShow() {
+  try { showWindow?.close(); } catch {}
+  showWindow = null;
+  const button = document.getElementById("end-show");
+  if (button) button.hidden = true;
+  setDirectorStatus("انتهى العرض. صفحتك باقية كما هي.");
+}
+function setupNotesSize() {
+  const notes = document.getElementById("notes");
+  if (!notes) return;
+  const steps = [0.95, 1.05, 1.12, 1.3, 1.5, 1.75, 2.0];
+  let at = 2;
+  try { const saved = Number(localStorage.getItem("alfa.notesSize")); if (Number.isInteger(saved) && saved >= 0 && saved < steps.length) at = saved; } catch {}
+  const apply = () => {
+    notes.style.setProperty("--notes-size", steps[at] + "rem");
+    try { localStorage.setItem("alfa.notesSize", String(at)); } catch {}
+  };
+  apply();
+  document.getElementById("notes-bigger").onclick = () => { at = Math.min(steps.length - 1, at + 1); apply(); };
+  document.getElementById("notes-smaller").onclick = () => { at = Math.max(0, at - 1); apply(); };
+  document.getElementById("end-show").onclick = () => endShow();
+}
 async function startShow() {
   // "popup" asks for a separate window; a plain open() becomes a tab that hides the lecturer's page.
   const popup = window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience",
     `popup,width=${Math.min(1280, screen.availWidth)},height=${Math.min(720, screen.availHeight)}`);
   if (!popup) { setDirectorStatus("المتصفح منع نافذة العرض. اسمح بالنوافذ المنبثقة لهذه الصفحة ثم اضغط «ابدأ العرض»."); return; }
+  showWindow = popup;
+  const endButton = document.getElementById("end-show");
+  if (endButton) endButton.hidden = false;
   window.focus(); // the lecturer keeps the keys; the show window only shows
   let placed = false;
   try {
@@ -1638,6 +1668,9 @@ function setupClock() {
   setInterval(() => {
     const el = document.getElementById("clock");
     if (!el) return;
+    const wall = document.getElementById("wallclock");
+    if (wall) wall.textContent = new Date().toLocaleTimeString("ar-KW", { hour: "numeric", minute: "2-digit" });
+    if (showWindow?.closed) { showWindow = null; const end = document.getElementById("end-show"); if (end) end.hidden = true; }
     const planned = Number(document.getElementById("planned-minutes")?.value || 0);
     const info = clockState(Date.now() - clockStart, planned);
     el.textContent = info.label;
