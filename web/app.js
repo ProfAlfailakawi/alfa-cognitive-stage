@@ -706,8 +706,7 @@ function buildFilmstrip() {
     const img = Object.assign(document.createElement("img"), {
       src: `/bundles/${state.bundle}/${slide.image}`, alt: "", loading: "lazy", decoding: "async", draggable: false,
     });
-    const badge = Object.assign(document.createElement("span"), { className: "film-num", textContent: String(i + 1) });
-    button.append(img, badge);
+    button.append(img);
     return button;
   });
   strip.replaceChildren(...items);
