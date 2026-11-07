@@ -95,6 +95,7 @@ try {
   const [showWin] = await Promise.all([context.waitForEvent("page"), calm.click("#open-audience")]);
   await showWin.waitForLoadState();
   check("Start show opens the audience window", showWin.url().includes("#audience"));
+  check("Start show opens a separate window, not a tab", await showWin.evaluate(() => window.opener !== null && !window.toolbar.visible));
   await showWin.close();
   await calm.close();
 

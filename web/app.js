@@ -734,8 +734,11 @@ function markFilmstrip() {
 // "Start show", like PowerPoint: the students' window opens at once and, when the browser lets us see a second
 // display, moves onto it at full size. Without a second display it opens normally and F (or a double click) fills the screen.
 async function startShow() {
-  const popup = window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience");
+  // "popup" asks for a separate window; a plain open() becomes a tab that hides the lecturer's page.
+  const popup = window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience",
+    `popup,width=${Math.min(1280, screen.availWidth)},height=${Math.min(720, screen.availHeight)}`);
   if (!popup) { setDirectorStatus("المتصفح منع نافذة العرض. اسمح بالنوافذ المنبثقة لهذه الصفحة ثم اضغط «ابدأ العرض»."); return; }
+  window.focus(); // the lecturer keeps the keys; the show window only shows
   let placed = false;
   try {
     if ("getScreenDetails" in window) {
