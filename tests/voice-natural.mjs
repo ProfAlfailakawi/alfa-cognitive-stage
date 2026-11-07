@@ -30,4 +30,9 @@ for (const speech of [
   assert.equal(interpretNaturalNav(speech), null, "no accidental slide navigation: " + speech);
   assert.equal(interpretStageReturn(speech), null, "no accidental visual return: " + speech);
 }
+// Everyday Kuwaiti phrasing for "go back to the lesson / the slide / where we were".
+for (const speech of ["خل نرجع للدرس", "خل نرجع للشريحة", "نرجع للمحاضرة", "ارجع للسلايد الاصلي", "نرجع للسلايد",
+  "نرجع للي كنا فيه", "خل نكمل الدرس", "طيب خل نرجع للدرس", "نكمل المحاضرة"]) assert.equal(interpretStageReturn(speech), "return", speech);
+for (const speech of ["كنا نرجع للدرس كل اسبوع", "لو نرجع للمحاضرة الاولى", "الطلبة يرجعون للدرس بعد الاستراحة",
+  "نرجع للشريحة 3 بعد شوي ونقارن"]) assert.equal(interpretStageReturn(speech), null, "no accidental return: " + speech);
 console.log("natural Kuwaiti voice intents passed");
