@@ -52,6 +52,14 @@ export function interpretStageReturn(utterance) {
   if (/^(?:لو|اذا|عشان|مثلا|على سبيل|كنا|يوم)\s/.test(t)) return null;
   t = t.replace(begin, "").trim();
   if (!t) return null;
+  // Everyday phrasing maps to the forms below: "خل نرجع" is short for "خلنا نرجع", a slide is also a slide show page
+  // or a "سلايد", the lecture is also the lesson, and "الاصلي" agrees with the slide.
+  t = t.replace(/^خل(?=\s+(?:نرجع|نكمل|نواصل|نعود|نرد|ارجع))/, "خلنا")
+    .replace(/(?:سلايدات|سلايد|صفحه)/g, "شريحه")
+    .replace(/(?:ال)?محاضره/g, "الدرس")
+    .replace(/شريحه (ال)?اصلي$/, "شريحه الاصليه");
+  if (/^(?:خلنا\s+)?(?:نرجع|ارجع|ردني)\s+(?:لل|ل|ال)?شريحه$/.test(t)) return "return"; // "back to the slide", no number
+  if (/^(?:خلنا\s+)?(?:نرجع|ارجع|ردنا)\s+(?:ل)?(?:اللي|للي|الي)\s+كنا\s+(?:فيه|عليه)$/.test(t)) return "return";
   if (/^(?:(?:نرجع|ارجع|خلنا نرجع|خلونا نرجع|ردنا|ردني|نعود)\s+(?:ل|الي|الى)?\s*(?:اللي|الي|للي)\s+قبل|(?:ارجع|نرجع)\s+(?:خطوه|مرحله)\s+(?:وحده|واحده)?)$/.test(t)) return "return-level";
   const exact = [
     /^(?:نرجع|نرد|نعود|ارجع|ردني|ردنا|خلنا نرجع|خلونا نرجع|ودي ارجع|ابي ارجع)\s+(?:لل|ل|الى|الي|على)?\s*(?:(?:ال)?(?:عرض|بوربوينت|درس|شرح|موضوع)(?:نا|ي| الاصلي)?|(?:ال)?شريحه\s+(?:ال)?(?:اصليه|اساسيه|اللي كنا فيها|الحاليه|نفسها))$/,

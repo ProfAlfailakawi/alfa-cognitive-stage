@@ -168,6 +168,27 @@ try {
     check("speech recognised while a video plays is ignored", (await audience.locator(".info-layer").count()) === 0 && !(await presenter.locator("#director-proposal").isVisible()));
     await context.close();
   }
+  // ---- everyday Kuwaiti "back to the lesson" in a FINAL transcript: closes a scene, and returns to the slide reached ----
+  {
+    const { context, presenter, audience } = await open();
+    await presenter.click("#director-start");
+    await presenter.waitForFunction(() => window.__starts === 1);
+    const say = (text) => presenter.evaluate((t) => window.__rec.onresult({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: t } }] }), text);
+    await presenter.click("#toggle-info");
+    await presenter.fill("#info-title", "نسبة"); await presenter.fill("#info-lines", "68%\nمن حديث المحاضر");
+    await presenter.click("#info-show");
+    await audience.waitForSelector(".info-layer");
+    await say("خل نرجع للدرس");
+    await audience.waitForFunction(() => !document.querySelector(".info-layer"), null, { timeout: 3000 });
+    check("'خل نرجع للدرس' closes a scene", true);
+    for (let i = 0; i < 12 && !(await presenter.textContent("#meta")).includes("2 من"); i++) { await presenter.keyboard.press("ArrowRight"); await presenter.waitForTimeout(120); }
+    await presenter.keyboard.press("Home");
+    await presenter.waitForFunction(() => document.getElementById("meta").textContent.includes("1 من"));
+    await say("خل نرجع للشريحة");
+    await presenter.waitForFunction(() => document.getElementById("meta").textContent.includes("2 من"), null, { timeout: 3000 });
+    check("'خل نرجع للشريحة' returns to the slide the lecture had reached", true);
+    await context.close();
+  }
   // ---- reversible command from a stable interim transcript ----
   {
     const { context, presenter, audience } = await open();
