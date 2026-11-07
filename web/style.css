@@ -1267,7 +1267,7 @@ body main.vote > .status:only-child { min-height: 14rem; display: grid; align-co
 .presenter .side :is(.pulse-line, .witness-line):empty { display: none; }
 
 /* ---- Presenter filmstrip: all slides for quick jumps; current lit, next hinted ---- */
-.presenter { --strip: 92px; }
+.presenter { --strip: 112px; }
 .filmstrip {
   display: flex; gap: .6rem; align-items: center; height: 80px; padding: .4rem .5rem;
   overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: rgba(238, 243, 241, .22) transparent;
@@ -1302,3 +1302,18 @@ body main.vote > .status:only-child { min-height: 14rem; display: grid; align-co
 .presenter.clean .side > .notes-label { order: 2; margin-block-end: -.5rem; }
 .presenter.clean .side > #notes { order: 3; flex: 1 1 auto; min-height: 7rem; max-height: 38vh; font-size: 1.12rem; line-height: 1.95; padding: .2rem .1rem; }
 .presenter.clean .side .next img { box-shadow: 0 8px 22px rgba(0, 0, 0, .35); }
+
+/* ---- Presenter View layout: strip across the bottom, wall clock, notes size, end show ---- */
+@media (min-width: 821px) and (min-height: 481px) {
+  .presenter { grid-template-rows: minmax(0, 1fr) auto; }
+  .presenter > .filmstrip { grid-column: 1 / -1; margin: 0 max(1rem, env(safe-area-inset-left)) max(.9rem, env(safe-area-inset-bottom)); }
+}
+.presenter .bar #wallclock { font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight: 700; color: var(--soft); margin-inline-start: auto; }
+.presenter #end-show { border-color: rgba(238, 243, 241, .22); }
+.presenter .controls button#end-show::before { display: none; }
+.presenter .notes-label { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.presenter .notes-size { display: flex; gap: .35rem; }
+.presenter .notes-size button { min-height: 32px; min-width: 38px; padding: 0 .55rem; border-radius: 9px; font-weight: 800; }
+.presenter.clean .side > #notes { font-size: var(--notes-size, 1.12rem); }
+.presenter.clean .side-next .label { font-size: 1.3rem; }
+.presenter #end-show[hidden] { display: none !important; }
