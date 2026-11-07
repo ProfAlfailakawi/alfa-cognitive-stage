@@ -115,7 +115,7 @@ jobs:
           npm run test:build
 
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -176,7 +176,7 @@ jobs:
         run: npm run test:vote
 
   import-real:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 18
     permissions:
       contents: read

@@ -105,7 +105,7 @@ body:has(.presenter) { background: var(--wash); }
 .bar .meta { color: var(--soft); font-size: 0.95rem; }
 .presenter { height: 100vh; overflow: hidden; }
 .presenter .stage-wrap { display: grid; place-items: center; min-height: 0; min-width: 0; overflow: hidden; }
-.presenter .stage { width: min(100%, calc((100vh - 230px) * var(--aspect))); }
+.presenter .stage { width: min(100%, calc((100vh - 230px - var(--strip, 0px)) * var(--aspect))); }
 .presenter .main > * { min-width: 0; }
 .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
 .side { border-inline-start: 1px solid var(--hair); padding: 1rem; display: grid; grid-template-rows: auto auto 1fr; gap: 0.75rem; overflow: hidden; }
@@ -1005,7 +1005,7 @@ body main.vote + section.vote ~ section.vote { border-top: 0; margin-top: 0; pad
 /* Dynamic viewport units: the browser bars never hide the control keys. */
 .stage { width: min(100vw, calc(100vh * var(--aspect))); width: min(100vw, calc(100dvh * var(--aspect))); }
 .presenter { height: 100vh; height: 100dvh; }
-.presenter .stage { width: min(100%, calc((100vh - 230px) * var(--aspect))); width: min(100%, calc((100dvh - 230px) * var(--aspect))); }
+.presenter .stage { width: min(100%, calc((100vh - 230px - var(--strip, 0px)) * var(--aspect))); width: min(100%, calc((100dvh - 230px - var(--strip, 0px)) * var(--aspect))); }
 .presenter { grid-template-columns: minmax(0, 1fr) clamp(280px, 32vw, 360px); }
 .presenter .main { padding-block-end: max(1rem, env(safe-area-inset-bottom)); padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right)); }
 .presenter .side { padding-block-end: max(1rem, env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; }
@@ -1265,3 +1265,35 @@ body main.vote > .status:only-child { min-height: 14rem; display: grid; align-co
 /* Console placeholders stay readable inside narrow fields. */
 @media (max-width: 700px) { .admin ::placeholder { font-size: .88em; } }
 .presenter .side :is(.pulse-line, .witness-line):empty { display: none; }
+
+/* ---- Presenter filmstrip: all slides for quick jumps; current lit, next hinted ---- */
+.presenter { --strip: 92px; }
+.filmstrip {
+  display: flex; gap: .6rem; align-items: center; height: 80px; padding: .4rem .5rem;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: rgba(238, 243, 241, .22) transparent;
+  overscroll-behavior-x: contain; scroll-snap-type: x proximity;
+  border: 1px solid var(--hair); border-radius: 16px; background: rgba(238, 243, 241, .035);
+}
+.filmstrip:empty { display: none; }
+.filmstrip .film-item {
+  position: relative; flex: none; height: 100%; aspect-ratio: var(--aspect); padding: 0; min-height: 0; overflow: hidden;
+  border: 1px solid var(--hair); border-radius: 9px; background: #000; cursor: pointer; scroll-snap-align: center;
+  opacity: .62; box-shadow: none;
+  transition: opacity var(--dur-2, 180ms) var(--ease-out, ease), transform var(--dur-2, 180ms) var(--ease-out, ease), border-color var(--dur-2, 180ms);
+}
+.filmstrip .film-item img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.filmstrip .film-item:hover { opacity: .95; transform: translateY(-2px); border-color: rgba(238, 243, 241, .34); }
+.filmstrip .film-item:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; opacity: 1; }
+.filmstrip .film-num {
+  position: absolute; inset-block-end: 3px; inset-inline-start: 3px; min-width: 1.35rem; padding: 0 .3rem;
+  border-radius: 6px; background: rgba(12, 23, 27, .82); color: var(--ink); font-size: .72rem; line-height: 1.35rem;
+  font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.filmstrip .film-item.is-next { opacity: .9; border-color: var(--brass); border-style: dashed; }
+.filmstrip .film-item.is-current {
+  opacity: 1; border: 2px solid var(--jade); transform: none;
+  box-shadow: 0 0 0 3px rgba(95, 208, 180, .18), 0 6px 18px rgba(0, 0, 0, .45);
+}
+.filmstrip .film-item.is-current .film-num { background: var(--jade); color: #07231d; }
+@media (max-width: 820px), (max-height: 480px) { .presenter { --strip: 0px; } .filmstrip { display: none; } }
+@media (prefers-reduced-motion: reduce) { .filmstrip .film-item { transition: none; } .filmstrip .film-item:hover { transform: none; } }
