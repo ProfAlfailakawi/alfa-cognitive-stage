@@ -85,3 +85,13 @@ for (const t of ["لماذا السهر يؤدي الى ضعف التركيز؟"
   assert.ok(per < 5, "director decision must stay far below the latency budget");
 }
 console.log("all director v2 checks passed");
+
+// 5. A study's finding appears by itself in the balanced mode (the lecturer's choice); a casual mention stays silent.
+for (const t of ["دراسة جديدة تقول إن النوم الكافي يحسن الأداء", "الدراسة بينت أن التعلم النشط يرفع التحصيل"]) {
+  const d = mk().observe(t, slide(1));
+  assert.equal(d.kind, "study", t); assert.equal(d.action, "auto", t);
+}
+for (const t of ["الدراسة اللي قلت لكم عنها كانت ممتعة جدا", "في دراسة قرأتها امس عن النوم"]) {
+  assert.equal(mk().observe(t, slide(1)).action, "none", t);
+}
+console.log("director v2: study findings automatic in balanced, casual mentions silent");

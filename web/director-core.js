@@ -133,7 +133,7 @@ export function interpretSpeech(utterance) {
     // A qualitative finding is not a numeric statistic. Show the lecturer's
     // literal claim as a study quote, but only when a finding verb is present.
     // A casual mention ("الدراسة اللي قلت لكم عنها") must stay silent.
-    const finding = /(?:اظهر(?:ت|وا)?|اشار(?:ت|وا)?|بين(?:ت|وا)?|كشف(?:ت|وا)?|وجد(?:ت|وا)?|توصل(?:ت|وا)?|اثبت(?:ت|وا)?|اكد(?:ت|وا)?|تفيد|تشير|توضح|خلص(?:ت|وا)?)/;
+    const finding = /(?:اظهر(?:ت|وا)?|اشار(?:ت|وا)?|بين(?:ت|وا)?|كشف(?:ت|وا)?|وجد(?:ت|وا)?|توصل(?:ت|وا)?|اثبت(?:ت|وا)?|اكد(?:ت|وا)?|تفيد|تشير|توضح|خلص(?:ت|وا)?|تقول|تثبت|تؤكد|توكد|تدل|يقول|قالت)/;
     if (!counts.length && !percentages.length && finding.test(text) && raw.split(/\s+/).length >= 6) {
       return { kind: "study", confidence: 0.96, utterance: raw,
         spec: { type: "quote", title: "نتيجة دراسة", lines: [raw.slice(0, 230)] } };
