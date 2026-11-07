@@ -1241,3 +1241,26 @@ body:has(.review) {
   .review ul { padding: .65rem .8rem; }
   .review li { font-size: 1rem; }
 }
+
+/* ==========================================================================
+   Round 5 — fixes found when reviewing merged round 4 (presentation only).
+   ========================================================================== */
+
+/* Opened Duo landscape / desktop: the slide sits inside its proscenium with breathing room (it used to touch the frame). */
+@media (min-width: 821px) and (min-height: 481px) {
+  .presenter .stage-wrap { padding: .75rem; }
+  .presenter .stage { width: min(100%, calc((100vh - 250px) * var(--aspect))); width: min(100%, calc((100dvh - 250px) * var(--aspect))); }
+}
+/* The pulse line is a card of its own: never glued to the drawer under it. */
+.presenter .side :is(.pulse-line, .witness-line) { margin-block: 0 .35rem; }
+.presenter .side > .pulse-line + details, .presenter .side > .witness-line + details { margin-top: .2rem; }
+
+/* Waiting / link-problem screen: a calm breathing halo so the empty page reads as "alive", not broken. */
+body main.vote > .status:only-child { min-height: 14rem; display: grid; align-content: center; gap: .2rem; }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes wait-halo { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 30%, transparent); } 50% { box-shadow: 0 0 0 16px transparent; } }
+  body main.vote > .status:only-child::before { border-radius: 18px; animation: wait-halo 2.8s ease-in-out infinite; }
+}
+
+/* Console placeholders stay readable inside narrow fields. */
+@media (max-width: 700px) { .admin ::placeholder { font-size: .88em; } }
