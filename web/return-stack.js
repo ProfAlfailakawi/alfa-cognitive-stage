@@ -15,6 +15,8 @@ export function createReturnStack(limit = 6) {
       if (layers.length > limit) layers.shift();
       return this.depth();
     },
+    // The original state without leaving it.
+    peek: () => base,
     // One level back: previous overlay if nested, otherwise the original state.
     back() {
       if (layers.length) return layers.pop();

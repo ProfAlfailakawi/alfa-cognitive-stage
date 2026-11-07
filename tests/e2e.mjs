@@ -68,6 +68,25 @@ try {
   await presenter.locator('#filmstrip .film-item[data-index="1"]').click();
   await presenter.waitForFunction(() => document.getElementById("meta").textContent.includes("1 من"));
 
+  // Calm default console: clutter stays out of sight (it still runs), duplicates are gone, and a strip jump can be undone.
+  const calm = await context.newPage();
+  await calm.goto(`${base}/#presenter`);
+  await calm.waitForSelector("#filmstrip .film-item");
+  const hiddenIds = ["#library-mount", "#insight-mount", "#field-mount", "#cognitive-mount", "#readiness-drawer", "#next-slide", "#playvid"];
+  const shown = [];
+  for (const id of hiddenIds) if (await calm.locator(id).isVisible().catch(() => false)) shown.push(id);
+  check("calm console hides the secondary panels and duplicate buttons", shown.length === 0, shown.join(","));
+  check("calm console keeps next slide, notes, mic and voting",
+    (await calm.locator("#next-thumb").isVisible()) && (await calm.locator("#notes").isVisible()) &&
+    (await calm.locator("#director-start").isVisible()) && (await calm.locator("#home").isVisible()));
+  await calm.locator('#filmstrip .film-item[data-index="3"]').click();
+  await calm.waitForFunction(() => document.getElementById("meta").textContent.includes("3 من"));
+  await calm.click("#home");
+  await calm.waitForFunction(() => document.getElementById("meta").textContent.includes("1 من"));
+  check("return-to-original goes back to the slide the strip jump left",
+    (await calm.locator("#filmstrip .film-item.is-current").getAttribute("data-index")) === "1");
+  await calm.close();
+
   // A fresh lecturer browser can restore approved scenes from other lecture bundles.
   const archivedBundle = "archive_test_lecture";
   const savedArchive = await fetch(base + "/api/memory/" + archivedBundle, {
