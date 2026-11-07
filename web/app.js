@@ -715,15 +715,9 @@ function buildFilmstrip() {
     const button = event.target instanceof Element ? event.target.closest(".film-item") : null;
     if (!button) return;
     const target = Number(button.dataset.index);
-    if (target !== state.index) jumpTo(target);
+    if (target !== state.index) go(target);
     button.blur(); // a clicker's Space must still turn the slide, not re-press this thumbnail
   };
-}
-// A jump from the strip is a digression: remember where the lecture was so the return key brings it back.
-function jumpTo(target) {
-  const anchor = returnStack.peek() || captureStageState();
-  go(target);
-  returnStack.enter(() => anchor);
 }
 function markFilmstrip() {
   const strip = document.getElementById("filmstrip");
@@ -833,10 +827,15 @@ function resumeLecture() {
 }
 function go(index, step = 0) {
   if (index < 1 || index > state.count) return;
+  // Going back (Previous, the strip, a voice jump) remembers the slide the lecture had reached, so one return
+  // key brings it back. The anchor holds while the lecturer walks forward and is dropped once they catch up.
+  const held = returnStack.peek();
+  const anchor = held ? (index < held.index ? held : null) : (index < state.index ? captureStageState() : null);
   resumeLecture();
   state.main = index; // A normal slide change updates the safe return anchor.
   showSlide(index, step);
   send({ type: "slide", index, step: state.step, main: state.main });
+  if (anchor) returnStack.enter(() => anchor);
 }
 function advance() {
   const target = nextPosition(state.slides, state.index, state.step);
