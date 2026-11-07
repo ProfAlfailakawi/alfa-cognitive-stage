@@ -37,8 +37,9 @@ const FAKE = () => {
 async function open(options = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   await context.addInitScript(FAKE);
-  // The director now starts in the approve-everything mode; these tests exercise the automatic path, so the lecturer "chose" it earlier.
-  if (options.mode !== "default") await context.addInitScript(() => { try { localStorage.setItem("alfa.directorMode", "balanced"); } catch {} });
+  // The default is "balanced" (a clear statistic appears by itself); "safe" is the conservative mode the lecturer can pick.
+  if (options.mode === "safe") await context.addInitScript(() => { try { localStorage.setItem("alfa.directorMode", "safe"); } catch {} });
+  else if (options.mode !== "default") await context.addInitScript(() => { try { localStorage.setItem("alfa.directorMode", "balanced"); } catch {} });
   if (options.localStatus) await context.addInitScript((s) => { window.__localStatus = s; }, options.localStatus);
   const presenter = await context.newPage(), audience = await context.newPage();
   for (const [n, p] of [["presenter", presenter], ["audience", audience]]) p.on("pageerror", (e) => { console.log(n + " pageerror: " + e); failures.push(n + " pageerror"); });
@@ -50,10 +51,14 @@ async function open(options = {}) {
 }
 const status = (p) => p.locator("#director-status").textContent();
 try {
-  // ---- default mode: nothing reaches the students without the lecturer's approval ----
+  // ---- conservative mode (chosen by the lecturer): nothing reaches the students without approval ----
   {
-    const { context, presenter, audience } = await open({ mode: "default" });
-    check("the director starts in the approve-everything mode", (await presenter.locator("#director-mode").inputValue()) === "safe");
+    const fresh = await open({ mode: "default" });
+    check("a fresh lecturer starts in the balanced mode (clear statistics appear by themselves)",
+      (await fresh.presenter.locator("#director-mode").inputValue()) === "balanced");
+    await fresh.context.close();
+    const { context, presenter, audience } = await open({ mode: "safe" });
+    check("the conservative mode asks approval for every scene", (await presenter.locator("#director-mode").inputValue()) === "safe");
     await presenter.click("#director-start");
     await presenter.waitForFunction(() => window.__starts === 1);
     await presenter.evaluate(() => window.__say("في دراسة طلعت", "في دراسة طلعت إن ٦٨ بالمية من الطلبة استفادوا"));
