@@ -79,12 +79,17 @@ try {
   check("calm console keeps next slide, notes, mic and voting",
     (await calm.locator("#next-thumb").isVisible()) && (await calm.locator("#notes").isVisible()) &&
     (await calm.locator("#director-start").isVisible()) && (await calm.locator("#home").isVisible()));
+  // Reached slide 3, went back to slide 1 to show something, then the return key brings the lecture back to slide 3.
   await calm.locator('#filmstrip .film-item[data-index="3"]').click();
   await calm.waitForFunction(() => document.getElementById("meta").textContent.includes("3 من"));
-  await calm.click("#home");
+  await calm.locator('#filmstrip .film-item[data-index="1"]').click();
   await calm.waitForFunction(() => document.getElementById("meta").textContent.includes("1 من"));
-  check("return-to-original goes back to the slide the strip jump left",
-    (await calm.locator("#filmstrip .film-item.is-current").getAttribute("data-index")) === "1");
+  await calm.click("#home");
+  await calm.waitForFunction(() => document.getElementById("meta").textContent.includes("3 من"));
+  check("return-to-original brings back the slide the lecture had reached",
+    (await calm.locator("#filmstrip .film-item.is-current").getAttribute("data-index")) === "3");
+  await calm.click("#home");
+  check("return with nothing to return to leaves the slide alone", (await calm.textContent("#meta")).includes("3 من"));
   await calm.close();
 
   // A fresh lecturer browser can restore approved scenes from other lecture bundles.
