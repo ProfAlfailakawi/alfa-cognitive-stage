@@ -56,6 +56,17 @@ try {
   await presenter.goto(`${base}/?dev=1#presenter`);
   await presenter.waitForSelector("#meta");
   check("presenter shows slide 1 of N", (await presenter.textContent("#meta")).includes(`1 من ${manifest.slideCount}`));
+  // Quick-jump filmstrip: one thumbnail per slide, current lit, next hinted, one click jumps.
+  check("filmstrip lists every slide", (await presenter.locator("#filmstrip .film-item").count()) === manifest.slideCount);
+  check("filmstrip marks the current slide and hints the next",
+    (await presenter.locator("#filmstrip .film-item.is-current").getAttribute("data-index")) === "1" &&
+    (await presenter.locator("#filmstrip .film-item.is-next").getAttribute("data-index")) === "2");
+  await presenter.locator('#filmstrip .film-item[data-index="2"]').click();
+  await presenter.waitForFunction(() => document.getElementById("meta").textContent.includes("2 من"));
+  check("clicking a filmstrip thumbnail jumps to that slide",
+    (await presenter.locator("#filmstrip .film-item.is-current").getAttribute("data-index")) === "2");
+  await presenter.locator('#filmstrip .film-item[data-index="1"]').click();
+  await presenter.waitForFunction(() => document.getElementById("meta").textContent.includes("1 من"));
 
   // A fresh lecturer browser can restore approved scenes from other lecture bundles.
   const archivedBundle = "archive_test_lecture";
@@ -109,6 +120,7 @@ try {
   await presenter.bringToFront();
   await presenter.waitForTimeout(400);
   check("audience shows no buttons", (await audience.locator("button").count()) === 0);
+  check("audience never receives the filmstrip", (await audience.locator("#filmstrip").count()) === 0);
 
   check("voice diagnostics remain lecturer-only and hidden before microphone use",
     await presenter.locator("#director-voice-health").count() === 1 &&

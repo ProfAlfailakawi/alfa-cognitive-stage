@@ -319,6 +319,7 @@ function renderPresenter() {
           <div class="clock-track" aria-hidden="true"><span id="clock-fill"></span></div>
         </div>
         <div class="stage-wrap">${stageHtml()}</div>
+        <nav class="filmstrip" id="filmstrip" aria-label="شرائح المحاضرة"></nav>
 
         <div class="controls">
           <button id="prev" aria-label="الشريحة السابقة">السابقة</button>
@@ -427,6 +428,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
       </section>
     </section>`;
   setAspect(state.aspect);
+  buildFilmstrip();
   document.getElementById("prev").onclick = () => retreat();
   document.getElementById("next").onclick = () => advance();
   document.getElementById("next-slide").onclick = () => {
@@ -688,6 +690,47 @@ function renderReadiness() {
   }
 }
 
+// Quick-jump strip: every slide as a small thumbnail, the current one lit and the next one hinted.
+// Built as elements (the image path comes from the manifest); images load lazily so a long deck costs nothing up front.
+function buildFilmstrip() {
+  const strip = document.getElementById("filmstrip");
+  if (!strip) return;
+  const items = state.slides.map((slide, i) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "film-item";
+    button.dataset.index = String(i + 1);
+    button.setAttribute("aria-label", `الانتقال إلى الشريحة ${i + 1} من ${state.count}`);
+    const img = Object.assign(document.createElement("img"), {
+      src: `/bundles/${state.bundle}/${slide.image}`, alt: "", loading: "lazy", decoding: "async", draggable: false,
+    });
+    const badge = Object.assign(document.createElement("span"), { className: "film-num", textContent: String(i + 1) });
+    button.append(img, badge);
+    return button;
+  });
+  strip.replaceChildren(...items);
+  strip.onclick = (event) => {
+    const button = event.target instanceof Element ? event.target.closest(".film-item") : null;
+    if (!button) return;
+    const target = Number(button.dataset.index);
+    if (target !== state.index) go(target);
+    button.blur(); // a clicker's Space must still turn the slide, not re-press this thumbnail
+  };
+}
+function markFilmstrip() {
+  const strip = document.getElementById("filmstrip");
+  if (!strip) return;
+  for (const button of strip.children) {
+    const n = Number(button.dataset.index);
+    button.classList.toggle("is-current", n === state.index);
+    button.classList.toggle("is-next", n === state.index + 1);
+    if (n === state.index) button.setAttribute("aria-current", "true"); else button.removeAttribute("aria-current");
+  }
+  const current = strip.children[state.index - 1];
+  if (current) current.scrollIntoView({ block: "nearest", inline: "center",
+    behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
 function renderPresenterPanels() {
   const slide = state.slides[state.index - 1];
   const meta = document.getElementById("meta");
@@ -696,6 +739,7 @@ function renderPresenterPanels() {
   if (notes) notes.textContent = slide.notes || "لا توجد ملاحظات لهذه الشريحة.";
   const steps = buildSteps(slide);
   if (steps && meta) meta.textContent += ` — حركة ${state.step} من ${steps.length - 1}`;
+  markFilmstrip();
   const next = state.slides[state.index];
   const thumb = document.getElementById("next-thumb");
   if (thumb) {
