@@ -772,7 +772,11 @@ async function startShow() {
   let placed = false;
   try {
     if ("getScreenDetails" in window) {
-      const external = (await window.getScreenDetails()).screens.find((screen) => !screen.isPrimary);
+      // The show goes to whichever screen the lecturer's page is NOT on (the projector may be the "main" display).
+      const details = await window.getScreenDetails();
+      const here = details.currentScreen;
+      const external = details.screens.find((screen) => screen !== here &&
+        (screen.left !== here.left || screen.top !== here.top));
       if (external) {
         popup.moveTo(external.availLeft, external.availTop);
         popup.resizeTo(external.availWidth, external.availHeight);
@@ -780,9 +784,11 @@ async function startShow() {
       }
     }
   } catch { /* permission declined or unsupported: the window simply stays where the browser put it */ }
+  if (!placed) { try { popup.resizeTo(Math.min(960, screen.availWidth / 2), Math.min(560, screen.availHeight / 2)); } catch {} }
+  window.focus();
   setDirectorStatus(placed
     ? "بدأ العرض على الشاشة الثانية. اضغط F داخل نافذة العرض لملء الشاشة."
-    : "بدأ العرض. اسحب نافذة العرض إلى البروجكتر ثم اضغط F داخلها لملء الشاشة.");
+    : "ما وجدت شاشة ثانية مستقلة. إذا البروجكتر يكرر شاشتك (Mirror) غيّره إلى Extend من إعدادات الشاشات، أو اسحب نافذة العرض الصغيرة إلى البروجكتر واضغط F.");
 }
 
 function renderPresenterPanels() {
