@@ -4,7 +4,7 @@ export function mountImportPanel(mount, { empty = false } = {}) {
   const root = document.createElement(empty ? "section" : "details");
   root.className = "import-panel";
   const heading = document.createElement(empty ? "h2" : "summary");
-  heading.textContent = empty ? "ابدأ برفع محاضرتك (PowerPoint أو PDF أو Keynote)" : "رفع محاضرة جديدة (PPTX / PDF / Keynote)";
+  heading.textContent = empty ? "ابدأ برفع محاضرتك (PowerPoint أو PDF أو Keynote)" : "رفع محاضرة جديدة";
   root.append(heading);
   const form = document.createElement("form");
   form.className = "import-fields";

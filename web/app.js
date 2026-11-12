@@ -337,7 +337,7 @@ function renderNotesView() {
   const opened = Date.now();
   const tick = () => {
     const el = document.getElementById("nv-clock");
-    if (el) el.textContent = clockState(Date.now() - opened, 0).label + " · " + new Date().toLocaleTimeString("ar-KW", { hour: "numeric", minute: "2-digit" });
+    if (el) el.textContent = clockState(Date.now() - opened, 0).label + " · " + new Date().toLocaleTimeString("ar-KW-u-nu-latn", { hour: "numeric", minute: "2-digit" });
   };
   tick(); setInterval(tick, 1000);
   updateNotesView();
@@ -1842,7 +1842,7 @@ function setupClock() {
     const el = document.getElementById("clock");
     if (!el) return;
     const wall = document.getElementById("wallclock");
-    if (wall) wall.textContent = new Date().toLocaleTimeString("ar-KW", { hour: "numeric", minute: "2-digit" });
+    if (wall) wall.textContent = new Date().toLocaleTimeString("ar-KW-u-nu-latn", { hour: "numeric", minute: "2-digit" });
     if (showWindow?.closed) { showWindow = null; const end = document.getElementById("end-show"); if (end) end.hidden = true; }
     const planned = Number(document.getElementById("planned-minutes")?.value || 0);
     const info = clockState(Date.now() - clockStart, planned);
