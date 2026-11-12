@@ -1444,3 +1444,20 @@ body:has(.app > .import-panel) {
 @media (prefers-reduced-motion: no-preference) {
   .app > .import-panel { animation: duo-rise .45s var(--ease-out, ease) both; }
 }
+
+/* ---- Director: a labelled select reads as label above a full-width field (it used to squeeze both) ---- */
+.director-cloud:has(> select) { display: grid; grid-template-columns: minmax(0, 1fr); gap: .35rem; align-items: stretch; min-height: 0; }
+.director-cloud:has(> select) > select { width: 100%; min-width: 0; }
+
+/* ---- Vote console: no phantom gap under "add question"; the join link is a left-to-right run ---- */
+.admin #poll-msg:empty, .admin #auth-msg:empty { display: none; }
+.admin #join-url { direction: ltr; unicode-bidi: isolate; text-align: center; font-size: .82rem; }
+
+/* ---- Review not published yet: a centred, calm card instead of one line at the top ---- */
+body main.review:has(> .tag:only-child) { align-content: center; justify-items: center; }
+body main.review:has(> .tag:only-child)::before { width: 3.4rem; height: 3.4rem; }
+body main.review > .tag:only-child {
+  min-width: min(100%, 22rem); margin-top: 1rem; padding: 1.6rem 1.4rem;
+  border: 1px solid var(--hair); border-radius: 18px; background: color-mix(in srgb, var(--canvas) 70%, var(--wash));
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--ink) 6%, transparent); color: var(--soft);
+}
