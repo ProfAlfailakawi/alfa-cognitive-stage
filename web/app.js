@@ -31,11 +31,17 @@ import { createSlideMatcher, createRemoteEmbedder } from "./slide-matcher.js";
 import { createResume } from "./resume-state.js";
 import { createNumberWitness } from "./number-witness.js";
 import { sameLecture, validMediaTime, validVideoPacket, validSnapshot, needsMediaSeek } from "./video-sync.js";
+import { createEnginePublisher, connectViewer, engineStatus, engineControl } from "./show-client.js";
 
 const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
-const role = location.hash === "#audience" ? "audience" : "presenter";
+const role = location.hash === "#audience" ? "audience" : location.hash === "#notes" ? "notes" : "presenter";
+// ?relay=1: this window follows the Presentation Engine in the local server (the Mac app's projector and notes
+// windows, or any viewer in another browser) instead of the same-browser BroadcastChannel.
+const RELAY = params.has("relay");
+const DESKTOP = typeof window.alfaDesktop === "object" && window.alfaDesktop !== null;
+const publisher = role === "presenter" ? createEnginePublisher() : null;
 // Typing tools (manual scene form, typed test sentence, token box) exist only for developers/tests: ?dev=1. The lecturer works by voice.
 const DEV = new URLSearchParams(location.search).has("dev");
 // The lecturer sees a calm PowerPoint-style console. Everything else still runs but stays out of sight; ?tools=1 (or ?dev=1) shows it.
@@ -44,7 +50,7 @@ const audienceRequestId = role === "audience"
   ? Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("")
   : null;
 
-const state = { index: 1, step: 0, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null };
+const state = { index: 1, step: 0, main: 1, count: 0, notes: [], slides: [], bundle: "", aspect: 16 / 9, manifest: null, blackout: false };
 let videoEl = null;
 let videoEls = [];
 let insight = null;
@@ -77,7 +83,15 @@ globalThis.__alfaStats = () => ({
   heap: performance.memory?.usedJSHeapSize ?? null, stack: returnStack.depth(),
 });
 function send(message) {
-  channel.postMessage({ ...message, bundle: state.bundle });
+  const packet = { ...message, bundle: state.bundle };
+  channel.postMessage(packet);
+  publisher?.publish(packet); // the engine keeps the projector's truth; it drops anything private
+}
+/** Everything the projector shows right now, as one packet (used at start-up and after a lecture switch). */
+function stageRestorePacket() {
+  return { type: "restore", bundle: state.bundle, index: state.index, step: state.step, main: state.main,
+    infographic: currentOverlay, poll: pollScreen.visible ? pollScreen : null, cognitive: cognitiveProjection,
+    videos: currentVideoSnapshot(), blackout: state.blackout };
 }
 
 function currentVideoSnapshot() {
@@ -87,7 +101,7 @@ function currentVideoSnapshot() {
 function broadcastSnapshot(requestId) {
   if (typeof requestId !== "string" || !/^[a-f0-9]{16}$/.test(requestId)) return;
   send({ type: "snapshot", requestId, index: state.index, step: state.step, main: state.main,
-    videos: currentVideoSnapshot(), cognitive: cognitiveProjection });
+    videos: currentVideoSnapshot(), cognitive: cognitiveProjection, blackout: state.blackout });
 }
 function adjustAudienceMediaTime(el, time, force = false) {
   if (!el || !validMediaTime(time)) return;
@@ -303,6 +317,51 @@ function showSlide(index, step = 0) {
   if (role === "presenter") { renderPresenterPanels(); scheduleAutoStep(); }
 }
 
+// ---- Notes window: the lecturer's notes on their own, following the console; never part of the projector ----
+let notesIndex = 1;
+const NOTE_STEPS = [0.95, 1.05, 1.12, 1.3, 1.5, 1.75, 2.0, 2.4];
+function renderNotesView() {
+  app.innerHTML = `<section class="notes-view" aria-label="ملاحظات المحاضر">
+    <header class="nv-bar"><span class="nv-meta" id="nv-meta"></span><span class="nv-clock" id="nv-clock"></span>
+      <div class="notes-size"><button id="nv-smaller" type="button" aria-label="تصغير الخط">أ−</button><button id="nv-bigger" type="button" aria-label="تكبير الخط">أ+</button></div></header>
+    <div class="nv-body"><div class="nv-text" id="nv-text" tabindex="0"></div>
+      <aside class="nv-side"><div class="label">الآن</div><img id="nv-current" alt=""><div class="label">التالية</div><img id="nv-next" alt=""></aside></div>
+  </section>`;
+  let at = 3;
+  try { const saved = Number(localStorage.getItem("alfa.notesWindowSize")); if (Number.isInteger(saved) && saved >= 0 && saved < NOTE_STEPS.length) at = saved; } catch {}
+  const text = document.getElementById("nv-text");
+  const apply = () => { text.style.fontSize = NOTE_STEPS[at] * 1.25 + "rem"; try { localStorage.setItem("alfa.notesWindowSize", String(at)); } catch {} };
+  document.getElementById("nv-bigger").onclick = () => { at = Math.min(NOTE_STEPS.length - 1, at + 1); apply(); };
+  document.getElementById("nv-smaller").onclick = () => { at = Math.max(0, at - 1); apply(); };
+  apply();
+  const opened = Date.now();
+  const tick = () => {
+    const el = document.getElementById("nv-clock");
+    if (el) el.textContent = clockState(Date.now() - opened, 0).label + " · " + new Date().toLocaleTimeString("ar-KW", { hour: "numeric", minute: "2-digit" });
+  };
+  tick(); setInterval(tick, 1000);
+  updateNotesView();
+}
+function updateNotesView() {
+  const slide = state.slides[notesIndex - 1];
+  if (!slide) return;
+  document.getElementById("nv-meta").textContent = `الشريحة ${notesIndex} من ${state.count}`;
+  document.getElementById("nv-text").textContent = slide.notes || "لا توجد ملاحظات لهذه الشريحة.";
+  document.getElementById("nv-text").scrollTop = 0;
+  const current = document.getElementById("nv-current"), next = document.getElementById("nv-next");
+  current.src = `/bundles/${state.bundle}/${slide.image}`;
+  const after = state.slides[notesIndex];
+  next.hidden = !after;
+  if (after) next.src = `/bundles/${state.bundle}/${after.image}`;
+}
+function followForNotes(m) {
+  if (!m || !["slide", "restore", "snapshot", "step"].includes(m.type)) return;
+  if (m.bundle && m.bundle !== state.bundle) { location.replace(`/?bundle=${encodeURIComponent(m.bundle)}${RELAY ? "&relay=1" : ""}#notes`); return; }
+  if (!Number.isInteger(m.index) || m.index < 1 || m.index > state.count || m.index === notesIndex) return;
+  notesIndex = m.index;
+  updateNotesView();
+}
+
 function renderAudience() {
   app.innerHTML = `<div class="audience">${stageHtml()}</div>`;
   setAspect(state.aspect);
@@ -318,6 +377,7 @@ function renderPresenter() {
           <div class="meta clock-box"><span id="clock">00:00</span>
             <select id="planned-minutes" aria-label="مدة المحاضرة المخططة"></select>
             <span id="clock-hint" class="clock-hint"></span></div>
+          <span class="show-health" id="show-health" role="status" hidden></span>
           <div class="meta" id="wallclock" aria-label="الوقت الآن"></div>
           <div class="clock-track" aria-hidden="true"><span id="clock-fill"></span></div>
         </div>
@@ -331,6 +391,8 @@ function renderPresenter() {
           <button class="direct-slide" id="next-slide" aria-label="انتقل للشريحة التالية دون بقية حركات الشريحة">انتقل للشريحة اللي بعدها ↶</button>
           <button id="open-audience">ابدأ العرض</button>
           <button id="end-show" type="button" hidden>إنهاء العرض</button>
+          <button id="blackout-btn" type="button" aria-pressed="false" hidden>شاشة سوداء</button>
+          <button id="change-display" type="button" hidden>تغيير الشاشة</button>
           <button id="open-vote">التصويت</button>
           ${DEV ? '<button id="toggle-info">إنفوجرافيك</button>' : ""}
           <select id="lecture-picker" aria-label="اختيار المحاضرة"></select>
@@ -427,7 +489,7 @@ ${DEV ? `<form class="info-form" id="info-form" hidden>
           </details>
         </section>
         <div class="notes-label"><div class="label">ملاحظات المحاضر</div>
-          <div class="notes-size"><button id="notes-smaller" type="button" aria-label="تصغير خط الملاحظات">أ−</button><button id="notes-bigger" type="button" aria-label="تكبير خط الملاحظات">أ+</button></div></div>
+          <div class="notes-size"><button id="open-notes" type="button" aria-label="افتح الملاحظات في نافذة مستقلة" title="نافذة مستقلة">⧉</button><button id="notes-smaller" type="button" aria-label="تصغير خط الملاحظات">أ−</button><button id="notes-bigger" type="button" aria-label="تكبير خط الملاحظات">أ+</button></div></div>
         <div class="notes" id="notes"></div>
       </section>
       <nav class="filmstrip" id="filmstrip" aria-label="شرائح المحاضرة"></nav>
@@ -738,12 +800,103 @@ function markFilmstrip() {
 // "Start show", like PowerPoint: the students' window opens at once and, when the browser lets us see a second
 // display, moves onto it at full size. Without a second display it opens normally and F (or a double click) fills the screen.
 let showWindow = null;
+const show = { on: false, mode: null, healthTimer: null }; // mode: "desktop" | "host" | "browser"
+function setShowing(on, mode = show.mode) {
+  show.on = on; show.mode = on ? mode : null;
+  const toggle = (id, visible) => { const el = document.getElementById(id); if (el) el.hidden = !visible; };
+  toggle("end-show", on);
+  toggle("blackout-btn", on);
+  toggle("change-display", on && (mode === "desktop" || mode === "host"));
+  clearInterval(show.healthTimer);
+  if (on) { refreshShowHealth(); show.healthTimer = setInterval(refreshShowHealth, 2000); }
+  else { const pill = document.getElementById("show-health"); if (pill) pill.hidden = true; }
+}
+function setHealth(text, level) {
+  const pill = document.getElementById("show-health");
+  if (!pill) return;
+  pill.hidden = !text; pill.textContent = text || ""; pill.dataset.level = level || "ok";
+}
+async function refreshShowHealth() {
+  if (!show.on) return;
+  if (show.mode === "browser") { setHealth(showWindow && !showWindow.closed ? "شاشة الطلبة مفتوحة" : "نافذة الطلبة مغلقة", showWindow && !showWindow.closed ? "ok" : "bad"); return; }
+  const st = await engineStatus();
+  if (!st) { setHealth("الخادم المحلي لا يرد", "bad"); return; }
+  if (!st.viewers?.audience) { setHealth(show.lost ? "انفصل البروجكتر — المحاضرة محفوظة" : "شاشة الطلبة تتصل…", "bad"); return; }
+  const behind = st.version - st.ackedVersion;
+  if (behind <= 0 || (st.ackAgeMs !== null && st.ackAgeMs < 4000)) setHealth(state.blackout ? "شاشة الطلبة: سوداء" : "شاشة الطلبة متزامنة", state.blackout ? "warn" : "ok");
+  else setHealth("شاشة الطلبة تتأخر", "warn");
+}
+function applyBlackout(on) {
+  state.blackout = on;
+  document.body.classList.toggle("alfa-blackout", on);
+}
+function toggleBlackout() {
+  if (role !== "presenter") return;
+  state.blackout = !state.blackout;
+  const button = document.getElementById("blackout-btn");
+  if (button) { button.setAttribute("aria-pressed", String(state.blackout)); button.textContent = state.blackout ? "أظهر الشريحة" : "شاشة سوداء"; }
+  send({ type: "blackout", on: state.blackout });
+  refreshShowHealth();
+}
 function endShow() {
-  try { showWindow?.close(); } catch {}
-  showWindow = null;
-  const button = document.getElementById("end-show");
-  if (button) button.hidden = true;
+  if (show.mode === "desktop") window.alfaDesktop.endShow();
+  else if (show.mode === "host") engineControl("end");
+  else { try { showWindow?.close(); } catch {} showWindow = null; }
+  if (state.blackout) toggleBlackout();
+  setShowing(false);
   setDirectorStatus("انتهى العرض. صفحتك باقية كما هي.");
+}
+function displayChooser(list, proposed) {
+  document.getElementById("display-chooser")?.remove();
+  const dialog = Object.assign(document.createElement("dialog"), { id: "display-chooser", className: "display-chooser" });
+  const title = Object.assign(document.createElement("h2"), { textContent: "أين تظهر شاشة الطلبة؟" });
+  const hint = Object.assign(document.createElement("p"), { className: "meta", textContent: "اضغط «تعرّف على الشاشات» ليظهر رقم كبير على كل شاشة، ثم اختر رقم البروجكتر." });
+  const row = document.createElement("div"); row.className = "display-options";
+  list.forEach((d, i) => {
+    const b = Object.assign(document.createElement("button"), { type: "button", className: d.id === proposed ? "primary" : "",
+      textContent: `${i + 1} · ${d.isConsole ? "شاشة المحاضر" : d.label} · ${d.resolution}` });
+    b.disabled = d.isConsole;
+    b.onclick = async () => { dialog.close(); dialog.remove(); await startShow(d.id); };
+    row.append(b);
+  });
+  const identify = Object.assign(document.createElement("button"), { type: "button", textContent: "تعرّف على الشاشات" });
+  identify.onclick = () => (DESKTOP ? window.alfaDesktop.identifyDisplays() : engineControl("identify"));
+  const cancel = Object.assign(document.createElement("button"), { type: "button", textContent: "إلغاء" });
+  cancel.onclick = () => { dialog.close(); dialog.remove(); };
+  const actions = document.createElement("div"); actions.className = "director-actions"; actions.append(identify, cancel);
+  dialog.append(title, hint, row, actions);
+  document.body.append(dialog);
+  dialog.showModal();
+}
+function explainNoProjector(reason) {
+  setDirectorStatus(reason === "mirrored"
+    ? "البروجكتر يكرر شاشة الماك (Mirror)، فلا يمكن فصل الملاحظات عن الشريحة. اجعله Extend من إعدادات الشاشات ثم اضغط «ابدأ العرض»."
+    : "لا توجد شاشة ثانية متصلة. وصّل البروجكتر ثم اضغط «ابدأ العرض».");
+}
+function handleDesktopResult(result) {
+  if (result?.ok) { setShowing(true, "desktop"); setDirectorStatus("بدأ العرض على البروجكتر. لوحتك وملاحظاتك هنا فقط."); return; }
+  if (result?.reason === "several") displayChooser(result.displays || [], result.proposed);
+  else explainNoProjector(result?.reason);
+}
+function setupShowControls() {
+  document.getElementById("blackout-btn")?.addEventListener("click", () => toggleBlackout());
+  document.getElementById("change-display")?.addEventListener("click", async () => {
+    if (DESKTOP) { const r = await window.alfaDesktop.listDisplays(); displayChooser(r?.displays || [], r?.audienceDisplayId); }
+  });
+  document.getElementById("open-notes")?.addEventListener("click", () => {
+    if (DESKTOP) window.alfaDesktop.openNotes();
+    else window.open(`${location.pathname}?bundle=${state.bundle}#notes`, "alfa-notes", "popup,width=720,height=820");
+  });
+  if (!DESKTOP) return;
+  window.alfaDesktop.onEvent((event) => {
+    if (!event || typeof event.kind !== "string") return;
+    if (event.kind === "show-started") { show.lost = false; setShowing(true, "desktop"); }
+    if (event.kind === "show-ended") setShowing(false);
+    if (event.kind === "no-projector") explainNoProjector(event.reason);
+    if (event.kind === "choose-display") displayChooser(event.displays || [], event.proposed);
+    if (event.kind === "projector-lost") { show.lost = true; setDirectorStatus("انفصل البروجكتر. المحاضرة مستمرة هنا، وتعود شاشة الطلبة بنفس الموضع عند إعادة التوصيل."); refreshShowHealth(); }
+    if (event.kind === "projector-back") { show.lost = false; setDirectorStatus("رجع البروجكتر، وشاشة الطلبة على نفس الشريحة."); refreshShowHealth(); }
+  });
 }
 function setupNotesSize() {
   const notes = document.getElementById("notes");
@@ -760,14 +913,20 @@ function setupNotesSize() {
   document.getElementById("notes-smaller").onclick = () => { at = Math.max(0, at - 1); apply(); };
   document.getElementById("end-show").onclick = () => endShow();
 }
-async function startShow() {
+async function startShow(displayId) {
+  if (DESKTOP) { handleDesktopResult(await window.alfaDesktop.startShow(Number.isSafeInteger(displayId) ? displayId : null, state.bundle)); return; }
+  // A Chrome console (for voice) with the ALFA Mac app running: the app places the projector window natively.
+  const status = await engineStatus();
+  if (status?.viewers?.host > 0) {
+    const sent = await engineControl("start", Number.isSafeInteger(displayId) ? displayId : undefined);
+    if (sent?.delivered) { setShowing(true, "host"); setDirectorStatus("طلبت من تطبيق ALFA على الماك فتح شاشة الطلبة على البروجكتر."); return; }
+  }
   // "popup" asks for a separate window; a plain open() becomes a tab that hides the lecturer's page.
   const popup = window.open(`${location.pathname}?bundle=${state.bundle}#audience`, "alfa-audience",
     `popup,width=${Math.min(1280, screen.availWidth)},height=${Math.min(720, screen.availHeight)}`);
   if (!popup) { setDirectorStatus("المتصفح منع نافذة العرض. اسمح بالنوافذ المنبثقة لهذه الصفحة ثم اضغط «ابدأ العرض»."); return; }
   showWindow = popup;
-  const endButton = document.getElementById("end-show");
-  if (endButton) endButton.hidden = false;
+  setShowing(true, "browser");
   window.focus(); // the lecturer keeps the keys; the show window only shows
   let placed = false;
   try {
@@ -1542,8 +1701,10 @@ function applyRemote(message) {
     if (message.index === state.index && Number.isInteger(message.step)) setStep(message.step, { broadcast: false });
     return;
   }
+  if (message.type === "blackout") { applyBlackout(message.on === true); return; }
   if (message.type === "restore") {
     if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
+    if (typeof message.blackout === "boolean") applyBlackout(message.blackout);
     state.main = message.main;
     const wanted = Number.isInteger(message.step) ? message.step : 0;
     if (message.index !== state.index) showSlide(message.index, wanted);
@@ -1566,6 +1727,7 @@ function applyRemote(message) {
   }
   if (message.type === "snapshot") {
     if (message.requestId !== audienceRequestId) return; // Do not disturb other audience tabs.
+    if (typeof message.blackout === "boolean") applyBlackout(message.blackout);
     if (!Number.isInteger(message.index) || message.index < 1 || message.index > state.count) return;
     state.main = message.main;
     const wanted = Number.isInteger(message.step) ? message.step : 0;
@@ -1655,6 +1817,11 @@ function setupKeys() {
       case "V":
         toggleVideo();
         break;
+      case "b":
+      case "B":
+      case ".":
+        toggleBlackout();
+        break;
       default:
         break;
     }
@@ -1707,7 +1874,7 @@ async function boot() {
     sessionLog = createSessionLog({ bundle: state.bundle });
     addEventListener("pagehide", () => sessionLog.end());
   }
-  const manifest = await fetch(`/bundles/${state.bundle}/manifest.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const manifest = await fetch(role === "audience" ? `/api/show/audience-manifest/${state.bundle}` : `/bundles/${state.bundle}/manifest.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!manifest || !Array.isArray(manifest.slides) || !manifest.slides.length) {
     // An old link or a reopened students' tab can name a lecture that was deleted: say so instead of "loading" forever.
     const note = Object.assign(document.createElement("p"), { className: "error", textContent: role === "presenter"
@@ -1752,7 +1919,8 @@ async function boot() {
       send({ type: "pong", nonce: message.nonce });
       return;
     }
-    if (role === "audience") applyRemote(message);
+    if (role === "notes") { followForNotes(message); return; }
+    if (role === "audience" && !RELAY) applyRemote(message);
   };
   if (role === "audience") {
     const toggleFullscreen = () => {
@@ -1762,13 +1930,25 @@ async function boot() {
     document.addEventListener("keydown", (event) => { if (event.key === "f" || event.key === "F") toggleFullscreen(); });
     document.addEventListener("dblclick", toggleFullscreen);
     renderAudience();
-    send({ type: "hello", requestId: audienceRequestId });
+    if (RELAY) {
+      connectViewer({ role: "audience", apply: (m) => {
+        // The lecturer switched lectures: follow to the new one, with the engine's state.
+        if (m.bundle && m.bundle !== state.bundle) { location.replace(`/?bundle=${encodeURIComponent(m.bundle)}&relay=1#audience`); return; }
+        applyRemote(m);
+      }, onEnd: () => applyBlackout(true) });
+    } else send({ type: "hello", requestId: audienceRequestId });
+  } else if (role === "notes") {
+    renderNotesView();
+    if (RELAY) connectViewer({ role: "notes", apply: followForNotes });
+    else send({ type: "hello", requestId: "0000000000000000" });
   } else {
     renderPresenter();
     window.addEventListener("message", receiveVoteAdminMessage);
     setupKeys();
     setupClock();
     send({ type: "slide", index: state.index, step: state.step, main: state.main });
+    publisher?.publish(stageRestorePacket());
+    setupShowControls();
   }
 }
 

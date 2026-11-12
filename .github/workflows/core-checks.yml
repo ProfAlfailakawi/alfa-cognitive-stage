@@ -24,6 +24,13 @@ jobs:
           node --check server/security.mjs
           node --check server/director-quota.mjs
           node --check web/app.js
+          node --check server/presentation-engine.mjs
+          node --check server/show-routes.mjs
+          node --check web/show-client.js
+          node --check web/show-gate.js
+          node --check desktop/main.cjs
+          node --check desktop/preload.cjs
+          node --check desktop/display-manager.cjs
           node --check web/cognitive-readability.js
           node --check web/cognitive-context-director.js
           node --check tests/cognitive-quality.mjs
@@ -106,6 +113,7 @@ jobs:
           npm run test:poll-analytics
           npm run test:living
           npm run test:perf
+          npm run test:show
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -161,6 +169,8 @@ jobs:
         run: npm run test:e2e-scenes
       - name: Spoken slide navigation - strict commands, video guard, undo
         run: npm run test:e2e-voicenav
+      - name: Presentation Engine - projector and notes windows through the local server (late join, reload, blackout, privacy)
+        run: npm run test:e2e-show
       - name: "Voice path (scripted recogniser) - engines, latency, offline, denied mic, video"
         run: npm run test:e2e-speech
       - name: Upload Living Intelligence browser screenshots
@@ -175,6 +185,33 @@ jobs:
       - name: Five-phone browser voting and persistence test
         run: npm run test:vote
 
+  desktop:
+    # The ALFA Mac app's logic in Electron on a virtual display: windows, placement on a simulated
+    # projector, focus, privacy, unplug/replug, notes window, clean quit. Not a real macOS projector test.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Electron, Playwright and fixture tools
+        run: |
+          npm install --no-save playwright electron@$(node -p "require('./desktop/versions.json').electron")
+          python -m pip install Pillow
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg xvfb libnss3 libgbm1 libasound2t64
+      - name: Engine and display manager unit tests
+        run: npm run test:show
+      - name: Generate synthetic media lecture
+        run: python tools/make_test_fixture.py
+      - name: Mac app (Electron) end to end on a virtual display
+        run: xvfb-run -a npm run test:desktop
   import-real:
     runs-on: ubuntu-24.04
     timeout-minutes: 18

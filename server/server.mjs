@@ -15,6 +15,7 @@ import { createVoteStore, VoteError } from "./votes.mjs";
 import { createLibrary, deleteBundle, LibraryError } from "./library.mjs";
 import { createQuestionBank, QuestionBankError } from "./question-bank.mjs";
 import { createNeuralEmbedder, EmbedError } from "./neural-embed.mjs";
+import { createShowRoutes } from "./show-routes.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 try { loadEnvFile(join(root, ".env")); } catch (err) { if (err.code !== "ENOENT") throw err; }
@@ -24,6 +25,7 @@ const port = Number(process.env.PORT || 4173);
 const adminToken = process.env.ADMIN_TOKEN || randomBytes(16).toString("hex");
 const store = createVoteStore({ file: process.env.VOTES_FILE || join(root, "data", "votes.json") });
 const scenes = createSceneStore({ file: process.env.SCENES_FILE || join(root, "data", "scenes.json") });
+const show = createShowRoutes({ bundlesRoot });
 const library = createLibrary({ file: process.env.LIBRARY_FILE || join(root, "data", "library.json"), bundlesRoot });
 const bank = createQuestionBank({ file: process.env.QUESTION_BANK_FILE || join(root, "data", "question-bank.json") });
 const embedder = createNeuralEmbedder({ dir: resolve(process.env.ALFA_EMBED_DIR || join(root, "data", "embedder")), model: process.env.ALFA_EMBED_MODEL || undefined });
@@ -440,6 +442,7 @@ const handler = async (req, res) => {
       res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
       return res.end("هذه الصفحة متاحة على جهاز المحاضر فقط");
     }
+    if (path.startsWith("/api/show/")) return await show.handle(req, res, path);
     if (path.startsWith("/api/")) return await handleApi(req, res, path);
     const isBundle = path.startsWith("/bundles/");
     if (isBundle && !allowedLectureClient(req.socket.remoteAddress,
