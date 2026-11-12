@@ -1461,3 +1461,32 @@ body main.review > .tag:only-child {
   border: 1px solid var(--hair); border-radius: 18px; background: color-mix(in srgb, var(--canvas) 70%, var(--wash));
   box-shadow: 0 10px 26px color-mix(in srgb, var(--ink) 6%, transparent); color: var(--soft);
 }
+
+/* ==========================================================================
+   Responsive round (2026-11) — layout-only fixes found on phones, tablets and very large screens.
+   ========================================================================== */
+
+/* Calm console on a phone: the video key is hidden, so «التصويت» sat alone in half a row.
+   It now pairs with «ابدأ العرض»; the tools console (video key visible) keeps its own pairing. */
+@media (max-width: 599px) {
+  .presenter.clean .controls #open-audience { grid-column: auto; }
+}
+
+/* Touch phones/tablets: selects under 16px make iOS Safari zoom the page on focus. */
+@media (pointer: coarse) and (max-width: 820px) {
+  .presenter #planned-minutes, .presenter #scene-theme { font-size: 16px; }
+}
+
+/* Notes window on a phone: «الشريحة 1 من 7» and the clock no longer break mid-phrase. */
+.nv-meta, .nv-clock { white-space: nowrap; }
+@media (max-width: 480px) {
+  .nv-bar { flex-wrap: wrap; row-gap: .4rem; gap: .6rem; }
+  .nv-meta { font-size: 1.05rem; }
+  .nv-clock { font-size: .95rem; }
+}
+
+/* Very large screens (1920+ wide): the 360px side column read small next to a huge slide;
+   give the next slide, notes and panels more room. */
+@media (min-width: 1900px) and (min-height: 1000px) {
+  .presenter { grid-template-columns: minmax(0, 1fr) clamp(360px, 22vw, 480px); }
+}
