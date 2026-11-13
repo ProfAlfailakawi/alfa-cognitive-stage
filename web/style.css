@@ -1490,3 +1490,128 @@ body main.review > .tag:only-child {
 @media (min-width: 1900px) and (min-height: 1000px) {
   .presenter { grid-template-columns: minmax(0, 1fr) clamp(360px, 22vw, 480px); }
 }
+
+/* ==========================================================================
+   iPhone Duo adaptive round (2026-11-13) — full-bleed composition, presentation only.
+   Root causes fixed here: the presenter slide was sized from the window minus fixed guesses
+   (230/140/290px) instead of the space actually left for it; in short landscape the keys were
+   one hidden-scrollbar strip, so «ابدأ العرض» and «التصويت» sat off-screen with a key cut in half;
+   the loading/error screens had no backdrop or centring of their own (white flash on the
+   projector, and a collapsed <p> margin that made the page 16px taller than the window).
+   See docs/IPHONE-DUO-ADAPTIVE-QUALITY.md.
+   ========================================================================== */
+
+/* Slide fits the room the layout gives it: the stage area is a size container wherever its
+   height is fixed (desk band and short landscape), so wrapped keys or a taller bar shrink the
+   slide instead of pushing anything out of view. Older engines keep the calc() rules above. */
+@supports (width: 1cqw) {
+  @media (min-width: 821px) and (min-height: 481px), (max-height: 480px) and (min-width: 560px) {
+    .presenter .stage-wrap { container-type: size; }
+    .presenter .stage { width: min(100cqw, 100cqh * var(--aspect)); }
+  }
+  /* The proscenium's breathing room scales with the height, so a 585–700px tall window keeps more slide. */
+  @media (min-width: 821px) and (min-height: 481px) and (max-height: 760px) {
+    .presenter .stage-wrap { padding: clamp(.4rem, 1.2dvh, .75rem); }
+  }
+}
+
+/* Short landscape (folded Duo landscape, iPhone landscape, opened Duo with a pinned panel):
+   height is the scarce axis, so — like Apple's compact-height bars — the keys leave the bottom
+   and become a column at the screen edge. The slide gets the full height; every key is on screen
+   (the column scrolls, with a visible bar, only when the show keys are added). */
+@media (max-height: 480px) and (min-width: 560px) {
+  .presenter .main {
+    grid-template-columns: clamp(124px, 21%, 176px) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "keys bar" "keys stage"; column-gap: .5rem;
+  }
+  .presenter .bar { grid-area: bar; row-gap: .15rem; }
+  .presenter .bar #wallclock { font-size: .95rem; }
+  .presenter .stage-wrap { grid-area: stage; }
+  .presenter .controls {
+    grid-area: keys; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; align-items: stretch;
+    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; gap: .35rem; padding: 0;
+  }
+  .presenter .controls::-webkit-scrollbar { display: initial; width: 4px; }
+  .presenter .controls > * { flex: none; width: 100%; min-height: 44px; font-size: .84rem; line-height: 1.35; padding: .3rem .5rem; white-space: normal; }
+  .presenter .controls #prev, .presenter .controls #next { min-height: 52px; font-size: 1rem; }
+  .presenter .controls #next { order: -2; }
+  .presenter .controls #prev { order: -1; }
+  .presenter .controls select { max-width: none; padding-inline: .45rem; }
+  .presenter .controls button[id]::before { width: 1.05em; height: 1.05em; }
+}
+/* Narrow short landscape (folded Duo landscape ~594×368): a rail beside slide AND keys left the slide
+   ~200px wide. Here the first screen is the console (bar, slide, key column) and the next slide and
+   notes follow below it, one swipe away — the page scrolls instead of anything being squeezed. */
+@media (max-height: 480px) and (min-width: 560px) and (max-width: 720px) {
+  body:has(.presenter), html:has(.presenter) { height: auto; overflow: visible; }
+  .presenter { display: block; height: auto; overflow: visible; }
+  .presenter .main { height: 100vh; height: 100dvh; box-sizing: border-box; }
+  .presenter .side {
+    height: auto; overflow: visible; border-inline-start: 0; border-top: 1px solid var(--hair);
+    display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: .9rem; align-items: start;
+    padding: .9rem max(.9rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(.9rem, env(safe-area-inset-left));
+  }
+  .presenter.clean .side { display: grid; }
+  .presenter .side > :not(.side-next) { grid-column: 2; }
+  .presenter .side > .side-next { grid-column: 1; grid-row: 1 / span 3; }
+  .presenter .side .next img { max-height: none; width: 100%; }
+}
+/* iOS zooms the page when a focused select is under 16px. */
+@media (pointer: coarse) { .presenter .controls select { font-size: 16px; } }
+
+/* Projector window: the backdrop always reaches the four edges, the slide stays clear of a
+   camera housing or rounded corner (safe areas are 0 on a projector, so nothing moves there). */
+html[data-role="audience"], html[data-role="audience"] body { background: #0a1317; color: #eef3f1; }
+.audience { min-height: 100vh; min-height: 100dvh; }
+.audience .stage {
+  width: min(calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right)),
+             calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * var(--aspect)));
+}
+@media (max-aspect-ratio: 3/2) {
+  .audience .stage {
+    width: min(calc(94vw - env(safe-area-inset-left) - env(safe-area-inset-right)),
+               calc((94dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * var(--aspect)));
+  }
+}
+html[data-role="notes"], html[data-role="notes"] body { background: #0c171b; color: #eef3f1; }
+
+/* Loading, error and "no lecture yet" screens: one centred card in the first screen, never
+   taller than the window. Covers the bare-text case (app.textContent) as well as <p>. */
+.app > .loading, .app > .error { margin: 0; }
+html[data-role] .app:not(:has(> .audience, > .presenter, > .notes-view, > .import-panel)) {
+  min-height: 100vh; min-height: 100dvh; height: auto; display: grid; place-items: center; align-content: center;
+  padding: max(1.25rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-right)) max(1.25rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+  box-sizing: border-box; text-align: center; line-height: 1.9;
+}
+html[data-role] .app > :is(.loading, .error):only-child { max-width: 34ch; padding: 0; font-size: clamp(1rem, .9rem + .6vw, 1.3rem); }
+html[data-role] .app > .error:only-child::before {
+  content: ""; display: block; width: 3.25rem; height: 3.25rem; margin: 0 auto 1rem; border-radius: 16px;
+  background: color-mix(in srgb, var(--brass, #e2b25c) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass, #e2b25c) 40%, transparent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e2b25c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='12' rx='2.5'/%3E%3Cpath d='M8 20h8M12 16v4M12 8v3M12 13.2v.1'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; background-size: 1.65rem;
+}
+html:is([data-role="audience"], [data-role="notes"]) .app > :is(.loading, .error) { color: #a6b8bb; }
+html:is([data-role="audience"], [data-role="notes"]) .app > .error a { color: #5fd0b4; }
+
+/* Notes window in short landscape: the two thumbnails share the height instead of pushing the page past it. */
+.notes-view { min-height: 100dvh; }
+@media (max-height: 480px) {
+  .nv-body { padding-block: .9rem; }
+  .nv-text { max-height: calc(100dvh - 64px - 2rem); }
+  .nv-side img { margin-bottom: .3rem; }
+  .nv-bar { min-height: 56px; padding-block: .45rem; }
+}
+/* Two columns only when both fit; below 641px the stacked phone layout above stays. */
+@media (max-height: 480px) and (min-width: 641px) {
+  .nv-body { grid-template-columns: minmax(0, 1fr) minmax(240px, 44%); }
+  .nv-side { display: grid; grid-template-columns: 1fr 1fr; gap: 0 .8rem; align-items: start; align-content: start; }
+  .nv-side .label { grid-row: 1; }
+  .nv-side img { grid-row: 2; }
+}
+
+/* Student waiting / incomplete-link state: the message sits in the middle of the first screen,
+   the pulse keys stay under the thumb at the bottom, instead of a top-heavy page. */
+body:has(> main.vote > .status:only-child) { display: flex; flex-direction: column; height: auto; min-height: 100vh; min-height: 100dvh; }
+body:has(> main.vote > .status:only-child) > main.vote { flex: 1 0 auto; align-content: center; width: 100%; box-sizing: border-box; }
+body:has(> main.vote > .status:only-child) > section.vote { width: 100%; box-sizing: border-box; }
