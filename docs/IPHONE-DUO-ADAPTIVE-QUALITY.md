@@ -95,7 +95,20 @@ CSS فقط (+~120 سطرًا) وسطر JS واحد؛ لا مراقبي resize و
 
 ## 9. الاختبارات بعد التعديل
 
-RESULTS_PLACEHOLDER
+| الفحص | محليًا (macOS، حمل الجهاز 75–175) | CI على PR #89 |
+|---|---|---|
+| `node --check` لكل JS | PASS | PASS (`unit`) |
+| 21 مجموعة وحدات | PASS 21/21 | PASS (`unit`) |
+| `test:build` | PASS (مع python-pptx في venv) | PASS (`unit`) |
+| `test:e2e` | FAIL محليًا: مهلة 5 ثوانٍ لانتظار إيقاف الفيديو تحت الحمل؛ 30 فحصًا قبله PASS | PASS (`browser`) |
+| `test:e2e-living`، `test:e2e-semantic` | FAIL محليًا: الخادم لم يبدأ خلال المهلة (حمل الجهاز)، لا فحص فشل | PASS (`browser`) |
+| بقية e2e (return, memory, library, engagement, insight, field, scenes, voicenav, show, speech, stress, vote) | PASS 12/12 | PASS (`browser`) |
+| تطبيق الماك (Electron) | لم يُشغَّل محليًا | PASS (`desktop`) |
+| استيراد PowerPoint/PDF حقيقي | لم يُشغَّل محليًا | PASS (`import-real`) |
+| مصفوفة WebKit 120 حالة | 0 تمرير أفقي، 0 أخطاء JS | — |
+| الانتقال الحي J مع فيديو يعمل | PASS | — |
+
+الإخفاقات المحلية الثلاثة مهلات تشغيل على جهاز مثقل بجلسات أخرى، لا فحوص تخطيط، ونفس الاختبارات نجحت كاملة في CI.
 
 ## 10. القيود وما يجب فحصه على جهاز حقيقي
 
