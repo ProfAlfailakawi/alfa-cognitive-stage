@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/server.mjs",
     "test:e2e": "node tests/e2e.mjs",
-    "test:build": "python3 -m unittest discover -s tools -p 'test_*.py'",
+    "test:build": "ALFA_NATIVE_POWERPOINT=0 python3 -m unittest discover -s tools -p 'test_*.py'",
     "test:vote": "node tests/vote.mjs",
     "test:living": "node tests/living-intelligence.mjs && node tests/cognitive-quality.mjs && node tests/pulse-linked.mjs",
     "test:e2e-living": "node tests/e2e-living.mjs",
