@@ -103,7 +103,7 @@ npm start
   - `browser`: اختبارات Playwright للمحاضر والطلبة والتصويت بخمسة هواتف والصوت والاستقرار.
   - `desktop`: تطبيق Electron على شاشة افتراضية (xvfb) — ليس اختباراً لبروجكتر Mac حقيقي.
   - `import-real`: استيراد PowerPoint وPDF حقيقيين عبر LibreOffice.
-- على Mac فيه PowerPoint، شغّل `test:build` مع `ALFA_NATIVE_POWERPOINT=0` وإلا قد يفشل `test_animations` لأن المسار الأصلي يُجرَّب أولاً.
+- `test:build` يضبط `ALFA_NATIVE_POWERPOINT=0` بنفسه، فيمرّ على Mac فيه PowerPoint دون تجربة المسار الأصلي. إن شغّلت `python3 -m unittest` في `tools/` مباشرة على Mac فاضبط المتغير نفسه.
 - تقارير الجودة: [مصفوفة القبول](docs/ACCEPTANCE_MATRIX_AR.md)، [التدقيق الشامل](docs/SPEC_STATUS_AR.md)، [بطاقة الجودة](docs/QUALITY-SCORECARD.md).
 
 ## النشر
