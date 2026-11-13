@@ -17,80 +17,14 @@ jobs:
         with:
           node-version: '22'
       - name: JS syntax
+        # Generated from the tracked files so a new module is checked without editing this list.
         run: |
-          node --check server/server.mjs
-          node --check server/lecture-import.mjs
-          node --check server/scene-store.mjs
-          node --check server/security.mjs
-          node --check server/director-quota.mjs
-          node --check web/app.js
-          node --check server/presentation-engine.mjs
-          node --check server/show-routes.mjs
-          node --check web/show-client.js
-          node --check web/show-gate.js
-          node --check desktop/main.cjs
-          node --check desktop/preload.cjs
-          node --check desktop/display-manager.cjs
-          node --check web/cognitive-readability.js
-          node --check web/cognitive-context-director.js
-          node --check tests/cognitive-quality.mjs
-          node --check web/living-intelligence.js
-          node --check web/living-intelligence-ui.js
-          node --check tests/living-intelligence.mjs
-          node --check tests/pulse-linked.mjs
-          node --check web/build-steps.js
-          node --check web/return-stack.js
-          node --check web/import-ui.js
-          node --check web/scene-layouts.js
-          node --check web/lecture-readiness.js
-          node --check web/media-preflight.js
-          node --check web/director-core.js
-          node --check web/session-log.js
-          node --check web/lecture-clock.js
-          node --check web/rehearsal.js
-          node --check web/library-ui.js
-          node --check server/library.mjs
-          node --check server/votes.mjs
-          node --check web/semantic-index.js
-          node --check web/director-taste.js
-          node --check web/director-brain.js
-          node --check web/lecturer-profile.js
-          node --check web/speech-director.js
-          node --check web/latency-meter.js
-          node --check web/vote-admin.js
-          node --check web/moderation.js
-          node --check web/engagement-insights.js
-          node --check web/poll-analytics.js
-          node --check web/vote.js
-          node --check web/review.js
-          node --check web/field-recorder.js
-          node --check web/field-ui.js
-          node --check web/resume-state.js
-          node --check web/course-map.js
-          node --check web/rehearsal-audience.js
-          node --check web/guest.js
-          node --check web/voice-nav.js
-          node --check web/scene-kit.js
-          node --check web/color-math.js
-          node --check web/design-worlds.js
-          node --check web/world-theme.js
-          node --check web/scene-variants.js
-          node --check web/scene-stylist.js
-          node --check web/scene-icons.js
-          node --check web/scene-theme.js
-          node --check web/insight-ui.js
-          node --check web/number-witness.js
-          node --check web/lecture-coach.js
-          node --check web/review-builder.js
-          node --check web/audience-sim.js
-          node --check web/trial-replay.js
-          node --check web/director-tuner.js
-          node --check web/director-tuning-store.js
-          node --check web/question-triage.js
-          node --check web/hybrid-similarity.js
-          node --check web/slide-matcher.js
-          node --check server/neural-embed.mjs
-          node --check tools/fetch-embedder.mjs
+          set -euo pipefail
+          files=$(git ls-files 'web/*.js' 'server/*.mjs' 'desktop/*.cjs' 'tools/*.mjs' \
+            tests/cognitive-quality.mjs tests/living-intelligence.mjs tests/pulse-linked.mjs)
+          test -n "$files"
+          for f in $files; do node --check "$f"; done
+          echo "node --check passed for $(echo "$files" | wc -l) files"
       - name: JS unit regression
         run: |
           npm run test:build-steps
@@ -137,7 +71,7 @@ jobs:
           python-version: '3.11'
       - name: Install test browser and fixture tools
         run: |
-          npm install --no-save playwright
+          npm install --no-save playwright@1.56.0
           npx playwright install --with-deps chromium
           python -m pip install Pillow
           sudo apt-get update -qq
@@ -202,7 +136,7 @@ jobs:
           python-version: '3.11'
       - name: Install Electron, Playwright and fixture tools
         run: |
-          npm install --no-save playwright electron@$(node -p "require('./desktop/versions.json').electron")
+          npm install --no-save playwright@1.56.0 electron@$(node -p "require('./desktop/versions.json').electron")
           python -m pip install Pillow
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg xvfb libnss3 libgbm1 libasound2t64
