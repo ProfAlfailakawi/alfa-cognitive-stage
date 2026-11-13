@@ -1599,6 +1599,11 @@ html:is([data-role="audience"], [data-role="notes"]) .app > .error a { color: #5
 @media (max-height: 480px) {
   .nv-body { padding-block: .9rem; }
   .nv-text { max-height: calc(100dvh - 64px - 2rem); }
+  .nv-side img { margin-bottom: .3rem; }
+  .nv-bar { min-height: 56px; padding-block: .45rem; }
+}
+/* Two columns only when both fit; below 641px the stacked phone layout above stays. */
+@media (max-height: 480px) and (min-width: 641px) {
   .nv-body { grid-template-columns: minmax(0, 1fr) minmax(240px, 44%); }
   .nv-side { display: grid; grid-template-columns: 1fr 1fr; gap: 0 .8rem; align-items: start; align-content: start; }
   .nv-side .label { grid-row: 1; }
