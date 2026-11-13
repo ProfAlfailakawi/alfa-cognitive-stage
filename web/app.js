@@ -37,6 +37,8 @@ const app = document.getElementById("app");
 const channel = new BroadcastChannel("alfa-cognitive-stage");
 const params = new URLSearchParams(location.search);
 const role = location.hash === "#audience" ? "audience" : location.hash === "#notes" ? "notes" : "presenter";
+// Lets the stylesheet give the loading/error screens of each window its own backdrop (the projector never flashes white).
+document.documentElement.dataset.role = role;
 // ?relay=1: this window follows the Presentation Engine in the local server (the Mac app's projector and notes
 // windows, or any viewer in another browser) instead of the same-browser BroadcastChannel.
 const RELAY = params.has("relay");
