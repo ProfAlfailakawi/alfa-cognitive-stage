@@ -1930,18 +1930,18 @@ body > section.vote, #ask-lecturer { min-width: 0; }
    iPhone Duo round 2 (2026-11-14) — one BOOK definition, and the system widget keep-out.
    - BOOK (two pages and a spine) is landscape only: 721–1000 wide, 520–960 tall (951×585).
      The opened Duo in PORTRAIT (669×867) is one ordinary page, never split.
-   - The installed app (display-mode: standalone) on the inner screen has a system status widget
+   - The inner screen (in a browser tab AND in the installed app) has a system status widget
      floating over the physical top-right corner. We cannot know its exact box, so a generous
      corner (116×116) is kept free of anything readable or tappable; the page background still
      runs full-bleed behind it. In the book the corner belongs to the right page only.
      The corner is the physical right, so in Arabic (RTL) it is the START side.
-   - Browser tabs (not standalone) already avoid the widget, and an ordinary iPhone in standalone
-     has a notch and no widget: neither gets the keep-out (the outer 367×740 screen cannot be told
-     apart from an iPhone, so it is deliberately not guessed).
+   - Round 3: the keep-out no longer depends on display-mode (the owner uses a Safari tab, where the
+     widget also floats over the page). An ordinary iPhone, iPad and desktop never match these sizes
+     (the outer 367×740 screen cannot be told apart from an iPhone, so it is deliberately not guessed).
    ========================================================================== */
 :root { --duo-cutout-w: 0px; --duo-cutout-h: 0px; }
-@media screen and (display-mode: standalone) and (min-width: 721px) and (max-width: 1000px) and (min-height: 520px) and (max-height: 960px) and (orientation: landscape),
-       screen and (display-mode: standalone) and (min-width: 640px) and (max-width: 720px) and (min-height: 520px) and (max-height: 960px) and (orientation: portrait) {
+@media screen and (min-width: 721px) and (max-width: 1000px) and (min-height: 520px) and (max-height: 960px) and (orientation: landscape),
+       screen and (min-width: 640px) and (max-width: 720px) and (min-height: 520px) and (max-height: 960px) and (orientation: portrait) {
   :root { --duo-cutout-w: 116px; --duo-cutout-h: 116px; }
   /* Lecturer console: the clock bar is the top of the right page; its text stays left of the corner. */
   .presenter > .main > .bar { box-sizing: border-box; min-height: var(--duo-cutout-h); padding-right: calc(var(--duo-cutout-w) + .4rem); align-content: center; }
