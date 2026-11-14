@@ -1615,3 +1615,345 @@ html:is([data-role="audience"], [data-role="notes"]) .app > .error a { color: #5
 body:has(> main.vote > .status:only-child) { display: flex; flex-direction: column; height: auto; min-height: 100vh; min-height: 100dvh; }
 body:has(> main.vote > .status:only-child) > main.vote { flex: 1 0 auto; align-content: center; width: 100%; box-sizing: border-box; }
 body:has(> main.vote > .status:only-child) > section.vote { width: 100%; box-sizing: border-box; }
+
+/* ==========================================================================
+   iPhone Duo final round (2026-11-14) — book spread, laptop posture, outer screen.
+   Presentation only; nothing here is driven by JavaScript, so a resize never re-renders the
+   slide, the video or the audio (they are the same elements before and after).
+   Postures (all scoped to `screen`, so printing an A4 page never turns into a spread):
+   - Inner book: 640–720 wide and ≥500 tall (portrait book, 669×867), or 880–1000 wide,
+     ≥500 tall and at least 7:5 (landscape book, 951×585). Two pages and a calm spine; the
+     primary task sits on the right page (RTL), the context on the left one, and nothing
+     interactive or textual enters the spine (centre ± --spine/2).
+   - Laptop: height ≤480 and width ≥560. Content on top, the keys are a deck along the bottom
+     that is part of the layout (a grid row or a sticky row), so it never covers the content.
+   - Outer (≤599 wide): one clear task, full-bleed backdrop — the earlier phone band stays.
+   See docs/IPHONE-DUO-FINAL-ACCEPTANCE.md.
+   ========================================================================== */
+:root {
+  --spine: 32px;
+  --page-edge: max(.9rem, env(safe-area-inset-right));
+  --page-edge-left: max(.9rem, env(safe-area-inset-left));
+  --page-inner: .7rem;
+  /* The fold: a soft shadow either side of a single hairline; the backdrop runs on under it. */
+  --fold:
+    linear-gradient(90deg, transparent 0, color-mix(in srgb, #000 4%, transparent) 38%, color-mix(in srgb, #000 8%, transparent) 48.5%,
+      color-mix(in srgb, var(--ink) 22%, transparent) 50%, color-mix(in srgb, #000 8%, transparent) 51.5%, color-mix(in srgb, #000 4%, transparent) 62%, transparent 100%);
+}
+/* With a real hinge exposed (Viewport Segments), the spine is exactly the gap between the screens.
+   Progressive and untested on a device: browsers without the API skip this block. */
+@media screen and (horizontal-viewport-segments: 2) {
+  :root { --spine: calc(env(viewport-segment-left 1 0, 0px) - env(viewport-segment-right 0 0, 0px)); }
+}
+
+/* ---- Book spread: lecturer console ---- */
+@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px),
+       screen and (min-width: 880px) and (max-width: 1000px) and (min-height: 500px) and (min-aspect-ratio: 7/5) {
+  .presenter, .presenter.clean {
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--spine) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto; gap: 0; padding: 0;
+    height: 100vh; height: 100dvh; min-height: 0; overflow: hidden;
+  }
+  body:has(.presenter), html:has(.presenter) { height: 100%; overflow: hidden; }
+  .presenter::before { content: ""; grid-column: 2; grid-row: 1 / -1; background: var(--fold); pointer-events: none; }
+  /* Right page: the slide now, the clock and the keys. */
+  .presenter > .main {
+    grid-column: 1; grid-row: 1 / -1; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; align-content: stretch;
+    gap: .7rem; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+    padding: calc(.7rem + env(safe-area-inset-top)) var(--page-edge) max(.8rem, env(safe-area-inset-bottom)) var(--page-inner);
+  }
+  /* Left page: the next slide, the notes, then the quiet drawers. */
+  .presenter > .side, .presenter.clean > .side {
+    grid-column: 3; grid-row: 1; display: flex; flex-direction: column; gap: .9rem; min-height: 0; height: auto;
+    overflow-x: hidden; overflow-y: auto; border: 0; background: transparent;
+    padding: calc(.9rem + env(safe-area-inset-top)) var(--page-inner) .8rem var(--page-edge-left);
+  }
+  .presenter > .side > * { flex: none; }
+  .presenter .side-next .next img { display: block; width: auto; max-width: 100%; max-height: 30dvh; margin-inline: auto; }
+  .presenter.clean .side > #notes { flex: 1 0 8rem; max-height: none; min-height: 8rem; overflow-y: auto; }
+  .presenter .side > :is(.director-box, .info-form, .readiness-drawer) { grid-column: auto; }
+  .presenter .stage-wrap { padding: .6rem; border-radius: 18px; overflow: hidden; }
+  .presenter .controls { gap: .5rem; }
+  .presenter .controls > * { min-width: 0; }
+  .presenter > .filmstrip {
+    grid-column: 3; grid-row: 2; display: flex; height: 76px; min-width: 0;
+    margin: 0 var(--page-inner) max(.8rem, env(safe-area-inset-bottom)) var(--page-edge-left);
+  }
+  .presenter > .filmstrip:empty { display: none; }
+}
+@supports (width: 1cqw) {
+  @media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px),
+         screen and (min-width: 880px) and (max-width: 1000px) and (min-height: 500px) and (min-aspect-ratio: 7/5) {
+    .presenter .stage-wrap { container-type: size; min-height: 10rem; }
+    .presenter .stage { width: min(100cqw, 100cqh * var(--aspect)); }
+  }
+}
+/* Portrait book (each page ~318px): the keys pair up under the slide, the long ones take a whole
+   row, and the slide index fills the foot of the right page instead of a stretched frame. */
+@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px) {
+  .presenter, .presenter.clean { grid-template-rows: fit-content(100%) minmax(0, 1fr); }
+  .presenter > .main { grid-row: 1; grid-template-rows: auto auto auto; align-content: start; padding-block-end: .7rem; }
+  .presenter > .side, .presenter.clean > .side { grid-row: 1 / -1; }
+  .presenter .stage-wrap { container-type: inline-size; min-height: 0; }
+  .presenter .stage { width: 100%; }
+  .presenter .bar { padding: .4rem .7rem .55rem; gap: .1rem .6rem; }
+  .presenter .bar #meta { font-size: 1.05rem; }
+  .presenter .bar .clock-box select { min-height: 32px; font-size: .85rem; max-width: 9.5rem; }
+  .presenter .controls { display: grid; grid-template-columns: 1fr 1fr; }
+  .presenter .controls > * { grid-column: auto; min-height: 48px; padding-inline: .5rem; font-size: .95rem; }
+  .presenter .controls #prev, .presenter .controls #next { min-height: 56px; font-size: 1.05rem; }
+  .presenter .controls :is(.emergency, .direct-slide, select, #playvid) { grid-column: 1 / -1; }
+  .presenter > .filmstrip {
+    grid-column: 1; grid-row: 2; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: max-content;
+    align-content: start; height: auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scroll-snap-type: y proximity;
+    margin: 0 var(--page-edge) max(.8rem, env(safe-area-inset-bottom)) var(--page-inner); padding: .5rem;
+  }
+  .presenter > .filmstrip .film-item { height: auto; width: 100%; }
+}
+/* Half-height inner screen (669×520): the right page keeps bar, slide and keys together; the
+   slide index would have no room, so it steps aside (every slide is still one key away). */
+@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px) and (max-height: 699px) {
+  .presenter > .main { grid-row: 1 / -1; }
+  .presenter > .filmstrip { display: none; }
+  .presenter .controls > * { min-height: 44px; }
+  .presenter .controls #prev, .presenter .controls #next { min-height: 50px; }
+}
+/* Landscape book (each page ~460px): bar, slide and two rows of keys fit the right page. */
+@media screen and (min-width: 880px) and (max-width: 1000px) and (min-height: 500px) and (min-aspect-ratio: 7/5) {
+  .presenter .controls { display: flex; flex-wrap: wrap; justify-content: center; }
+  .presenter .controls > * { flex: 1 1 auto; min-height: 46px; padding-inline: .7rem; font-size: .95rem; }
+  .presenter .controls #prev, .presenter .controls #next { min-width: 7rem; min-height: 50px; }
+  .presenter .controls select { max-width: none; }
+}
+
+/* ---- Laptop posture: lecturer console ----
+   Content on top (clock, slide, next slide and notes), the keys as a deck along the bottom, like
+   a half-opened laptop. The deck is a row of the layout itself, so it can never cover the slide.
+   (#89 put the keys in a side column; the deck keeps its "every key on screen" promise.) */
+@media screen and (max-height: 480px) and (min-width: 560px) {
+  .presenter > .main { display: contents; }
+  .presenter > .main > .bar { grid-area: bar; margin: calc(.45rem + env(safe-area-inset-top)) .45rem 0 var(--page-edge-left); }
+  .presenter > .main > .stage-wrap { grid-area: stage; margin: calc(.45rem + env(safe-area-inset-top)) var(--page-edge) .45rem 0; }
+  .presenter .controls {
+    grid-area: keys; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; justify-content: stretch;
+    gap: .4rem; overflow: visible; -webkit-mask-image: none; mask-image: none;
+    padding: .4rem var(--page-edge) max(.4rem, env(safe-area-inset-bottom)) var(--page-edge-left);
+    border-top: 1px solid var(--hair);
+    background: linear-gradient(180deg, rgba(238, 243, 241, .035), rgba(0, 0, 0, .18)), #0b161a;
+    box-shadow: 0 -10px 24px rgba(0, 0, 0, .28);
+  }
+  .presenter .controls > * {
+    grid-column: auto; grid-row: auto; flex: 1 1 0; width: auto; min-width: 0; min-height: 44px; height: auto; padding: .2rem .45rem;
+    font-size: .84rem; line-height: 1.3; white-space: normal; order: 0;
+  }
+  .presenter .controls > :is(.emergency, .direct-slide, select, #playvid, #open-audience, #open-vote, #toggle-info) { grid-column: auto; }
+  .presenter .controls #next { order: -3; flex-grow: 1.25; }
+  .presenter .controls #prev { order: -2; }
+  .presenter .controls .emergency { order: -1; flex-grow: 1.6; }
+  .presenter .controls #prev, .presenter .controls #next { min-height: 44px; font-size: .98rem; }
+  .presenter .controls select { max-width: none; flex-grow: 1.3; }
+  .presenter .controls button[id]::before { width: 1em; height: 1em; }
+  .presenter > .side { grid-area: side; }
+}
+/* Wide laptop (951×350, 844×390): the deck is one row; clock and slide on the right, the next
+   slide and notes on the left, all inside the dynamic viewport. */
+@media screen and (max-height: 480px) and (min-width: 721px) {
+  .presenter, .presenter.clean {
+    display: grid; height: 100vh; height: 100dvh; overflow: hidden; gap: 0; padding: 0;
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 32vw, 320px);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "stage bar" "stage side" "keys keys";
+  }
+  .presenter > .side, .presenter.clean > .side {
+    height: auto; min-height: 0; overflow-y: auto; border-inline-start: 1px solid var(--hair); border-top: 0;
+    padding: .5rem .6rem .6rem var(--page-edge-left);
+  }
+  .presenter .side .next img { max-height: 28dvh; width: auto; max-width: 100%; margin-inline: auto; display: block; }
+  /* More than the six calm keys (tools console, or a running show): two rows, so no key turns into a narrow tower. */
+  .presenter:not(.clean) .controls, .presenter:has(:is(#end-show, #blackout-btn):not([hidden])) .controls {
+    display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 44px); grid-auto-columns: minmax(0, 1fr); gap: .35rem .4rem;
+  }
+  .presenter:not(.clean) .controls > *, .presenter:has(:is(#end-show, #blackout-btn):not([hidden])) .controls > * { min-height: 0; height: 44px; }
+}
+/* Narrow laptop / outer landscape (594×368, 600×350, 600×480): the first screen is the console —
+   slide on top, the deck pinned to the bottom — and the next slide and notes follow one swipe
+   below. The deck is the LAST row and sticky, so it only ever overlaps content that has scrolled
+   past it, and at the end of the page it sits in its own reserved row. */
+@media screen and (max-height: 480px) and (min-width: 560px) and (max-width: 720px) {
+  body:has(.presenter), html:has(.presenter) { height: auto; overflow: visible; }
+  .presenter, .presenter.clean {
+    --deck: calc(2 * 44px + .35rem + .8rem + env(safe-area-inset-bottom));
+    display: grid; height: auto; min-height: 0; overflow: visible; gap: 0; padding: 0;
+    grid-template-columns: minmax(0, 1fr) clamp(142px, 25vw, 170px);
+    grid-template-rows: calc(100vh - var(--deck)) auto auto;
+    grid-template-rows: calc(100dvh - var(--deck)) auto auto;
+    grid-template-areas: "stage bar" "side side" "keys keys";
+  }
+  .presenter .controls {
+    position: sticky; bottom: 0; z-index: 3; height: var(--deck); box-sizing: border-box;
+    display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 44px); grid-auto-columns: minmax(0, 1fr);
+    gap: .35rem .4rem; padding-block: .4rem max(.4rem, env(safe-area-inset-bottom));
+  }
+  .presenter .controls > * { min-height: 0; height: 44px; }
+  .presenter > .side, .presenter.clean > .side {
+    height: auto; overflow: visible; border-top: 1px solid var(--hair); border-inline-start: 0;
+    display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: .9rem; align-items: start;
+    padding: .9rem var(--page-edge) 1.2rem var(--page-edge-left);
+  }
+  .presenter .side > :not(.side-next) { grid-column: 2; }
+  .presenter .side > .side-next { grid-column: 1; grid-row: 1 / span 3; }
+  .presenter .side .next img { max-height: none; width: 100%; }
+}
+/* The clock is a slim column beside the slide, so the slide keeps the whole height above the deck. */
+@media screen and (max-height: 480px) and (min-width: 560px) and (max-width: 720px) {
+  .presenter > .main > .bar {
+    margin: calc(.45rem + env(safe-area-inset-top)) .4rem .45rem var(--page-edge-left); align-self: stretch;
+    display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; justify-content: flex-start; gap: .35rem; padding: .5rem .55rem;
+  }
+  .presenter > .main > .bar > * { margin: 0; }
+  .presenter .bar .clock-box { display: flex; flex-direction: column; align-items: stretch; gap: .3rem; direction: rtl; }
+  .presenter .bar .clock-box select { width: 100%; min-width: 0; max-width: none; font-size: .78rem; padding-inline: .3rem 1.5rem; text-overflow: ellipsis; }
+  .presenter .bar #meta { font-size: .95rem; line-height: 1.35; }
+  .presenter .bar #wallclock { margin-inline-start: 0; font-size: .95rem; }
+  .presenter .bar .clock-track { flex: none; width: 100%; margin-top: auto; }
+  .presenter > .main > .stage-wrap { margin: calc(.45rem + env(safe-area-inset-top)) var(--page-edge) .45rem 0; }
+}
+@supports (width: 1cqw) {
+  @media screen and (max-height: 480px) and (min-width: 560px) {
+    .presenter .stage-wrap { container-type: size; min-height: 0; }
+    .presenter .stage { width: min(100cqw, 100cqh * var(--aspect)); }
+  }
+}
+
+/* ---- Book spread: every other window. Two equal pages: the same padding at both outer edges and a
+   gap of exactly the spine plus two page margins, so the gap's centre IS the fold. ---- */
+@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px),
+       screen and (min-width: 880px) and (max-width: 1000px) and (min-height: 500px) and (min-aspect-ratio: 7/5) {
+  :root { --gutter: calc(var(--spine) + 2 * var(--page-inner)); --outer: max(var(--page-edge), var(--page-edge-left)); }
+  /* The fold line itself, drawn once over the full-bleed backdrop of these pages. */
+  body:has(> main:is(.vote, .review, .admin), > .app > :is(.notes-view, .import-panel, .loading, .error))::after,
+  html[data-role="notes"] body::after, body:has(> .app > .error)::after {
+    content: ""; position: fixed; inset-block: 0; left: calc(50% - var(--spine) / 2); width: var(--spine);
+    background: var(--fold); pointer-events: none; z-index: 1;
+  }
+
+  /* Notes window: the notes are read on the right page; now/next live on the left page. */
+  .notes-view { grid-template-rows: auto minmax(0, 1fr); height: 100vh; height: 100dvh; min-height: 0; }
+  .nv-bar {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--gutter); align-items: center;
+    padding: calc(.7rem + env(safe-area-inset-top)) var(--outer) .7rem;
+  }
+  .nv-bar > .nv-meta { grid-column: 1; grid-row: 1; }
+  .nv-bar > .nv-clock { grid-column: 2; grid-row: 1; justify-self: start; margin: 0; }
+  .nv-bar > .notes-size { grid-column: 2; grid-row: 1; justify-self: end; }
+  .nv-body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--gutter); min-height: 0;
+    padding: 1rem var(--outer) max(1rem, env(safe-area-inset-bottom));
+  }
+  .nv-text { max-height: none; height: 100%; min-height: 0; }
+  .nv-side { display: flex; flex-direction: column; align-items: stretch; gap: .3rem; min-height: 0; overflow-y: auto; }
+  .nv-side img { display: block; width: auto; max-width: 100%; max-height: 30dvh; margin: 0 auto .9rem; }
+  .nv-side .label { grid-row: auto; }
+
+  /* Student page: the question and its answers on the right page; "فاهم / ضايع" and the
+     private question on the left page, vertically centred like a facing page. */
+  body:has(> main.vote), body:has(> main.vote > .status:only-child) {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--gutter);
+    grid-template-rows: minmax(0, 1fr) auto auto minmax(0, 1fr); align-content: stretch;
+    min-height: 100vh; min-height: 100dvh; height: auto; padding: 0 var(--outer); box-sizing: border-box;
+  }
+  body:has(> main.vote) > main.vote { grid-column: 1; grid-row: 1 / -1; width: auto; max-width: none; margin: 0; padding-inline: 0; align-self: stretch; }
+  body:has(> main.vote) > section.vote { grid-column: 2; width: auto; max-width: none; margin: 0; padding-inline: 0; }
+  body:has(> main.vote) > section.vote:nth-of-type(1) { grid-row: 2; padding-block-end: .4rem; }
+  body:has(> main.vote) > section.vote:nth-of-type(2) { grid-row: 3; padding-block-start: 0; }
+  body main.vote:has(> .q) { display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; }
+  body main.vote:has(> .q) > :is(.q, .status#note, .result, #cloud, div:not(.result)) { grid-column: 1; grid-row: auto; position: static; }
+  body main.vote:has(> .q) > .q { font-size: clamp(1.35rem, 2.6vw, 1.8rem); }
+  body:has(> main.vote > .status:only-child) > main.vote { align-content: center; }
+  body main.vote + section.vote { border-top: 0; }
+
+  /* Review: an editorial spread — the sections flow down the right page and on to the left one. */
+  body main.review {
+    max-width: none; margin: 0; column-count: 2; column-gap: var(--gutter); column-fill: balance; display: block;
+    padding-inline: var(--outer);
+  }
+  body main.review > * { break-inside: avoid; }
+  body main.review::before { break-after: avoid; }
+  body main.review > section { margin-block-end: 1.1rem; }
+  /* One message (link incomplete, not published, offline): it opens the right page, the left stays calm. */
+  body main.review:has(> .tag:only-child) {
+    column-count: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--gutter);
+    align-content: center; justify-items: center;
+  }
+  body main.review:has(> .tag:only-child) > *, body main.review:has(> .tag:only-child)::before { grid-column: 1; }
+
+  /* Vote console: the session and QR on the right page, the question editor on the left page. */
+  body main.admin {
+    max-width: none; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--gutter);
+    padding-inline: var(--outer); align-content: start;
+  }
+  body main.admin > * { grid-column: 1; min-width: 0; }
+  body main.admin > #panel { grid-column: 1 / -1; }
+  body main.admin .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--gutter); }
+
+  /* First run: the welcome opens the right page, the form is the facing page. With an error, the
+     message takes the right page and the whole import card the left one. */
+  .app:has(> .import-panel) {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--gutter); align-items: center;
+    place-items: center stretch; padding: max(1rem, env(safe-area-inset-top)) var(--outer) max(1rem, env(safe-area-inset-bottom));
+  }
+  .app > .import-panel:only-child { display: contents; }
+  .app > .import-panel:only-child > h2 { grid-column: 1; margin: 0; }
+  .app > .import-panel:only-child > .import-fields {
+    grid-column: 2; margin: 0; padding: clamp(1.1rem, 3vw, 1.8rem); border-radius: 22px; background: var(--canvas);
+    box-shadow: 0 0 0 1px var(--hair), 0 24px 60px color-mix(in srgb, var(--ink) 10%, transparent);
+  }
+  .app > .import-panel:only-child .import-actions { flex-direction: column; align-items: stretch; }
+  .app > .error + .import-panel, .app > .import-panel:not(:only-child) { grid-column: 2; width: auto; margin: 0; }
+  .app > .error:has(+ .import-panel) {
+    grid-column: 1; margin: 0; justify-self: center; max-width: 30ch; text-align: center; line-height: 1.9;
+    font-size: clamp(1rem, .9rem + .6vw, 1.25rem); color: var(--soft);
+  }
+  .app > .error:has(+ .import-panel)::before {
+    content: ""; display: block; width: 3.25rem; height: 3.25rem; margin: 0 auto 1rem;
+    background: var(--t-upload) center / contain no-repeat;
+  }
+  .app > .error:has(+ .import-panel) a { color: var(--accent); font-weight: 700; }
+  /* Loading / error / nothing open: the card opens the right page. */
+  html[data-role] .app:not(:has(> .audience, > .presenter, > .notes-view, > .import-panel)) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--gutter); padding-inline: var(--outer);
+  }
+  html[data-role] .app:not(:has(> .audience, > .presenter, > .notes-view, > .import-panel)) > * { grid-column: 1; }
+
+  /* A dialog sits on the right page; its backdrop still covers (and blocks) both pages. */
+  dialog.display-chooser {
+    box-sizing: border-box; margin: auto; margin-inline-start: var(--page-edge);
+    width: calc(50vw - var(--spine) / 2 - var(--page-edge) - var(--page-inner)); max-width: none;
+  }
+}
+/* The projector window stays one full-bleed picture: it is media (like a photo across a spread),
+   and every overlay on it is part of the slide. Documented as the only spine exception. */
+
+/* ---- Laptop posture: student page — the "فاهم / ضايع" keys ride along the bottom edge. ---- */
+@media screen and (max-height: 480px) and (min-width: 560px) {
+  body:has(> main.vote) > section.vote:has(#pulse) {
+    position: sticky; bottom: 0; z-index: 2; padding-block: .5rem max(.5rem, env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--canvas) 92%, transparent); border-top: 1px solid var(--hair);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  body:has(> main.vote) > section.vote:has(#pulse) #pulse .opt { min-height: 48px; }
+}
+
+/* ---- Touch targets on the Duo and on touch screens: the small console keys reach 44px. ---- */
+@media screen and (max-width: 1000px), (pointer: coarse) {
+  .presenter :is(.notes-size button, .side button, .bar select), .notes-view .notes-size button { min-height: 44px; min-width: 44px; }
+  .presenter .side :is(.library-body, .cognitive-actions, .director-actions, .import-actions, .voting-drawer .director-actions) button:not(.primary),
+  .presenter .bar .clock-box select { min-height: 44px; }
+}
+/* "فاهم / ضايع" wrap onto two rows when the text is enlarged, instead of pushing past the edge. */
+#pulse { flex-wrap: wrap; }
+#pulse > .opt { min-width: min(100%, 7.5rem); }
+body > section.vote, #ask-lecturer { min-width: 0; }
+#ask-lecturer > summary { min-width: 0; overflow-wrap: anywhere; }
+/* Vote console: the session panel stays hidden until the lecturer is signed in (".admin .grid" used to override [hidden]). */
+.admin #panel[hidden] { display: none; }
