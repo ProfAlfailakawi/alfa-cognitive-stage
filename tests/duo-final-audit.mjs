@@ -15,7 +15,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { webkit } = require("playwright");
+const pw = require("playwright");
+const webkit = process.env.BROWSER === "chromium" ? pw.chromium : pw.webkit;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT || 5210);
 const ADMIN = process.env.ADMIN_TOKEN || "duo-audit-admin-0123456789abcdef";
@@ -29,17 +30,23 @@ const baselineCss = BASELINE ? execFileSync("git", ["show", "origin/main:web/sty
 const POSES = {
   A: [[382, 580], [385, 571], [320, 568]],
   B: [[594, 368]],
-  C: [[669, 867]],
-  D: [[951, 585]],
+  C: [[669, 867], [720, 900], [640, 760]],
+  D: [[951, 585], [951, 669], [880, 560], [800, 600]],
   E: [[951, 350], [600, 350]],
   F: [[669, 520], [600, 480]],
   G: [[768, 1024], [1024, 768], [1280, 800], [1440, 900]],
   H: [[360, 640], [390, 844], [844, 390]],
   S: [[320, 350], [320, 600], [320, 900], [470, 350], [470, 600], [470, 900], [620, 350], [620, 600], [620, 900]],
 };
-const SHOT_SIZES = new Set(["669x867", "951x585", "951x350", "600x350", "594x368", "382x580"]);
+const SHOT_SIZES = new Set(["669x867", "951x585", "720x900", "951x669", "951x350", "600x350", "594x368", "382x580"]);
 // Inner book sizes: the spine (centre ± 16px) must stay clear of text and controls.
-const isSpread = (w, h) => (w >= 640 && w <= 720 && h >= 500) || (w >= 880 && w <= 1000 && h >= 500 && w / h >= 1.4);
+// BOOK = landscape only (round 2): portrait on the inner screen is one ordinary page, never split.
+const isSpread = (w, h) => w >= 721 && w <= 1000 && h >= 520 && h <= 960 && w > h;
+// Widget keep-out (installed app on the inner screen): book OR portrait 640-720 x 520-960.
+const isDuoInner = (w, h) => isSpread(w, h) || (w >= 640 && w <= 720 && h >= 520 && h <= 960 && h > w);
+const CUT = 116;
+// STANDALONE=1 serves style.css with "(display-mode: standalone)" relaxed, which emulates the installed app.
+const STANDALONE = process.env.STANDALONE === "1";
 const SPINE = 32;
 
 // ---- stubs (no production endpoints: everything is the local test server or intercepted) ----
@@ -120,9 +127,9 @@ async function adminLogin(p) {
 }
 
 // ---- in-page measurement ----
-function measure({ spread, spine, exception }) {
+function measure({ spread, spine, exception, duo, cut }) {
   const vw = document.documentElement.clientWidth, vh = window.innerHeight;
-  const out = { overflowX: document.documentElement.scrollWidth - vw, spine: [], small: [], clipped: [], keysOffscreen: [] };
+  const out = { overflowX: document.documentElement.scrollWidth - vw, spine: [], small: [], clipped: [], keysOffscreen: [], widget: [], oneChar: [] };
   const visible = (el) => {
     if (el.closest("details:not([open]) > :not(summary)") || el.closest("[hidden]") || el.closest(".sr-only")) return false;
     const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return false;
@@ -153,6 +160,21 @@ function measure({ spread, spine, exception }) {
       if (r.right > lo && r.left < hi && r.bottom > 0) out.spine.push(label(el));
     }
   }
+  if (duo) { // nothing readable or tappable inside the top-right corner box (physical right)
+    for (const el of new Set([...interactive, ...texty])) {
+      if (exceptionEl && exceptionEl.contains(el)) continue;
+      let r = el.getBoundingClientRect();
+      if (!interactive.includes(el)) { const range = document.createRange(); range.selectNodeContents(el); const rr = range.getBoundingClientRect(); if (rr.width > 0) r = rr; }
+      if (r.right > vw - cut && r.left < vw && r.top < cut && r.bottom > 0) out.widget.push(label(el));
+    }
+  }
+  for (const el of texty) { // text squeezed into a sliver (one character per line)
+    if (exceptionEl && exceptionEl.contains(el)) continue;
+    const r = el.getBoundingClientRect(); const fs = parseFloat(getComputedStyle(el).fontSize) || 16;
+    const t = (el.innerText || "").trim();
+    if (r.width > 0 && r.width < fs * 1.6 && t.length > 3 && r.height > fs * 3) out.oneChar.push(label(el));
+  }
+  out.widget = out.widget.slice(0, 8); out.oneChar = out.oneChar.slice(0, 5);
   for (const el of interactive) {
     const r = el.getBoundingClientRect();
     const inline = el.tagName === "A" && getComputedStyle(el).display === "inline";
@@ -193,9 +215,10 @@ async function openScreen(browser, screen, size, opts = {}) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
   if (screen.init) await page.addInitScript(screen.init);
-  if (BASELINE || opts.css) await page.route("**/style.css", async (route) => {
+  if (BASELINE || opts.css || STANDALONE) await page.route("**/style.css", async (route) => {
     const res = BASELINE ? null : await route.fetch();
     let body = BASELINE ? baselineCss : await res.text();
+    if (STANDALONE) body = unstand(body);
     if (opts.css) body = opts.css(body);
     route.fulfill({ status: 200, contentType: "text/css", body });
   });
@@ -208,6 +231,7 @@ async function openScreen(browser, screen, size, opts = {}) {
   return { ctx, page, errors };
 }
 
+const unstand = (css) => css.replaceAll("(display-mode: standalone)", "(min-width: 0px)");
 const report = { generated: new Date().toISOString(), baseline: BASELINE, engine: "Playwright WebKit", spine: SPINE, matrix: [], live: [], stress: [], modal: [], print: null };
 const browser = await webkit.launch();
 const server = await startServer();
@@ -221,16 +245,19 @@ try {
       await page.waitForTimeout(160);
       await page.evaluate(() => window.scrollTo(0, 0));
       const key = `${size[0]}x${size[1]}`;
-      const m = await page.evaluate(measure, { spread: isSpread(...size), spine: SPINE, exception: screen.spineException || "" });
+      const m = await page.evaluate(measure, { spread: isSpread(...size), spine: SPINE, exception: screen.spineException || "", duo: STANDALONE && isDuoInner(...size), cut: CUT });
       report.matrix.push({ screen: screen.id, pose, size: key, ...m });
       if (SHOTS && SHOT_SIZES.has(key)) {
         await page.evaluate(() => window.scrollTo(0, 0));
+        const showBox = STANDALONE && isDuoInner(...size);
+        if (showBox) await page.evaluate((c) => { const d = document.createElement("div"); d.id = "__widget_box"; d.style.cssText = `position:fixed;top:0;right:0;width:${c}px;height:${c}px;background:rgba(255,0,0,.28);outline:2px dashed red;z-index:2147483647;pointer-events:none`; document.body.append(d); }, CUT);
         await page.screenshot({ path: join(SHOTS, `${screen.id}-${key}.jpg`), type: "jpeg", quality: 62 });
+        if (showBox) await page.evaluate(() => document.getElementById("__widget_box")?.remove());
       }
     }
     report.matrix.filter((r) => r.screen === screen.id).forEach((r) => { r.errors = errors; });
-    const bad = report.matrix.filter((r) => r.screen === screen.id && (r.overflowX > 0 || r.spine.length || r.clipped.length || r.keysOffscreen.length));
-    console.log(`${bad.length ? "WARN" : "PASS"}  ${screen.id}${bad.length ? "  — " + bad.map((r) => `${r.size}${r.overflowX > 0 ? " overflow" : ""}${r.spine.length ? " spine:" + r.spine.length : ""}${r.clipped.length ? " clipped:" + r.clipped.length : ""}${r.keysOffscreen.length ? " keys:" + r.keysOffscreen : ""}`).join(", ") : ""}${errors.length ? "  errors: " + errors.join(" | ") : ""}`);
+    const bad = report.matrix.filter((r) => r.screen === screen.id && (r.overflowX > 0 || r.spine.length || r.clipped.length || r.keysOffscreen.length || r.widget.length || r.oneChar.length));
+    console.log(`${bad.length ? "WARN" : "PASS"}  ${screen.id}${bad.length ? "  — " + bad.map((r) => `${r.size}${r.overflowX > 0 ? " overflow" : ""}${r.spine.length ? " spine:" + r.spine.length : ""}${r.clipped.length ? " clipped:" + r.clipped.length : ""}${r.keysOffscreen.length ? " keys:" + r.keysOffscreen : ""}${r.widget.length ? " WIDGET:" + r.widget.join("|") : ""}${r.oneChar.length ? " ONECHAR:" + r.oneChar.join("|") : ""}`).join(", ") : ""}${errors.length ? "  errors: " + errors.join(" | ") : ""}`);
     await ctx.close();
   }
 
@@ -363,7 +390,7 @@ try {
       const { ctx, page, errors } = await openScreen(browser, screen, SIZES[0], v);
       for (const size of SIZES) {
         await page.setViewportSize({ width: size[0], height: size[1] }); await page.waitForTimeout(160);
-        const m = await page.evaluate(measure, { spread: isSpread(...size), spine: SPINE, exception: screen.spineException || "" });
+        const m = await page.evaluate(measure, { spread: isSpread(...size), spine: SPINE, exception: screen.spineException || "", duo: STANDALONE && isDuoInner(...size), cut: CUT });
         report.stress.push({ variant: v.id, screen: screen.id, size: size.join("x"), overflowX: m.overflowX, spine: m.spine.length, clipped: m.clipped.length, keysOffscreen: m.keysOffscreen, errors: errors.length });
         if (SHOTS && v.id !== "dark" && ["669x867", "382x580"].includes(size.join("x")) && ["presenter", "vote-choice"].includes(screen.id)) {
           await page.screenshot({ path: join(SHOTS, `J-${v.id}-${screen.id}-${size.join("x")}.jpg`), type: "jpeg", quality: 62 });
@@ -408,6 +435,8 @@ const totals = {
   spineCrossings: report.matrix.filter((r) => r.spine.length).length,
   clipped: report.matrix.filter((r) => r.clipped.length).length,
   keysOffscreen: report.matrix.filter((r) => r.keysOffscreen.length).length,
+  widgetOverlaps: report.matrix.filter((r) => r.widget.length).length,
+  oneCharText: report.matrix.filter((r) => r.oneChar.length).length,
   smallTargetCases: report.matrix.filter((r) => r.small.length).length,
   jsErrors: report.matrix.filter((r) => r.errors?.length).length,
 };

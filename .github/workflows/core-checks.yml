@@ -79,6 +79,8 @@ jobs:
           ffmpeg -version
       - name: Generate synthetic media lecture
         run: python tools/make_test_fixture.py
+      - name: iPhone Duo guard - landscape-only book, single-column portrait, widget keep-out, unchanged regression sizes
+        run: npm run test:duo
       - name: Browser presenter and audience tests
         run: npm run test:e2e
       - name: Living Intelligence interactive presenter and audience integration
