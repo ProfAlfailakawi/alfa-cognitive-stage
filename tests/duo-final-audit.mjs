@@ -42,11 +42,9 @@ const SHOT_SIZES = new Set(["669x867", "951x585", "720x900", "951x669", "951x350
 // Inner book sizes: the spine (centre ± 16px) must stay clear of text and controls.
 // BOOK = landscape only (round 2): portrait on the inner screen is one ordinary page, never split.
 const isSpread = (w, h) => w >= 721 && w <= 1000 && h >= 520 && h <= 960 && w > h;
-// Widget keep-out (installed app on the inner screen): book OR portrait 640-720 x 520-960.
+// Widget keep-out (inner screen, browser tab or installed app): book OR portrait 640-720 x 520-960.
 const isDuoInner = (w, h) => isSpread(w, h) || (w >= 640 && w <= 720 && h >= 520 && h <= 960 && h > w);
 const CUT = 116;
-// STANDALONE=1 serves style.css with "(display-mode: standalone)" relaxed, which emulates the installed app.
-const STANDALONE = process.env.STANDALONE === "1";
 const SPINE = 32;
 
 // ---- stubs (no production endpoints: everything is the local test server or intercepted) ----
@@ -215,10 +213,9 @@ async function openScreen(browser, screen, size, opts = {}) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
   if (screen.init) await page.addInitScript(screen.init);
-  if (BASELINE || opts.css || STANDALONE) await page.route("**/style.css", async (route) => {
+  if (BASELINE || opts.css) await page.route("**/style.css", async (route) => {
     const res = BASELINE ? null : await route.fetch();
     let body = BASELINE ? baselineCss : await res.text();
-    if (STANDALONE) body = unstand(body);
     if (opts.css) body = opts.css(body);
     route.fulfill({ status: 200, contentType: "text/css", body });
   });
@@ -231,7 +228,6 @@ async function openScreen(browser, screen, size, opts = {}) {
   return { ctx, page, errors };
 }
 
-const unstand = (css) => css.replaceAll("(display-mode: standalone)", "(min-width: 0px)");
 const report = { generated: new Date().toISOString(), baseline: BASELINE, engine: "Playwright WebKit", spine: SPINE, matrix: [], live: [], stress: [], modal: [], print: null };
 const browser = await webkit.launch();
 const server = await startServer();
@@ -245,11 +241,11 @@ try {
       await page.waitForTimeout(160);
       await page.evaluate(() => window.scrollTo(0, 0));
       const key = `${size[0]}x${size[1]}`;
-      const m = await page.evaluate(measure, { spread: isSpread(...size), spine: SPINE, exception: screen.spineException || "", duo: STANDALONE && isDuoInner(...size), cut: CUT });
+      const m = await page.evaluate(measure, { spread: isSpread(...size), spine: SPINE, exception: screen.spineException || "", duo: isDuoInner(...size), cut: CUT });
       report.matrix.push({ screen: screen.id, pose, size: key, ...m });
       if (SHOTS && SHOT_SIZES.has(key)) {
         await page.evaluate(() => window.scrollTo(0, 0));
-        const showBox = STANDALONE && isDuoInner(...size);
+        const showBox = isDuoInner(...size);
         if (showBox) await page.evaluate((c) => { const d = document.createElement("div"); d.id = "__widget_box"; d.style.cssText = `position:fixed;top:0;right:0;width:${c}px;height:${c}px;background:rgba(255,0,0,.28);outline:2px dashed red;z-index:2147483647;pointer-events:none`; document.body.append(d); }, CUT);
         await page.screenshot({ path: join(SHOTS, `${screen.id}-${key}.jpg`), type: "jpeg", quality: 62 });
         if (showBox) await page.evaluate(() => document.getElementById("__widget_box")?.remove());
@@ -390,7 +386,7 @@ try {
       const { ctx, page, errors } = await openScreen(browser, screen, SIZES[0], v);
       for (const size of SIZES) {
         await page.setViewportSize({ width: size[0], height: size[1] }); await page.waitForTimeout(160);
-        const m = await page.evaluate(measure, { spread: isSpread(...size), spine: SPINE, exception: screen.spineException || "", duo: STANDALONE && isDuoInner(...size), cut: CUT });
+        const m = await page.evaluate(measure, { spread: isSpread(...size), spine: SPINE, exception: screen.spineException || "", duo: isDuoInner(...size), cut: CUT });
         report.stress.push({ variant: v.id, screen: screen.id, size: size.join("x"), overflowX: m.overflowX, spine: m.spine.length, clipped: m.clipped.length, keysOffscreen: m.keysOffscreen, errors: errors.length });
         if (SHOTS && v.id !== "dark" && ["669x867", "382x580"].includes(size.join("x")) && ["presenter", "vote-choice"].includes(screen.id)) {
           await page.screenshot({ path: join(SHOTS, `J-${v.id}-${screen.id}-${size.join("x")}.jpg`), type: "jpeg", quality: 62 });
