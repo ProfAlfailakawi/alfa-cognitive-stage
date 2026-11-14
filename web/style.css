@@ -1029,10 +1029,11 @@ button, summary, select, a, label { touch-action: manipulation; }
 }
 :focus-visible { outline: 2px solid var(--brass, var(--accent)); outline-offset: 2px; }
 
-/* BOOK band: the opened Duo in portrait (and Split View 600-820) gets a real two-pane
-   layout: the slide across the top, then two equal halves, so the fold line sits in the
-   gutter between the halves instead of cutting a button. */
-@media (min-width: 600px) and (max-width: 820px) and (min-height: 481px) {
+/* TABLET-PORTRAIT band (opened Duo in portrait 669x867, Split View 600-820): ONE page, never split
+   into halves. The slide spans the width, the keys pair up, and the cards below use the width in a
+   comfortable grid. Only the landscape BOOK block further down splits into two pages. */
+@media (min-width: 600px) and (max-width: 820px) and (min-height: 481px) and (orientation: portrait),
+       (min-width: 600px) and (max-width: 820px) and (min-height: 481px) and (max-height: 519px) {
   .presenter .main { padding-inline: max(.9rem, env(safe-area-inset-left)) max(.9rem, env(safe-area-inset-right)); }
   .presenter .stage-wrap { padding: .65rem; }
   .presenter .controls { grid-template-columns: 1fr 1fr; gap: .6rem; }
@@ -1647,8 +1648,7 @@ body:has(> main.vote > .status:only-child) > section.vote { width: 100%; box-siz
 }
 
 /* ---- Book spread: lecturer console ---- */
-@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px),
-       screen and (min-width: 880px) and (max-width: 1000px) and (min-height: 500px) and (min-aspect-ratio: 7/5) {
+@media screen and (min-width: 721px) and (max-width: 1000px) and (min-height: 520px) and (max-height: 960px) and (orientation: landscape) {
   .presenter, .presenter.clean {
     display: grid; grid-template-columns: minmax(0, 1fr) var(--spine) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto; gap: 0; padding: 0;
@@ -1658,7 +1658,7 @@ body:has(> main.vote > .status:only-child) > section.vote { width: 100%; box-siz
   .presenter::before { content: ""; grid-column: 2; grid-row: 1 / -1; background: var(--fold); pointer-events: none; }
   /* Right page: the slide now, the clock and the keys. */
   .presenter > .main {
-    grid-column: 1; grid-row: 1 / -1; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; align-content: stretch;
+    grid-column: 1; grid-row: 1 / -1; display: grid; grid-template-rows: auto minmax(10rem, 1fr) auto; align-content: stretch;
     gap: .7rem; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     padding: calc(.7rem + env(safe-area-inset-top)) var(--page-edge) max(.8rem, env(safe-area-inset-bottom)) var(--page-inner);
   }
@@ -1682,44 +1682,13 @@ body:has(> main.vote > .status:only-child) > section.vote { width: 100%; box-siz
   .presenter > .filmstrip:empty { display: none; }
 }
 @supports (width: 1cqw) {
-  @media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px),
-         screen and (min-width: 880px) and (max-width: 1000px) and (min-height: 500px) and (min-aspect-ratio: 7/5) {
+  @media screen and (min-width: 721px) and (max-width: 1000px) and (min-height: 520px) and (max-height: 960px) and (orientation: landscape) {
     .presenter .stage-wrap { container-type: size; min-height: 10rem; }
     .presenter .stage { width: min(100cqw, 100cqh * var(--aspect)); }
   }
 }
-/* Portrait book (each page ~318px): the keys pair up under the slide, the long ones take a whole
-   row, and the slide index fills the foot of the right page instead of a stretched frame. */
-@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px) {
-  .presenter, .presenter.clean { grid-template-rows: fit-content(100%) minmax(0, 1fr); }
-  .presenter > .main { grid-row: 1; grid-template-rows: auto auto auto; align-content: start; padding-block-end: .7rem; }
-  .presenter > .side, .presenter.clean > .side { grid-row: 1 / -1; }
-  .presenter .stage-wrap { container-type: inline-size; min-height: 0; }
-  .presenter .stage { width: 100%; }
-  .presenter .bar { padding: .4rem .7rem .55rem; gap: .1rem .6rem; }
-  .presenter .bar #meta { font-size: 1.05rem; }
-  .presenter .bar .clock-box select { min-height: 32px; font-size: .85rem; max-width: 9.5rem; }
-  .presenter .controls { display: grid; grid-template-columns: 1fr 1fr; }
-  .presenter .controls > * { grid-column: auto; min-height: 48px; padding-inline: .5rem; font-size: .95rem; }
-  .presenter .controls #prev, .presenter .controls #next { min-height: 56px; font-size: 1.05rem; }
-  .presenter .controls :is(.emergency, .direct-slide, select, #playvid) { grid-column: 1 / -1; }
-  .presenter > .filmstrip {
-    grid-column: 1; grid-row: 2; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: max-content;
-    align-content: start; height: auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scroll-snap-type: y proximity;
-    margin: 0 var(--page-edge) max(.8rem, env(safe-area-inset-bottom)) var(--page-inner); padding: .5rem;
-  }
-  .presenter > .filmstrip .film-item { height: auto; width: 100%; }
-}
-/* Half-height inner screen (669×520): the right page keeps bar, slide and keys together; the
-   slide index would have no room, so it steps aside (every slide is still one key away). */
-@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px) and (max-height: 699px) {
-  .presenter > .main { grid-row: 1 / -1; }
-  .presenter > .filmstrip { display: none; }
-  .presenter .controls > * { min-height: 44px; }
-  .presenter .controls #prev, .presenter .controls #next { min-height: 50px; }
-}
 /* Landscape book (each page ~460px): bar, slide and two rows of keys fit the right page. */
-@media screen and (min-width: 880px) and (max-width: 1000px) and (min-height: 500px) and (min-aspect-ratio: 7/5) {
+@media screen and (min-width: 721px) and (max-width: 1000px) and (min-height: 520px) and (max-height: 960px) and (orientation: landscape) {
   .presenter .controls { display: flex; flex-wrap: wrap; justify-content: center; }
   .presenter .controls > * { flex: 1 1 auto; min-height: 46px; padding-inline: .7rem; font-size: .95rem; }
   .presenter .controls #prev, .presenter .controls #next { min-width: 7rem; min-height: 50px; }
@@ -1827,8 +1796,7 @@ body:has(> main.vote > .status:only-child) > section.vote { width: 100%; box-siz
 
 /* ---- Book spread: every other window. Two equal pages: the same padding at both outer edges and a
    gap of exactly the spine plus two page margins, so the gap's centre IS the fold. ---- */
-@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 500px),
-       screen and (min-width: 880px) and (max-width: 1000px) and (min-height: 500px) and (min-aspect-ratio: 7/5) {
+@media screen and (min-width: 721px) and (max-width: 1000px) and (min-height: 520px) and (max-height: 960px) and (orientation: landscape) {
   :root { --gutter: calc(var(--spine) + 2 * var(--page-inner)); --outer: max(var(--page-edge), var(--page-edge-left)); }
   /* The fold line itself, drawn once over the full-bleed backdrop of these pages. */
   body:has(> main:is(.vote, .review, .admin), > .app > :is(.notes-view, .import-panel, .loading, .error))::after,
@@ -1957,3 +1925,57 @@ body > section.vote, #ask-lecturer { min-width: 0; }
 #ask-lecturer > summary { min-width: 0; overflow-wrap: anywhere; }
 /* Vote console: the session panel stays hidden until the lecturer is signed in (".admin .grid" used to override [hidden]). */
 .admin #panel[hidden] { display: none; }
+
+/* ==========================================================================
+   iPhone Duo round 2 (2026-11-14) — one BOOK definition, and the system widget keep-out.
+   - BOOK (two pages and a spine) is landscape only: 721–1000 wide, 520–960 tall (951×585).
+     The opened Duo in PORTRAIT (669×867) is one ordinary page, never split.
+   - The installed app (display-mode: standalone) on the inner screen has a system status widget
+     floating over the physical top-right corner. We cannot know its exact box, so a generous
+     corner (116×116) is kept free of anything readable or tappable; the page background still
+     runs full-bleed behind it. In the book the corner belongs to the right page only.
+     The corner is the physical right, so in Arabic (RTL) it is the START side.
+   - Browser tabs (not standalone) already avoid the widget, and an ordinary iPhone in standalone
+     has a notch and no widget: neither gets the keep-out (the outer 367×740 screen cannot be told
+     apart from an iPhone, so it is deliberately not guessed).
+   ========================================================================== */
+:root { --duo-cutout-w: 0px; --duo-cutout-h: 0px; }
+@media screen and (display-mode: standalone) and (min-width: 721px) and (max-width: 1000px) and (min-height: 520px) and (max-height: 960px) and (orientation: landscape),
+       screen and (display-mode: standalone) and (min-width: 640px) and (max-width: 720px) and (min-height: 520px) and (max-height: 960px) and (orientation: portrait) {
+  :root { --duo-cutout-w: 116px; --duo-cutout-h: 116px; }
+  /* Lecturer console: the clock bar is the top of the right page; its text stays left of the corner. */
+  .presenter > .main > .bar { box-sizing: border-box; min-height: var(--duo-cutout-h); padding-right: calc(var(--duo-cutout-w) + .4rem); align-content: center; }
+  /* Notes window. */
+  .nv-bar { box-sizing: border-box; min-height: var(--duo-cutout-h); padding-right: calc(var(--duo-cutout-w) + .4rem); }
+  /* Student page: the live-question mark steps left of the corner and the question starts below it. */
+  body main.vote::before { margin-right: var(--duo-cutout-w); }
+  body main.vote .q::before { margin-right: var(--duo-cutout-w); }
+  body main.review::before { margin-right: var(--duo-cutout-w); }
+  body main.vote:has(> .status:only-child) { padding-block-start: var(--duo-cutout-h); }
+  /* Review: the title and the first tag sit left of the corner. */
+  body main.review > h1, body main.review > .tag:first-child { padding-right: var(--duo-cutout-w); min-height: 2.4rem; }
+  /* Vote console: the title row (mark, title, rule) stays left of the corner. */
+  .admin > h1 { box-sizing: border-box; min-height: calc(var(--duo-cutout-h) - 1.25rem); padding-right: var(--duo-cutout-w); }
+  /* Dialogs: the sheet hangs below the corner instead of being centred under it. */
+  dialog.display-chooser { margin-block: var(--duo-cutout-h) auto; max-height: calc(100dvh - var(--duo-cutout-h) - 1rem); overflow-y: auto; }
+}
+
+/* ---- Opened Duo in PORTRAIT (640–720 wide, 520–960 tall): one ordinary single-column page ----
+   The wide-window rules above (question beside the answers, notes beside the slides, two console
+   columns) are for landscape and big tablets; here they would split the screen into two halves. */
+@media screen and (min-width: 640px) and (max-width: 720px) and (min-height: 520px) and (max-height: 960px) and (orientation: portrait) {
+  body .vote { max-width: 620px; }
+  body main.vote:has(> .q) { grid-template-columns: minmax(0, 1fr); }
+  body main.vote:has(> .q) > :is(.q, .status#note, .result, #cloud, div:not(.result)) { grid-column: 1; grid-row: auto; position: static; }
+  body main.vote:has(> .q) > .q { font-size: clamp(1.45rem, 3.6vw, 1.9rem); }
+  body .review { max-width: 620px; }
+  .admin { max-width: 640px; }
+  body main.admin .grid { grid-template-columns: minmax(0, 1fr); }
+  .admin .grid #qr svg, .admin .grid #qr canvas, .admin .grid #qr img { max-width: 220px; }
+  /* Notes: the two slides sit side by side above the text, which then has the whole width. */
+  .nv-body { grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1.1rem; }
+  .nv-side { order: -1; display: grid; grid-template-columns: 1fr 1fr; gap: 0 .9rem; align-items: start; }
+  .nv-side .label { grid-row: 1; }
+  .nv-side img { grid-row: 2; margin-bottom: 0; }
+  .nv-text { max-height: none; max-width: none; }
+}
