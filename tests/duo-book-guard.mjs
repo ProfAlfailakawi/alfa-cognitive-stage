@@ -24,6 +24,19 @@ const CUT_MQ = [...css.matchAll(/@media([^{]*)\{\s*:root \{ --duo-cutout-w: 116p
 ok(CUT_MQ.length === 1 && !/display-mode/.test(CUT_MQ[0]), "keep-out media query has no display-mode");
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
 ok(!/@media[^{]*display-mode[^{]*\{[^{}]*--duo-cutout/.test(cssNoComments) && !/display-mode[^;{}]*\{[^}]*--duo-cutout/.test(cssNoComments), "no display-mode: standalone in keep-out rules");
+// the keep-out reaches the iPhone Duo only: a reset off the Duo, every keep-out rule scoped to it, one markers text everywhere
+ok(/html:not\(\[data-device="duo"\]\) \{ --duo-cutout-w: 0px; --duo-cutout-h: 0px; \}/.test(cssNoComments), "keep-out reset to 0 off the iPhone Duo");
+{
+  const blk = cssNoComments.slice(cssNoComments.indexOf("--duo-cutout-w: 116px"));
+  const body = blk.slice(0, blk.indexOf("\n}\n"));
+  const sels = [...body.matchAll(/\n  ([^{}\n][^{}]*)\{/g)].map((m) => m[1].trim());
+  ok(sels.length >= 8 && sels.every((sel) => sel.split(/,(?![^(]*\))/).every((x) => x.trim().startsWith(':where(html[data-device="duo"])'))), "every keep-out rule is scoped to html[data-device=duo] " + JSON.stringify(sels.filter((sel) => !sel.startsWith(":where"))));
+  const markers = (f) => { const t = readFileSync(join(root, f), "utf8"); const a = t.indexOf("/* duo-markers:start"), b = t.indexOf("/* duo-markers:end */"); return a >= 0 && b > a ? t.slice(a, b) : null; };
+  const ref = markers("web/duo-markers.js");
+  ok(!!ref && /root\.dataset\.device = duo \? "duo" : "other"/.test(ref) && /iPhone\|iPod/.test(ref) && /shortScreen <= 720/.test(ref), "duo-markers.js detects the iPhone Duo only");
+  for (const f of ["web/vote.js", "web/review.js"]) ok(markers(f) === ref, `${f} carries the same markers text`);
+  for (const f of ["web/index.html", "web/vote-admin.html"]) ok(readFileSync(join(root, f), "utf8").includes('<script src="duo-markers.js"></script>'), `${f} loads duo-markers.js`);
+}
 const BOOK_Q = "screen and (min-width: 721px) and (max-width: 1000px) and (min-height: 520px) and (max-height: 960px) and (orientation: landscape)";
 const PORT_Q = "screen and (min-width: 640px) and (max-width: 720px) and (min-height: 520px) and (max-height: 960px) and (orientation: portrait)";
 ok(CUT_MQ[0] === BOOK_Q.replace("screen and ", "screen and ") + ",\n       " + PORT_Q, "keep-out = BOOK or PORTRAIT INNER exactly");
@@ -35,9 +48,11 @@ const base = `http://localhost:${port}`;
 const browser = await chromium.launch();
 let baseCss = "";
 try { baseCss = execFileSync("git", ["show", "origin/main:web/style.css"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { console.log("NOTE  origin/main not available: baseline comparison skipped"); }
-async function probe(size, { baseline = false, url = "/#presenter" } = {}) {
+async function probe(size, { baseline = false, url = "/#presenter", duo = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: size[0], height: size[1] }, reducedMotion: "reduce" });
   const page = await ctx.newPage();
+  // the iPhone Duo as web/duo-markers.js marks it on the device (Chromium here has no iPhone screen to detect)
+  if (duo) await page.addInitScript(() => { const mark = () => { const r = document.documentElement; if (r && r.dataset.device !== "duo") r.dataset.device = "duo"; }; mark(); document.addEventListener("DOMContentLoaded", () => { mark(); new MutationObserver(mark).observe(document.documentElement, { attributes: true, attributeFilter: ["data-device"] }); }); });
   await page.route("**/style.css", async (route) => {
     let body = baseline ? baseCss : css;
     route.fulfill({ status: 200, contentType: "text/css", body });
@@ -61,9 +76,12 @@ try {
     const a = await probe(s), b = await probe(s, { baseline: true });
     ok(JSON.stringify(a.rects) === JSON.stringify(b.rects), `${s} unchanged vs origin/main`);
   }
-  // keep-out: the real media queries, evaluated in a plain tab, no CSS rewriting
-  for (const s of [[951, 585], [951, 669], [669, 867], [720, 900], [640, 760], [722, 520], [1000, 960], [640, 700], [720, 960]]) ok((await probe(s)).cut === "116px", `${s} keep-out on`);
-  for (const s of [[390, 844], [844, 390], [932, 430], [744, 1024], [820, 1180], [1024, 768], [1180, 820], [1280, 800], [1440, 900], [367, 740], [951, 350], [721, 519], [721, 961], [639, 800], [721, 900]]) ok((await probe(s)).cut === "0px", `${s} keep-out off`);
+  // keep-out: the real media queries, no CSS rewriting. On the iPhone Duo (html[data-device="duo"]) it is on at the Duo sizes ...
+  const DUO_SIZES = [[951, 585], [951, 669], [669, 867], [720, 900], [640, 760], [722, 520], [1000, 960], [640, 700], [720, 960]];
+  for (const s of DUO_SIZES) ok((await probe(s, { duo: true })).cut === "116px", `${s} keep-out on (iPhone Duo)`);
+  // ... and the same window sizes on anything else (a narrow desktop or tablet window) reserve nothing
+  for (const s of DUO_SIZES) ok((await probe(s)).cut === "0px", `${s} keep-out off (not a Duo: same window size)`);
+  for (const s of [[390, 844], [844, 390], [932, 430], [744, 1024], [820, 1180], [1024, 768], [1180, 820], [1280, 800], [1440, 900], [367, 740], [951, 350], [721, 519], [721, 961], [639, 800], [721, 900]]) ok((await probe(s, { duo: true })).cut === "0px" && (await probe(s)).cut === "0px", `${s} keep-out off`);
 } finally { await browser.close(); server.kill(); }
 console.log(fails ? `${fails} FAILED` : "duo book guard passed");
 process.exit(fails ? 1 : 0);
