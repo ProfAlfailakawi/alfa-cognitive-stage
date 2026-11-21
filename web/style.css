@@ -1944,21 +1944,26 @@ body > section.vote, #ask-lecturer { min-width: 0; }
        screen and (min-width: 640px) and (max-width: 720px) and (min-height: 520px) and (max-height: 960px) and (orientation: portrait) {
   :root { --duo-cutout-w: 116px; --duo-cutout-h: 116px; }
   /* Lecturer console: the clock bar is the top of the right page; its text stays left of the corner. */
-  .presenter > .main > .bar { box-sizing: border-box; min-height: var(--duo-cutout-h); padding-right: calc(var(--duo-cutout-w) + .4rem); align-content: center; }
+  :where(html[data-device="duo"]) .presenter > .main > .bar { box-sizing: border-box; min-height: var(--duo-cutout-h); padding-right: calc(var(--duo-cutout-w) + .4rem); align-content: center; }
   /* Notes window. */
-  .nv-bar { box-sizing: border-box; min-height: var(--duo-cutout-h); padding-right: calc(var(--duo-cutout-w) + .4rem); }
+  :where(html[data-device="duo"]) .nv-bar { box-sizing: border-box; min-height: var(--duo-cutout-h); padding-right: calc(var(--duo-cutout-w) + .4rem); }
   /* Student page: the live-question mark steps left of the corner and the question starts below it. */
-  body main.vote::before { margin-right: var(--duo-cutout-w); }
-  body main.vote .q::before { margin-right: var(--duo-cutout-w); }
-  body main.review::before { margin-right: var(--duo-cutout-w); }
-  body main.vote:has(> .status:only-child) { padding-block-start: var(--duo-cutout-h); }
+  :where(html[data-device="duo"]) body main.vote::before { margin-right: var(--duo-cutout-w); }
+  :where(html[data-device="duo"]) body main.vote .q::before { margin-right: var(--duo-cutout-w); }
+  :where(html[data-device="duo"]) body main.review::before { margin-right: var(--duo-cutout-w); }
+  :where(html[data-device="duo"]) body main.vote:has(> .status:only-child) { padding-block-start: var(--duo-cutout-h); }
   /* Review: the title and the first tag sit left of the corner. */
-  body main.review > h1, body main.review > .tag:first-child { padding-right: var(--duo-cutout-w); min-height: 2.4rem; }
+  :where(html[data-device="duo"]) body main.review > h1, :where(html[data-device="duo"]) body main.review > .tag:first-child { padding-right: var(--duo-cutout-w); min-height: 2.4rem; }
   /* Vote console: the title row (mark, title, rule) stays left of the corner. */
-  .admin > h1 { box-sizing: border-box; min-height: calc(var(--duo-cutout-h) - 1.25rem); padding-right: var(--duo-cutout-w); }
+  :where(html[data-device="duo"]) .admin > h1 { box-sizing: border-box; min-height: calc(var(--duo-cutout-h) - 1.25rem); padding-right: var(--duo-cutout-w); }
   /* Dialogs: the sheet hangs below the corner instead of being centred under it. */
-  dialog.display-chooser { margin-block: var(--duo-cutout-h) auto; max-height: calc(100dvh - var(--duo-cutout-h) - 1rem); overflow-y: auto; }
+  :where(html[data-device="duo"]) dialog.display-chooser { margin-block: var(--duo-cutout-h) auto; max-height: calc(100dvh - var(--duo-cutout-h) - 1rem); overflow-y: auto; }
 }
+
+/* The two queries above go by window size alone, so they also matched a narrow desktop or tablet window (700x900, a 950x700
+   laptop window) and pushed the bars 116px off the right edge. The keep-out is real on the iPhone Duo only: duo-markers.js sets
+   html[data-device="duo"] there, the rules above are scoped to it, and everywhere else the box goes back to 0. */
+html:not([data-device="duo"]) { --duo-cutout-w: 0px; --duo-cutout-h: 0px; }
 
 /* ---- Opened Duo in PORTRAIT (640–720 wide, 520–960 tall): one ordinary single-column page ----
    The wide-window rules above (question beside the answers, notes beside the slides, two console
