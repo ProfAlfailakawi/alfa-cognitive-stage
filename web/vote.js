@@ -64,7 +64,29 @@ function setStatus(text) {
   app.innerHTML = `<p class="status">${text}</p>`;
 }
 
+// Results bars glide from what was drawn to the new share (presentation only; text shows the exact value).
+let drawnBars = { key: "", widths: [] };
+function drawnWidths() {
+  return [...app.querySelectorAll(".bar")].map((bar) => {
+    const track = bar.getBoundingClientRect().width, fill = bar.firstElementChild;
+    return fill && track > 0 ? (100 * fill.getBoundingClientRect().width / track).toFixed(2) + "%" : "";
+  });
+}
+function glideBars(key, before) {
+  const fills = [...app.querySelectorAll(".bar > span")];
+  const from = drawnBars.key === key ? before : [];
+  drawnBars = { key, widths: fills.map((fill) => fill.style.width) };
+  let calm = false;
+  try { calm = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch {}
+  if (!fills.length || calm) return;
+  const targets = fills.map((fill) => fill.style.width);
+  fills.forEach((fill, i) => { fill.style.width = from[i] || "0%"; });
+  void app.offsetWidth;
+  fills.forEach((fill, i) => { fill.style.width = targets[i]; });
+}
+
 function renderPoll(active) {
+  const barsBefore = drawnWidths();
   const counts = active.counts || null;
   const total = counts ? counts.reduce((a, b) => a + b, 0) : 0;
   const options = active.options.map((text, i) => {
@@ -87,6 +109,7 @@ function renderPoll(active) {
   app.querySelectorAll("button.opt").forEach((btn) => {
     btn.addEventListener("click", () => submit(Number(btn.dataset.i)));
   });
+  glideBars(JSON.stringify([active.question, active.options]), barsBefore);
 }
 
 // Word cloud: up to three single words; the lecturer reviews what appears.
