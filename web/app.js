@@ -25,6 +25,8 @@ import { interpretPoll } from "./voice-nav.js";
 import { interpretNaturalNav, interpretStageReturn } from "./voice-intent.js";
 import { THEMES } from "./scene-theme.js";
 import { styleScene } from "./scene-stylist.js";
+import { markTransition } from "./world-transitions.js";
+import { snapshotPollScreen, animatePollScreen } from "./vote-race.js";
 import { createFieldRecorder } from "./field-recorder.js";
 import { loadTuning } from "./director-tuning-store.js";
 import { createSlideMatcher, createRemoteEmbedder } from "./slide-matcher.js";
@@ -1574,6 +1576,7 @@ function clearPollScreen() {
   document.querySelectorAll(".vote-projection").forEach((element) => element.remove());
 }
 function renderPollScreen(data) {
+  const before = snapshotPollScreen(); // presentation only: the race animates from what was on screen
   clearPollScreen();
   if (!data?.visible || !data.url) return;
   const root = document.getElementById("stage");
@@ -1626,6 +1629,7 @@ function renderPollScreen(data) {
     overlay.append(bars);
   }
   root.append(overlay);
+  animatePollScreen(overlay, data, before);
 }
 // The question inbox ranks questions about the slide on screen higher, so it needs to know which one that is.
 function postSlideToVoteFrame() {
@@ -1686,6 +1690,7 @@ function renderLayer(spec) {
   const layer = document.createElement("div");
   layer.className = "info-layer";
   layer.innerHTML = renderInfographic(spec);
+  markTransition(layer, spec); // presentation only: the world family picks the entrance (style.css)
   stage.appendChild(layer);
 }
 
