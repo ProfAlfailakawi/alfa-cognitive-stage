@@ -24,7 +24,7 @@ export function requestOrigin(address, headers = {}) {
   return "local";
 }
 
-const STUDENT_FILES = new Set(["/vote.html", "/vote.js", "/review.html", "/review.js", "/style.css", "/favicon.ico"]);
+const STUDENT_FILES = new Set(["/vote.html", "/vote.js", "/review.html", "/review.js", "/style.css", "/duo-markers.js", "/favicon.ico"]);
 /** Is this request part of what a student phone may use? Called only for "remote" requests. */
 export function studentSurfaceAllows(method, pathname) {
   if (method === "GET" || method === "HEAD") {

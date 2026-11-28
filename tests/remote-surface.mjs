@@ -20,7 +20,7 @@ assert.equal(requestOrigin("127.0.0.1", { host: "localhost.evil.com" }), "remote
 assert.equal(requestOrigin("127.0.0.1", { host: "localhost:4173", "cf-connecting-ip": "9.9.9.9" }), "remote");
 assert.equal(requestOrigin("127.0.0.1", { host: "localhost:4173", via: "1.1 proxy" }), "remote");
 for (const [method, path, ok] of [
-  ["GET", "/vote.html", true], ["GET", "/vote.js", true], ["GET", "/style.css", true],
+  ["GET", "/vote.html", true], ["GET", "/vote.js", true], ["GET", "/style.css", true], ["GET", "/duo-markers.js", true],
   ["GET", "/fonts/cairo-arabic-400-normal.woff2", true],
   ["GET", "/api/sessions/ABC234/state", true], ["POST", "/api/sessions/ABC234/vote", true],
   ["POST", "/api/sessions/ABC234/questions", true], ["GET", "/api/sessions/ABC234/questions", false],
